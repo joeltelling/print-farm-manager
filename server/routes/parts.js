@@ -5,8 +5,8 @@ module.exports = (db) => {
   router.get('/', (req, res) => {
     const { project_id } = req.query;
     const parts = project_id
-      ? db.prepare('SELECT * FROM parts WHERE project_id = ? ORDER BY created_at').all(project_id)
-      : db.prepare('SELECT * FROM parts ORDER BY created_at').all();
+      ? db.prepare('SELECT * FROM parts WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC').all(project_id)
+      : db.prepare('SELECT * FROM parts ORDER BY sort_order ASC, created_at ASC').all();
     res.json(parts);
   });
 
@@ -62,6 +62,21 @@ module.exports = (db) => {
     );
 
     res.json(db.prepare('SELECT * FROM parts WHERE id = ?').get(req.params.id));
+  });
+
+  // PUT /api/parts/reorder — set sort_order for a list of part IDs
+  // Body: { ids: [3, 1, 2] } — ordered array; index becomes sort_order
+  router.put('/reorder', (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids must be a non-empty array' });
+    }
+    const update = db.prepare('UPDATE parts SET sort_order = ?, updated_at = ? WHERE id = ?');
+    const now = Date.now();
+    db.transaction(() => {
+      ids.forEach((id, index) => update.run(index, now, id));
+    })();
+    res.json({ success: true });
   });
 
   router.delete('/:id', (req, res) => {

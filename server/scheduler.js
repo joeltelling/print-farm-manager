@@ -129,7 +129,7 @@ class JobScheduler extends EventEmitter {
       WHERE parts.status    = 'open'
         AND projects.status = 'active'
         AND gcodes.printer_model = ?
-      ORDER BY projects.created_at ASC
+      ORDER BY projects.created_at ASC, parts.sort_order ASC, parts.created_at ASC
       LIMIT 1
     `).get(printer.model);
 

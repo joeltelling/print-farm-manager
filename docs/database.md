@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`server/db.js` manages the SQLite database. It opens the connection, sets pragmas, and runs `CREATE TABLE IF NOT EXISTS` for all five tables on every startup. No migration system — schema changes require manual handling.
+`server/db.js` manages the SQLite database. It opens the connection, sets pragmas, and runs `CREATE TABLE IF NOT EXISTS` for all five tables on every startup. New columns on existing installs are added via `ALTER TABLE` migrations wrapped in `try/catch` — SQLite throws if the column already exists, which is silently ignored.
 
 ## Driver
 
@@ -20,18 +20,26 @@ Stores the physical printer registry imported from the CSV spreadsheet.
 
 ```sql
 CREATE TABLE IF NOT EXISTS printers (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL UNIQUE,      -- e.g. "MK4S_07", "Twilight"
-  ip          TEXT NOT NULL,             -- e.g. "192.168.15.194"
-  api_key     TEXT NOT NULL,             -- PrusaLink X-Api-Key header value
-  group_name  TEXT,                      -- e.g. "MK4S Farm" (optional)
-  type        TEXT DEFAULT 'prusa',      -- vendor; reserved for future use
-  model       TEXT NOT NULL,             -- mk4 | mk4s | c1 | c1l | xl
-  status      TEXT DEFAULT 'UNKNOWN',    -- live PrusaLink state (see status model)
-  is_held     INTEGER DEFAULT 0,         -- 1 = excluded from polling and dispatch
-  created_at  INTEGER NOT NULL           -- Unix epoch ms
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  name                TEXT NOT NULL UNIQUE,      -- e.g. "MK4S_07", "Twilight"
+  ip                  TEXT NOT NULL,             -- e.g. "192.168.15.194"
+  api_key             TEXT NOT NULL,             -- PrusaLink X-Api-Key header value
+  group_name          TEXT,                      -- e.g. "MK4S Farm" (optional)
+  type                TEXT DEFAULT 'prusa',      -- vendor; reserved for future use
+  model               TEXT NOT NULL,             -- mk4 | mk4s | c1 | c1l | xl
+  status              TEXT DEFAULT 'UNKNOWN',    -- live PrusaLink state
+  is_held             INTEGER DEFAULT 1,         -- 1 = will not receive dispatch
+  is_active           INTEGER DEFAULT 1,         -- 0 = decommissioned; skipped by poller
+  decommissioned_at   INTEGER,                   -- epoch ms; set on decommission
+  decommission_note   TEXT,                      -- optional operator note
+  job_name            TEXT,                      -- filename of current print job (PRINTING only)
+  job_progress        REAL,                      -- 0–100 from PrusaLink (PRINTING only)
+  job_time_remaining  INTEGER,                   -- seconds remaining (PRINTING only)
+  created_at          INTEGER NOT NULL           -- Unix epoch ms
 );
 ```
+
+The `job_name`, `job_progress`, and `job_time_remaining` columns are written on every poll cycle while `status = 'PRINTING'` and cleared to NULL the moment the printer leaves that state. `job_name` is sourced from our own `jobs`/`gcodes` tables (PrusaLink does not return a filename in its status response).
 
 **Model resolution:** The `model` column in the CSV is the preferred source. Accepted values (case-insensitive): `MK4`, `MK4S`, `C1`, `C1L`, `XL`. These are normalized to lowercase as the internal ID.
 
@@ -73,12 +81,15 @@ CREATE TABLE IF NOT EXISTS parts (
   target_qty     INTEGER NOT NULL,
   completed_qty  INTEGER DEFAULT 0,
   status         TEXT DEFAULT 'open',   -- open | closed
+  sort_order     INTEGER NOT NULL DEFAULT 0,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL
 );
 ```
 
 A Part is **open** while `completed_qty < target_qty`. It transitions to **closed** automatically when `completed_qty >= target_qty`. `completed_qty` is allowed to exceed `target_qty` (expected due to plate-based printing — never dispatch half a plate).
+
+`sort_order` controls dispatch priority within a project — the scheduler picks the lowest `sort_order` part first. Set via `PUT /api/parts/reorder`. New parts default to `0` and fall back to `created_at` as a tiebreaker.
 
 ### gcodes
 

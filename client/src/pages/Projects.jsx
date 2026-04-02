@@ -80,83 +80,218 @@ function GcodeUploadPanel({ part, onUploaded }) {
   }
 
   return (
-    <div style={{ background: '#0a0f1a', borderRadius: 6, padding: '10px 12px', marginTop: 8 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <label style={{ cursor: 'pointer' }}>
-          <input type="file" accept=".bgcode,.gcode" onChange={handleFileChange} style={{ display: 'none' }} />
-          <span style={{
-            ...inputSx,
-            display: 'inline-block',
-            maxWidth: 240,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            color: file ? '#e2e8f0' : '#475569',
-          }}>
-            {file ? file.name : 'Choose .bgcode / .gcode…'}
-          </span>
-        </label>
-        <input
-          type="number"
-          min={1}
-          placeholder="Parts/plate"
-          value={partsPerPlate}
-          onChange={(e) => setPPP(e.target.value)}
-          style={{ ...inputSx, width: 100 }}
-        />
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          style={{ ...inputSx, width: 90 }}
-        >
-          <option value="">Model…</option>
-          {MODEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <button
-          onClick={handleUpload}
-          disabled={uploading}
-          style={{
-            background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
-            padding: '5px 14px', fontSize: 12, fontWeight: 600,
-            cursor: uploading ? 'not-allowed' : 'pointer',
-            opacity: uploading ? 0.7 : 1,
-          }}
-        >
-          {uploading ? 'Uploading…' : 'Upload'}
-        </button>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <label style={{ cursor: 'pointer' }}>
+        <input type="file" accept=".bgcode,.gcode" onChange={handleFileChange} style={{ display: 'none' }} />
+        <span style={{
+          ...inputSx,
+          display: 'inline-block',
+          maxWidth: 240,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          cursor: 'pointer',
+          color: file ? '#e2e8f0' : '#475569',
+        }}>
+          {file ? file.name : 'Choose .bgcode / .gcode…'}
+        </span>
+      </label>
+      <input
+        type="number"
+        min={1}
+        placeholder="Parts/plate"
+        value={partsPerPlate}
+        onChange={(e) => setPPP(e.target.value)}
+        style={{ ...inputSx, width: 100 }}
+      />
+      <select
+        value={model}
+        onChange={(e) => setModel(e.target.value)}
+        style={{ ...inputSx, width: 90 }}
+      >
+        <option value="">Model…</option>
+        {MODEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <button
+        onClick={handleUpload}
+        disabled={uploading}
+        style={{
+          background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+          padding: '5px 14px', fontSize: 12, fontWeight: 600,
+          cursor: uploading ? 'not-allowed' : 'pointer',
+          opacity: uploading ? 0.7 : 1,
+        }}
+      >
+        {uploading ? 'Uploading…' : 'Upload'}
+      </button>
+      {error && <p style={{ color: '#f87171', fontSize: 12, margin: 0 }}>{error}</p>}
+    </div>
+  );
+}
+
+function PartDetailsPanel({ part, gcodes, onRefresh }) {
+  const [have, setHave] = useState(String(part.completed_qty));
+  const [need, setNeed] = useState(String(part.target_qty));
+  const [saving, setSaving] = useState(false);
+  const [qtyError, setQtyError] = useState(null);
+
+  useEffect(() => {
+    setHave(String(part.completed_qty));
+    setNeed(String(part.target_qty));
+  }, [part.completed_qty, part.target_qty]);
+
+  async function saveQtys() {
+    const newHave = parseInt(have, 10);
+    const newNeed = parseInt(need, 10);
+    if (isNaN(newHave) || newHave < 0) { setQtyError('Have must be 0 or more.'); return; }
+    if (isNaN(newNeed) || newNeed < 1) { setQtyError('Need must be at least 1.'); return; }
+    if (newHave === part.completed_qty && newNeed === part.target_qty) return;
+
+    const wouldClose = newHave >= newNeed;
+    if (wouldClose && part.status === 'open') {
+      if (!window.confirm('This will close the part and stop dispatching. Confirm?')) return;
+    } else if (!wouldClose && part.status === 'closed') {
+      if (!window.confirm('This will reopen the part and resume dispatching. Confirm?')) return;
+    }
+
+    setSaving(true);
+    setQtyError(null);
+    const res = await fetch(`/api/parts/${part.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed_qty: newHave, target_qty: newNeed }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      onRefresh();
+    } else {
+      const d = await res.json();
+      setQtyError(d.error || 'Save failed.');
+    }
+  }
+
+  async function deleteGcode(gcodeId) {
+    if (!window.confirm('Delete this G-code file?')) return;
+    await fetch(`/api/gcodes/${gcodeId}`, { method: 'DELETE' });
+    onRefresh();
+  }
+
+  const sectionLabel = {
+    fontSize: 11, fontWeight: 700, color: '#475569',
+    textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8,
+  };
+
+  return (
+    <div style={{ background: '#0a0f1a', borderRadius: 6, padding: '14px 16px', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+      {/* Quantities */}
+      <div>
+        <div style={sectionLabel}>Quantities</div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ color: '#64748b', fontSize: 12 }}>Have (completed)</label>
+            <input
+              type="number" min={0} value={have}
+              onChange={e => setHave(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveQtys()}
+              style={{ ...inputSx, width: 90 }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ color: '#64748b', fontSize: 12 }}>Need (target)</label>
+            <input
+              type="number" min={1} value={need}
+              onChange={e => setNeed(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveQtys()}
+              style={{ ...inputSx, width: 90 }}
+            />
+          </div>
+          <button
+            onClick={saveQtys}
+            disabled={saving}
+            style={{
+              background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+              padding: '5px 14px', fontSize: 12, fontWeight: 600,
+              cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
+            }}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        {qtyError && <p style={{ color: '#f87171', fontSize: 12, margin: '6px 0 0' }}>{qtyError}</p>}
       </div>
-      {error && <p style={{ color: '#f87171', fontSize: 12, margin: '6px 0 0' }}>{error}</p>}
+
+      {/* G-code files */}
+      <div>
+        <div style={sectionLabel}>G-code Files</div>
+        {gcodes.length === 0 && (
+          <p style={{ color: '#475569', fontSize: 12, margin: 0 }}>No G-code files uploaded yet.</p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {gcodes.map(gc => (
+            <div
+              key={gc.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: '#0f172a', borderRadius: 4, padding: '5px 10px',
+              }}
+            >
+              <span style={{
+                fontFamily: 'monospace', fontSize: 12, color: '#e2e8f0',
+                flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {gc.filename}
+              </span>
+              <span style={{
+                background: '#1e3a5f', color: '#60a5fa', borderRadius: 3,
+                padding: '1px 6px', fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>
+                {gc.printer_model}
+              </span>
+              <button
+                onClick={() => deleteGcode(gc.id)}
+                title="Delete G-code"
+                style={{
+                  background: 'none', border: 'none', color: '#ef4444',
+                  cursor: 'pointer', padding: '0 2px', fontSize: 16, lineHeight: 1, flexShrink: 0,
+                }}
+              >×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Upload */}
+      <div>
+        <div style={sectionLabel}>Upload G-code</div>
+        <GcodeUploadPanel part={part} onUploaded={onRefresh} />
+      </div>
     </div>
   );
 }
 
 export default function Projects() {
-  const [projects, setProjects]         = useState([]);
-  const [loading, setLoading]           = useState(true);
+  const [projects, setProjects]           = useState([]);
+  const [loading, setLoading]             = useState(true);
 
   // Detail view
-  const [selectedId, setSelectedId]     = useState(null);
+  const [selectedId, setSelectedId]       = useState(null);
   const [detailProject, setDetailProject] = useState(null);
-  const [parts, setParts]               = useState([]);
-  const [gcodesMap, setGcodesMap]       = useState({});
+  const [parts, setParts]                 = useState([]);
+  const [gcodesMap, setGcodesMap]         = useState({});
 
   // New project form
-  const [showNewForm, setShowNewForm]   = useState(false);
-  const [newName, setNewName]           = useState('');
-  const [newDesc, setNewDesc]           = useState('');
+  const [showNewForm, setShowNewForm]     = useState(false);
+  const [newName, setNewName]             = useState('');
+  const [newDesc, setNewDesc]             = useState('');
 
   // Add part form
-  const [newPartName, setNewPartName]   = useState('');
-  const [newPartQty, setNewPartQty]     = useState('');
-  const [addingPart, setAddingPart]     = useState(false);
+  const [newPartName, setNewPartName]     = useState('');
+  const [newPartQty, setNewPartQty]       = useState('');
+  const [addingPart, setAddingPart]       = useState(false);
 
-  // completed_qty edit
-  const [editPartId, setEditPartId]     = useState(null);
-  const [editQtyVal, setEditQtyVal]     = useState('');
-
-  // G-code upload panels (set of open part IDs)
-  const [openPanels, setOpenPanels]     = useState(new Set());
+  // Details panels (set of open part IDs)
+  const [openPanels, setOpenPanels]       = useState(new Set());
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -218,6 +353,22 @@ export default function Projects() {
     await Promise.all([fetchDetail(id), fetchProjects()]);
   }
 
+  async function movePart(partId, direction) {
+    const idx = parts.findIndex(p => p.id === partId);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= parts.length) return;
+
+    const reordered = [...parts];
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+    setParts(reordered);
+
+    await fetch('/api/parts/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: reordered.map(p => p.id) }),
+    });
+  }
+
   async function addPart() {
     if (!newPartName.trim() || !newPartQty) return;
     setAddingPart(true);
@@ -231,33 +382,6 @@ export default function Projects() {
     await fetchDetail(selectedId);
   }
 
-  async function submitEditQty(part) {
-    const newVal = parseInt(editQtyVal, 10);
-    if (isNaN(newVal) || newVal < 0) return;
-
-    let msg = `Update completed quantity to ${newVal}?`;
-    if (newVal < part.target_qty && part.status === 'closed') {
-      msg = 'This will reopen the Part and resume dispatching. Confirm?';
-    } else if (newVal >= part.target_qty && part.status === 'open') {
-      msg = 'This will close the Part and stop all dispatching. Confirm?';
-    }
-    if (!window.confirm(msg)) return;
-
-    await fetch(`/api/parts/${part.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed_qty: newVal }),
-    });
-    setEditPartId(null); setEditQtyVal('');
-    await fetchDetail(selectedId);
-  }
-
-  async function deleteGcode(gcodeId) {
-    if (!window.confirm('Delete this G-code file?')) return;
-    await fetch(`/api/gcodes/${gcodeId}`, { method: 'DELETE' });
-    await fetchDetail(selectedId);
-  }
-
   function togglePanel(partId) {
     setOpenPanels(prev => {
       const next = new Set(prev);
@@ -268,7 +392,7 @@ export default function Projects() {
 
   function goBack() {
     setSelectedId(null); setDetailProject(null); setParts([]); setGcodesMap({});
-    setEditPartId(null); setEditQtyVal(''); setOpenPanels(new Set());
+    setOpenPanels(new Set());
   }
 
   // ─── List view ───────────────────────────────────────────────────────────────
@@ -423,15 +547,38 @@ export default function Projects() {
         const progress  = part.target_qty > 0 ? Math.min(1, part.completed_qty / part.target_qty) : 0;
         const pct       = Math.round(progress * 100);
         const partSt    = PART_STATUS[part.status] || PART_STATUS.open;
-        const isEditing = editPartId === part.id;
         const panelOpen = openPanels.has(part.id);
 
         return (
           <div key={part.id} style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: '12px 16px', marginBottom: 8 }}>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
 
-              {/* Name */}
-              <span style={{ fontWeight: 600, fontSize: 14, flex: '1 1 100px', minWidth: 80 }}>{part.name}</span>
+              {/* Name + order buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: '1 1 100px', minWidth: 80 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <button
+                    onClick={() => movePart(part.id, 'up')}
+                    disabled={parts.indexOf(part) === 0}
+                    title="Move up"
+                    style={{
+                      background: 'none', border: 'none', color: parts.indexOf(part) === 0 ? '#1f2937' : '#475569',
+                      cursor: parts.indexOf(part) === 0 ? 'default' : 'pointer',
+                      padding: 0, fontSize: 10, lineHeight: 1,
+                    }}
+                  >▲</button>
+                  <button
+                    onClick={() => movePart(part.id, 'down')}
+                    disabled={parts.indexOf(part) === parts.length - 1}
+                    title="Move down"
+                    style={{
+                      background: 'none', border: 'none', color: parts.indexOf(part) === parts.length - 1 ? '#1f2937' : '#475569',
+                      cursor: parts.indexOf(part) === parts.length - 1 ? 'default' : 'pointer',
+                      padding: 0, fontSize: 10, lineHeight: 1,
+                    }}
+                  >▼</button>
+                </div>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{part.name}</span>
+              </div>
 
               {/* Progress */}
               <div style={{ flex: '2 1 160px', minWidth: 120 }}>
@@ -452,64 +599,22 @@ export default function Projects() {
                 {partSt.label}
               </span>
 
-              {/* G-code chips */}
+              {/* G-code model chips (read-only) */}
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                 {partGs.map(gc => (
                   <span
                     key={gc.id}
                     style={{
                       background: '#0f172a', border: '1px solid #2d3748', borderRadius: 4,
-                      padding: '1px 4px 1px 8px', fontSize: 11, color: '#94a3b8', fontFamily: 'monospace',
-                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                      padding: '1px 8px', fontSize: 11, color: '#94a3b8', fontFamily: 'monospace',
                     }}
                   >
                     {gc.printer_model}
-                    <button
-                      onClick={() => deleteGcode(gc.id)}
-                      title="Delete G-code"
-                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, fontSize: 14, lineHeight: 1 }}
-                    >×</button>
                   </span>
                 ))}
               </div>
 
-              {/* Edit completed_qty */}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                {isEditing ? (
-                  <>
-                    <input
-                      type="number"
-                      min={0}
-                      value={editQtyVal}
-                      onChange={(e) => setEditQtyVal(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && submitEditQty(part)}
-                      style={{ ...inputSx, width: 70 }}
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => submitEditQty(part)}
-                      style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => { setEditPartId(null); setEditQtyVal(''); }}
-                      style={{ background: '#1f2937', color: '#9ca3af', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => { setEditPartId(part.id); setEditQtyVal(String(part.completed_qty)); }}
-                    style={{ background: '#1f2937', color: '#94a3b8', border: '1px solid #2d3748', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' }}
-                  >
-                    Edit qty
-                  </button>
-                )}
-              </div>
-
-              {/* G-code upload toggle */}
+              {/* Details toggle */}
               <button
                 onClick={() => togglePanel(part.id)}
                 style={{
@@ -519,12 +624,16 @@ export default function Projects() {
                   borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer', flexShrink: 0,
                 }}
               >
-                {panelOpen ? '▲ G-code' : '▼ G-code'}
+                {panelOpen ? '▲ Details' : '▼ Details'}
               </button>
             </div>
 
             {panelOpen && (
-              <GcodeUploadPanel part={part} onUploaded={() => fetchDetail(selectedId)} />
+              <PartDetailsPanel
+                part={part}
+                gcodes={partGs}
+                onRefresh={() => fetchDetail(selectedId)}
+              />
             )}
           </div>
         );

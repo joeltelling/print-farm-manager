@@ -35,12 +35,24 @@ async function inspectPrinter(printer) {
   console.groupEnd();
 }
 
+function formatTimeRemaining(secs) {
+  if (secs == null || secs < 0) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m left`;
+  if (m > 0) return `${m}m left`;
+  return '< 1m left';
+}
+
 function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onDecommission }) {
   const style = statusStyle(printer.status);
   // Show confirmation buttons only when there's something to inspect.
   // A printer that is actively printing is held-in-advance — it will need sign-off
   // when it finishes, but there is nothing to confirm right now.
   const needsConfirmation = printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE');
+  const isPrinting = printer.status === 'PRINTING';
+  const pct = isPrinting && printer.job_progress != null ? Math.round(printer.job_progress) : null;
+  const timeLeft = isPrinting ? formatTimeRemaining(printer.job_time_remaining) : null;
 
   return (
     <div
@@ -58,6 +70,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         cursor: 'pointer',
       }}
     >
+      {/* Name + status badge */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {printer.name}
@@ -67,13 +80,41 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         </span>
       </div>
 
-      <div style={{ fontSize: 12, color: '#94a3b8', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {/* Model + group */}
+      <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
         <span style={{ background: '#0f172a', borderRadius: 3, padding: '1px 6px', fontFamily: 'monospace', color: '#64748b' }}>
           {printer.model}
         </span>
-        <span style={{ color: '#475569' }}>{printer.ip}</span>
         {printer.group_name && <span style={{ color: '#475569' }}>{printer.group_name}</span>}
       </div>
+
+      {/* Print job info — only when printing */}
+      {isPrinting && (
+        <div style={{ marginTop: 2 }}>
+          {printer.job_name && (
+            <div style={{
+              fontSize: 11, color: '#94a3b8', fontFamily: 'monospace',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              marginBottom: 5,
+            }}>
+              {printer.job_name}
+            </div>
+          )}
+          <div style={{ background: '#0f172a', borderRadius: 3, height: 6, overflow: 'hidden', marginBottom: 4 }}>
+            <div style={{
+              background: '#3b82f6',
+              height: '100%',
+              width: `${pct ?? 0}%`,
+              borderRadius: 3,
+              transition: 'width 0.5s',
+            }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#475569' }}>
+            <span>{pct != null ? `${pct}%` : '—'}</span>
+            {timeLeft && <span>{timeLeft}</span>}
+          </div>
+        </div>
+      )}
 
       {needsConfirmation && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>

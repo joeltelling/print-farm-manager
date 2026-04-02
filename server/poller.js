@@ -44,6 +44,9 @@ class PrinterPoller extends EventEmitter {
   async _pollPrinter(printer) {
     const previousStatus = printer.status;
     let newStatus;
+    let jobName = null;
+    let jobProgress = null;
+    let jobTimeRemaining = null;
 
     try {
       const response = await axios.get(`http://${printer.ip}/api/v1/status`, {
@@ -54,6 +57,11 @@ class PrinterPoller extends EventEmitter {
       const data = response.data;
       // PrusaLink returns printer state under data.printer.state
       newStatus = (data?.printer?.state || 'UNKNOWN').toUpperCase();
+
+      if (newStatus === 'PRINTING' && data?.job) {
+        jobProgress = data.job.progress ?? null;
+        jobTimeRemaining = data.job.time_remaining ?? null;
+      }
     } catch (err) {
       // Any network error → OFFLINE
       newStatus = 'OFFLINE';
@@ -67,8 +75,12 @@ class PrinterPoller extends EventEmitter {
       const missedFinished = newStatus === 'IDLE' && previousStatus === 'PRINTING';
       const shouldHold = newStatus === 'FINISHED' || missedFinished || !SAFE_STATES.has(newStatus);
       const holdUpdate = shouldHold ? ', is_held = 1' : '';
+      // Clear job fields when leaving PRINTING state
+      const clearJob = previousStatus === 'PRINTING' && newStatus !== 'PRINTING'
+        ? ', job_name = NULL, job_progress = NULL, job_time_remaining = NULL'
+        : '';
       this.db
-        .prepare(`UPDATE printers SET status = ?${holdUpdate} WHERE id = ?`)
+        .prepare(`UPDATE printers SET status = ?${holdUpdate}${clearJob} WHERE id = ?`)
         .run(newStatus, printer.id);
 
       console.log(`[poller] ${printer.name}: ${previousStatus} → ${newStatus}`);
@@ -77,6 +89,20 @@ class PrinterPoller extends EventEmitter {
       if (newStatus === 'IDLE' && previousStatus !== 'IDLE') {
         this.emit('printerIdle', { printer: { ...printer, status: newStatus } });
       }
+    }
+
+    // Always persist latest job progress while printing (status may not have changed)
+    if (newStatus === 'PRINTING') {
+      const activeJob = this.db.prepare(`
+        SELECT gcodes.filename FROM jobs
+        JOIN gcodes ON gcodes.id = jobs.gcode_id
+        WHERE jobs.printer_id = ? AND jobs.status = 'printing'
+        ORDER BY jobs.started_at DESC LIMIT 1
+      `).get(printer.id);
+      jobName = activeJob?.filename ?? null;
+      this.db
+        .prepare('UPDATE printers SET job_name = ?, job_progress = ?, job_time_remaining = ? WHERE id = ?')
+        .run(jobName, jobProgress, jobTimeRemaining, printer.id);
     }
   }
 }

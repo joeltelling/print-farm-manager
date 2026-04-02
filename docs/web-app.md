@@ -56,7 +56,9 @@ Live printer grid that polls `GET /api/printers` every 15 seconds (matching the 
 - Status filter chips: All, Printing, Idle, Error, Attention, Offline — each shows live count
 - Search box filters by printer name, IP, or group name (case-insensitive)
 - Printers grouped by model: MK4S → Core One → Core 1L → XL → Other (in that order)
-- Each printer card shows: name, status badge (color-coded), model tag, IP, group name
+- Each printer card shows: name, status badge (color-coded), model tag, group name
+- **While PRINTING:** job filename (monospace, truncated), left-to-right blue progress bar, percentage and time remaining (formatted as "1h 23m left")
+- IP address is not shown on cards
 - Empty state message when no printers are registered
 
 **Status color scheme (aligned to Prusa UI):**
@@ -107,9 +109,12 @@ Primary operator screen for setting up and launching print runs.
   - `active` → "Pause" → `PUT /api/projects/:id { status: 'paused' }`
   - `paused` → "Resume" → same as Activate
   - `completed` → no button
-- **Parts table:** name, progress bar (`completed_qty / target_qty`), status badge, G-code model chips (with × delete), Edit qty button
-- **`completed_qty` editing:** inline number input with confirm dialog guardrails — special messages when the change would reopen a closed part or close an open one. Server auto-calculates status on `PUT /api/parts/:id`.
-- **G-code upload panel** (expandable per part): file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. Editable before uploading. `409` duplicate error shown inline.
+- **Parts list:** each row is read-only — name (with ▲/▼ priority buttons), progress bar (`completed_qty / target_qty`), status badge, G-code model chips (read-only). All editing is behind the Details button.
+- **▲/▼ ordering buttons:** move a part up or down in dispatch priority. Updates `sort_order` via `PUT /api/parts/reorder`. Optimistic — local state reorders immediately.
+- **Details panel** (per part, toggle with "Details" button): three sections:
+  - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status.
+  - *G-code Files* — lists each uploaded file with filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
+  - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline.
 - **Add Part form:** name + target quantity → `POST /api/parts`
 
 ## Jobs Page

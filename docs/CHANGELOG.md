@@ -2,6 +2,53 @@
 
 ---
 
+## 2026-04-01 — Fleet cards: print progress bar and job info while printing
+
+### Job progress stored on every poll (`server/poller.js`, `server/db.js`)
+Three new columns added to the printers table via migration: `job_name TEXT`, `job_progress REAL`, `job_time_remaining INTEGER`. The poller now reads `data.job.display_name`, `data.job.progress`, and `data.job.time_remaining` from the PrusaLink `/api/v1/status` response on every tick while a printer is PRINTING, and persists them to the DB. All three fields are cleared when the printer transitions out of PRINTING state.
+
+### Printing cards show job name, progress bar, time remaining (`client/src/pages/Fleet.jsx`)
+When a printer is PRINTING its card now shows: the job filename in monospace (truncated), a left-to-right blue progress bar, and percentage + time remaining below it. IP address removed from all cards. Model chip and group name remain. Non-printing cards are otherwise unchanged.
+
+**Files changed:** `server/db.js`, `server/poller.js`, `client/src/pages/Fleet.jsx`
+
+---
+
+## 2026-04-01 — Part priority ordering with up/down buttons
+
+### sort_order column on parts (`server/db.js`)
+Added `sort_order INTEGER NOT NULL DEFAULT 0` to the parts table via ALTER TABLE migration. Existing parts all start at 0 (tiebroken by `created_at`).
+
+### Reorder endpoint (`server/routes/parts.js`)
+`PUT /api/parts/reorder` accepts `{ ids: [...] }` — an ordered array of part IDs. Assigns `sort_order = index` for each in a single transaction. Parts GET query updated to `ORDER BY sort_order ASC, created_at ASC`.
+
+### Scheduler respects part order (`server/scheduler.js`)
+Candidate query now orders by `parts.sort_order ASC, parts.created_at ASC` within a project, so the highest-priority part always gets the next idle machine.
+
+### Up/Down buttons in part rows (`client/src/pages/Projects.jsx`)
+▲ and ▼ buttons appear next to each part name. Top part hides ▲, bottom part hides ▼. Clicking immediately reorders local state (optimistic update) then persists to the server in the background.
+
+**Files changed:** `server/db.js`, `server/routes/parts.js`, `server/scheduler.js`, `client/src/pages/Projects.jsx`
+
+---
+
+## 2026-04-01 — Part Details panel: editable quantities, G-code management
+
+### Details panel replaces inline editing (`client/src/pages/Projects.jsx`)
+The "G-code" toggle button on each part row has been renamed "Details". Clicking it opens a consolidated `PartDetailsPanel` component with three sections:
+
+- **Quantities** — editable Have (completed_qty) and Need (target_qty) fields with a single Save button. Status change confirmations apply (closing/reopening the part triggers a confirm dialog).
+- **G-code Files** — lists every uploaded G-code with its filename and target printer model. Each row has an × delete button with confirmation.
+- **Upload G-code** — the existing upload form (file picker, parts-per-plate, model selector).
+
+The main part row is now read-only: it shows name, progress bar, status badge, and model chips (no delete buttons). All editing is consolidated behind the Details button.
+
+The `target_qty` field was already accepted by `PUT /api/parts/:id` — no server changes were needed.
+
+**Files changed:** `client/src/pages/Projects.jsx`
+
+---
+
 ## 2026-03-31 — Fleet UI: status color alignment and confirmation button guard
 
 ### Status colors aligned to Prusa (`client/src/pages/Fleet.jsx`)

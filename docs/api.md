@@ -20,7 +20,7 @@ All request bodies are JSON (`Content-Type: application/json`) unless noted othe
 
 ### `GET /api/printers`
 
-Returns all printers ordered by name.
+Returns all active printers (`is_active = 1`) ordered by name.
 
 ```json
 [
@@ -32,12 +32,18 @@ Returns all printers ordered by name.
     "group_name": "MK4S Farm",
     "type": "prusa",
     "model": "mk4s",
-    "status": "IDLE",
-    "is_held": 0,
+    "status": "PRINTING",
+    "is_held": 1,
+    "is_active": 1,
+    "job_name": "4x Left Bracket_0.20n_MK4S_5h11m.bgcode",
+    "job_progress": 45.2,
+    "job_time_remaining": 10140,
     "created_at": 1774903214387
   }
 ]
 ```
+
+`job_name`, `job_progress`, and `job_time_remaining` are non-null only while `status = "PRINTING"`, and are cleared to `null` when the printer leaves that state.
 
 ### `GET /api/printers/:id`
 
@@ -177,7 +183,7 @@ When setting `status` to `active`, the UI also calls `POST /api/scheduler/dispat
 
 ### `GET /api/parts`
 
-Optional query param `?project_id=N` to filter by project.
+Optional query param `?project_id=N` to filter by project. Results ordered by `sort_order ASC, created_at ASC`.
 
 ### `GET /api/parts/:id`
 
@@ -190,6 +196,19 @@ Required: `project_id`, `name`, `target_qty`.
 Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`.
 
 **`completed_qty` auto-status:** when `completed_qty` is included in the request body, `status` is recalculated server-side — `closed` if `completed_qty >= target_qty`, `open` otherwise. An explicit `status` field in the body is ignored when `completed_qty` is also present.
+
+### `PUT /api/parts/reorder`
+
+Sets `sort_order` for a list of parts in one transaction. Send the full ordered array of IDs — index position becomes the new `sort_order`.
+
+**Body:**
+```json
+{ "ids": [3, 1, 2] }
+```
+
+**Response:** `{ "success": true }`
+
+Returns `400` if `ids` is missing or empty.
 
 ### `DELETE /api/parts/:id`
 
