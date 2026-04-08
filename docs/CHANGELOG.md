@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-04-08 — Missed-finish operator confirmation
+
+Fixed a condition where a print that completed while the server was offline was left permanently unresolved and its output was never counted.
+
+**Root cause:** When the server restarted and the poller saw `PRINTING → IDLE`, it correctly held the printer but the scheduler never resolved the stuck `printing` job — its `statusChange` handler only reacted to `FINISHED`, `ERROR`, and `OFFLINE`. The job stayed as `printing` forever, `completed_qty` was never credited, and the operator's "✓ Set Ready" and "✗ Bad Print" buttons both silently failed (both looked only for a `finished` job).
+
+**Design principle enforced:** The server never assumes a print succeeded or failed. Every outcome requires an explicit operator confirmation.
+
+**Changes (`server/index.js`, `server/routes/printers.js`):**
+
+- `POST /api/printers/:id/set-ready` now handles two cases:
+  - **Normal finish** (job already `finished`): existing delta-adjustment logic, unchanged.
+  - **Missed finish** (job still `printing`): operator clicking Set Ready is the success confirmation. `completed_qty` is credited now (using `confirmed_qty` if provided, otherwise `parts_per_plate`), the job is marked `finished`, and the part is closed if the target is reached.
+- `POST /api/printers/:id/mark-job-failure` now also finds jobs with `status = 'printing'` as a fallback. For a missed-finish job, it marks the job `failed` but skips the qty undo (nothing was ever credited, so there is nothing to reverse).
+- `GET /api/printers` — `last_parts_per_plate` subquery now falls back to the most recent `printing` job when no `finished` job exists, so the confirmed-qty input renders correctly in the Fleet UI for missed-finish printers.
+
+---
+
 ## 2026-04-08 — Phase 6A: Prusa driver abstraction layer
 
 Extracted all PrusaLink-specific networking code into a new `server/drivers/` layer. No behavioral changes — all 52 Prusa printers continue to work exactly as before. This is the prerequisite for adding non-Prusa brands (Elegoo Centauri Carbon in Phase 6B).

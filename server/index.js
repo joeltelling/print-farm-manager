@@ -122,38 +122,84 @@ const server = app.listen(PORT, () => {
   });
 
   // Set a held printer ready — releases hold and dispatches next job to it.
-  // Accepts optional confirmed_qty in the body. If provided and different from the
-  // parts_per_plate that was already credited when the job finished, the delta is
-  // applied to completed_qty (e.g. operator confirms 24 good out of 25 → subtract 1).
+  //
+  // Two cases:
+  //
+  // Normal finish: _handleFinished already ran when FINISHED was seen — the job is
+  // 'finished' and completed_qty has already been credited. confirmed_qty here is an
+  // operator adjustment (e.g. 24 good out of 25) applied as a delta to what was credited.
+  //
+  // Missed finish: server was down when the print completed. The job is still 'printing'.
+  // Operator clicking Set Ready is the explicit success confirmation. We credit qty now
+  // (using confirmed_qty if provided, otherwise the full parts_per_plate) and mark the
+  // job finished. No assumptions are made without operator input.
   app.post('/api/printers/:id/set-ready', (req, res) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
 
     const { confirmed_qty } = req.body || {};
-    if (confirmed_qty != null) {
-      const confirmedQty = parseInt(confirmed_qty, 10);
-      if (!isNaN(confirmedQty)) {
-        const job = db.prepare(`
-          SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
-          ORDER BY finished_at DESC LIMIT 1
-        `).get(printer.id);
+    const now = Date.now();
 
-        if (job && confirmedQty !== job.parts_per_plate) {
-          const delta = confirmedQty - job.parts_per_plate; // negative = fewer good parts
-          const now = Date.now();
+    const finishedJob = db.prepare(`
+      SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
+      ORDER BY finished_at DESC LIMIT 1
+    `).get(printer.id);
+
+    if (finishedJob) {
+      // Normal case: apply confirmed_qty delta if the operator adjusted the count.
+      if (confirmed_qty != null) {
+        const confirmedQty = parseInt(confirmed_qty, 10);
+        if (!isNaN(confirmedQty) && confirmedQty !== finishedJob.parts_per_plate) {
+          const delta = confirmedQty - finishedJob.parts_per_plate; // negative = fewer good parts
           db.prepare(`
             UPDATE parts SET completed_qty = MAX(0, completed_qty + ?), updated_at = ? WHERE id = ?
-          `).run(delta, now, job.part_id);
+          `).run(delta, now, finishedJob.part_id);
 
-          // Sync part open/closed status with the adjusted qty
-          const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(job.part_id);
+          const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(finishedJob.part_id);
           if (part.completed_qty < part.target_qty && part.status === 'closed') {
             db.prepare(`UPDATE parts SET status = 'open', updated_at = ? WHERE id = ?`).run(now, part.id);
             console.log(`[server] Part "${part.name}" reopened — confirmed qty reduced`);
           } else if (part.completed_qty >= part.target_qty && part.status === 'open') {
             db.prepare(`UPDATE parts SET status = 'closed', updated_at = ? WHERE id = ?`).run(now, part.id);
           }
-          console.log(`[server] ${printer.name} confirmed ${confirmedQty}/${job.parts_per_plate} good (delta ${delta > 0 ? '+' : ''}${delta})`);
+          console.log(`[server] ${printer.name} confirmed ${confirmedQty}/${finishedJob.parts_per_plate} good (delta ${delta > 0 ? '+' : ''}${delta})`);
+        }
+      }
+    } else {
+      // Missed-finish case: job never got resolved because the server was down.
+      // The operator clicking Set Ready is the success confirmation — credit qty now.
+      const printingJob = db.prepare(`
+        SELECT * FROM jobs WHERE printer_id = ? AND status = 'printing'
+        ORDER BY started_at DESC LIMIT 1
+      `).get(printer.id);
+
+      if (printingJob) {
+        const creditQty = (confirmed_qty != null && !isNaN(parseInt(confirmed_qty, 10)))
+          ? parseInt(confirmed_qty, 10)
+          : printingJob.parts_per_plate;
+
+        db.prepare(`UPDATE jobs SET status = 'finished', finished_at = ? WHERE id = ?`)
+          .run(now, printingJob.id);
+
+        db.prepare(`
+          UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?
+        `).run(creditQty, now, printingJob.part_id);
+
+        const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(printingJob.part_id);
+        console.log(`[server] ${printer.name} missed-finish confirmed good — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
+
+        if (part.completed_qty >= part.target_qty) {
+          db.prepare(`UPDATE parts SET status = 'closed', updated_at = ? WHERE id = ?`).run(now, part.id);
+          db.prepare(`UPDATE jobs SET status = 'cancelled' WHERE part_id = ? AND status = 'queued'`).run(part.id);
+          console.log(`[server] Part "${part.name}" closed (${part.completed_qty}/${part.target_qty})`);
+
+          const openCount = db.prepare(`
+            SELECT COUNT(*) AS count FROM parts WHERE project_id = ? AND status = 'open'
+          `).get(part.project_id).count;
+          if (openCount === 0) {
+            db.prepare(`UPDATE projects SET status = 'completed', updated_at = ? WHERE id = ?`).run(now, part.project_id);
+            console.log(`[server] Project ${part.project_id} completed!`);
+          }
         }
       }
     }

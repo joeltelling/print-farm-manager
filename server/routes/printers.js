@@ -38,9 +38,10 @@ module.exports = (db) => {
   router.get('/', (req, res) => {
     const printers = db.prepare(`
       SELECT p.*,
-        (SELECT j.parts_per_plate FROM jobs j
-         WHERE j.printer_id = p.id AND j.status = 'finished'
-         ORDER BY j.finished_at DESC LIMIT 1) AS last_parts_per_plate
+        COALESCE(
+          (SELECT j.parts_per_plate FROM jobs j WHERE j.printer_id = p.id AND j.status = 'finished' ORDER BY j.finished_at DESC LIMIT 1),
+          (SELECT j.parts_per_plate FROM jobs j WHERE j.printer_id = p.id AND j.status = 'printing' ORDER BY j.started_at DESC LIMIT 1)
+        ) AS last_parts_per_plate
       FROM printers p
       WHERE p.is_active = 1
       ORDER BY p.name
@@ -146,34 +147,39 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
 
+    // Find the most recent job that is either finished (normal case) or still marked
+    // printing (missed-finish case: server was down when the print completed).
     const job = db.prepare(`
-      SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
-      ORDER BY finished_at DESC LIMIT 1
+      SELECT * FROM jobs WHERE printer_id = ? AND status IN ('finished', 'printing')
+      ORDER BY finished_at DESC, started_at DESC LIMIT 1
     `).get(printer.id);
-    if (!job) return res.status(404).json({ error: 'No finished job found for this printer' });
+    if (!job) return res.status(404).json({ error: 'No active or finished job found for this printer' });
 
     const now = Date.now();
 
-    // Mark the job failed
     db.prepare("UPDATE jobs SET status = 'failed' WHERE id = ?").run(job.id);
 
-    // Undo the completed_qty increment
-    db.prepare(`
-      UPDATE parts SET completed_qty = MAX(0, completed_qty - ?), updated_at = ? WHERE id = ?
-    `).run(job.parts_per_plate, now, job.part_id);
+    if (job.status === 'finished') {
+      // Normal case: job was already credited when FINISHED was seen. Undo the increment.
+      db.prepare(`
+        UPDATE parts SET completed_qty = MAX(0, completed_qty - ?), updated_at = ? WHERE id = ?
+      `).run(job.parts_per_plate, now, job.part_id);
 
-    // Reload part — reopen if it was closed by this job
-    const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(job.part_id);
-    if (part.status === 'closed' && part.completed_qty < part.target_qty) {
-      db.prepare("UPDATE parts SET status = 'open', updated_at = ? WHERE id = ?").run(now, part.id);
+      // Reload part — reopen if it was closed by this job
+      const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(job.part_id);
+      if (part.status === 'closed' && part.completed_qty < part.target_qty) {
+        db.prepare("UPDATE parts SET status = 'open', updated_at = ? WHERE id = ?").run(now, part.id);
 
-      // If project was marked completed, reopen it to active
-      const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(part.project_id);
-      if (project && project.status === 'completed') {
-        db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
-        console.log(`[printers] Project ${project.id} reopened — bad print undid completion`);
+        // If project was marked completed, reopen it to active
+        const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(part.project_id);
+        if (project && project.status === 'completed') {
+          db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
+          console.log(`[printers] Project ${project.id} reopened — bad print undid completion`);
+        }
       }
     }
+    // Missed-finish case (job.status === 'printing'): completed_qty was never incremented,
+    // so there is nothing to undo. Just mark failed and decommission below.
 
     // Decommission the printer — a failed print requires investigation before it can run again.
     // The operator must explicitly recommission it when the machine is confirmed safe.
