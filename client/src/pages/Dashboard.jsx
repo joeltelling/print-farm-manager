@@ -346,7 +346,7 @@ export default function Dashboard() {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {proj.parts.slice(0, 5).map(part => {
+                      {proj.parts.map(part => {
                         const pct = part.target_qty > 0
                           ? Math.min(100, Math.round((part.completed_qty / part.target_qty) * 100))
                           : 0;
@@ -386,11 +386,6 @@ export default function Dashboard() {
                           </div>
                         );
                       })}
-                      {proj.parts.length > 5 && (
-                        <div style={{ fontSize: 11, color: '#374151' }}>
-                          +{proj.parts.length - 5} more part{proj.parts.length - 5 !== 1 ? 's' : ''}…
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
