@@ -279,7 +279,7 @@ Operator can intervene at any time:
 | 2 | Core Scheduler | Part/Project/G-code management, job queue, automated dispatch, FINISHED → next job logic |
 | 3 | Full UI | Dashboard, fleet grid, project manager, job queue UI, error/attention handling, notifications |
 | 4 | Hardening | Error recovery, retry logic, logging, performance testing at 50+ concurrent printers |
-| 5 | Mobile Web | Responsive UI polish, mobile dashboard for status checking from phone |
+| 5 | ~~Mobile Web~~ | ~~Responsive UI polish, mobile dashboard for status checking from phone~~ — **Deferred.** Fleet UI already works well on iPhone; no pressing need identified. |
 | 6 | Multi-Brand Support | Printer driver abstraction layer; Elegoo Centauri Carbon as first non-Prusa brand (see Section 13) |
 
 ---

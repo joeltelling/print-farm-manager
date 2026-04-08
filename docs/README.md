@@ -65,7 +65,7 @@ print-farm-manager/
 | 2 | Complete | Job scheduling, dispatch, Part/Project/G-code management |
 | 3 | Complete | Error handling, operator safety workflows, UI improvements |
 | 4 | Complete | Hardening, retry logic, 409 conflict handling, configurable batch size, post-failure recovery |
-| 5 | Planned | Mobile-responsive polish |
+| 5 | Deferred | Mobile-responsive polish — Fleet UI already works on iPhone; no immediate need |
 | 6 | Planned | Multi-brand driver abstraction; Elegoo Centauri Carbon support |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for full product spec.
