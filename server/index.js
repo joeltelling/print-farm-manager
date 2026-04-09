@@ -18,14 +18,15 @@ const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
 const events         = require('./events');
 
-const printersRouter  = require('./routes/printers')(db);
-const partsRouter     = require('./routes/parts')(db);
-const gcodesRouter    = require('./routes/gcodes')(db);
-const jobsRouter      = require('./routes/jobs')(db);
-const backupRouter    = require('./routes/backup')(db);
-const dashboardRouter = require('./routes/dashboard')(db);
-const settingsRouter  = require('./routes/settings')(db);
-const modelsRouter    = require('./routes/models')(db);
+const printersRouter     = require('./routes/printers')(db);
+const partsRouter        = require('./routes/parts')(db);
+const gcodesRouter       = require('./routes/gcodes')(db);
+const jobsRouter         = require('./routes/jobs')(db);
+const backupRouter       = require('./routes/backup')(db);
+const dashboardRouter    = require('./routes/dashboard')(db);
+const settingsRouter     = require('./routes/settings')(db);
+const modelsRouter       = require('./routes/models')(db);
+const printerJobsRouter  = require('./routes/printer-jobs')(db);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -33,14 +34,15 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 // API routes
-app.use('/api/printers',  printersRouter);
-app.use('/api/parts',     partsRouter);
-app.use('/api/gcodes',    gcodesRouter);
-app.use('/api/jobs',      jobsRouter);
-app.use('/api/backup',    backupRouter);
-app.use('/api/dashboard', dashboardRouter);
-app.use('/api/settings',  settingsRouter);
-app.use('/api/models',    modelsRouter);
+app.use('/api/printers',        printersRouter);
+app.use('/api/printers/:id/jobs', printerJobsRouter);
+app.use('/api/parts',           partsRouter);
+app.use('/api/gcodes',          gcodesRouter);
+app.use('/api/jobs',            jobsRouter);
+app.use('/api/backup',          backupRouter);
+app.use('/api/dashboard',       dashboardRouter);
+app.use('/api/settings',        settingsRouter);
+app.use('/api/models',          modelsRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

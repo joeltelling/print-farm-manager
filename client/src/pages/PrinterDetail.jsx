@@ -9,6 +9,21 @@ function formatTimestamp(ms) {
   });
 }
 
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return '—';
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
+function formatHours(ms) {
+  if (!ms || ms <= 0) return '0h';
+  const h = ms / 3600000;
+  return h >= 100 ? `${Math.round(h)}h` : `${h.toFixed(1)}h`;
+}
+
 const EVENT_META = {
   decommission: { label: 'Decommissioned', bg: '#7f1d1d', color: '#fca5a5' },
   recommission:  { label: 'Recommissioned', bg: '#14532d', color: '#86efac' },
@@ -45,24 +60,34 @@ export default function PrinterDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [printer, setPrinter] = useState(null);
-  const [events, setEvents]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [note, setNote]       = useState('');
-  const [saving, setSaving]   = useState(false);
+  const [printer, setPrinter]   = useState(null);
+  const [events, setEvents]     = useState([]);
+  const [stats, setStats]       = useState(null);
+  const [jobHistory, setJobHistory] = useState({ jobs: [], page: 1, total_pages: 1, total: 0 });
+  const [jobPage, setJobPage]   = useState(1);
+  const [loading, setLoading]   = useState(true);
+  const [note, setNote]         = useState('');
+  const [saving, setSaving]     = useState(false);
 
   const fetchData = useCallback(async () => {
-    // Try active printers first, then decommissioned
-    const [printerRes, eventsRes] = await Promise.all([
+    const [printerRes, eventsRes, statsRes] = await Promise.all([
       fetch(`/api/printers/${id}`),
       fetch(`/api/printers/${id}/events`),
+      fetch(`/api/printers/${id}/jobs/stats`),
     ]);
     if (printerRes.ok) setPrinter(await printerRes.json());
-    if (eventsRes.ok) setEvents(await eventsRes.json());
+    if (eventsRes.ok)  setEvents(await eventsRes.json());
+    if (statsRes.ok)   setStats(await statsRes.json());
     setLoading(false);
   }, [id]);
 
+  const fetchJobPage = useCallback(async (page) => {
+    const res = await fetch(`/api/printers/${id}/jobs?page=${page}`);
+    if (res.ok) setJobHistory(await res.json());
+  }, [id]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchJobPage(jobPage); }, [fetchJobPage, jobPage]);
 
   async function submitNote(e) {
     e.preventDefault();
@@ -138,6 +163,29 @@ export default function PrinterDetail() {
         )}
       </div>
 
+      {/* Stats card */}
+      {stats && (
+        <div style={{
+          background: '#131720', border: '1px solid #1e2433',
+          borderRadius: 8, padding: '14px 20px', marginBottom: 24,
+          display: 'flex', gap: 0, flexWrap: 'wrap',
+        }}>
+          {[
+            { label: 'Jobs Run',      value: stats.total_jobs.toLocaleString() },
+            { label: 'Parts Made',    value: stats.total_parts.toLocaleString() },
+            { label: 'Success Rate',  value: stats.success_rate != null ? `${stats.success_rate}%` : '—' },
+            { label: 'Print Hours',   value: formatHours(stats.total_print_ms) },
+          ].map(({ label, value }) => (
+            <div key={label} style={{
+              flex: '1 1 120px', padding: '4px 16px 4px 0', minWidth: 100,
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#e2e8f0', lineHeight: 1.2 }}>{value}</div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Add note form */}
       <div style={{
         background: '#131720', border: '1px solid #1e2433',
@@ -205,6 +253,76 @@ export default function PrinterDetail() {
           </div>
         ))}
       </div>
+      {/* Job history */}
+      {jobHistory.total > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Job History ({jobHistory.total.toLocaleString()})
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: '#475569', textAlign: 'left', borderBottom: '1px solid #1e2433' }}>
+                  {['Part', 'Project', 'File', 'Started', 'Duration', 'Parts', 'Status'].map(h => (
+                    <th key={h} style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {jobHistory.jobs.map(job => {
+                  const statusColor = job.status === 'finished' ? '#86efac'
+                    : job.status === 'failed'   ? '#fca5a5'
+                    : job.status === 'cancelled' ? '#475569'
+                    : '#fcd34d';
+                  return (
+                    <tr key={job.id} style={{ borderBottom: '1px solid #1a1f2e' }}>
+                      <td style={{ padding: '7px 10px', color: '#cbd5e1', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#94a3b8', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.project_name ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#64748b', fontFamily: 'monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.gcode_filename ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>{formatTimestamp(job.started_at)}</td>
+                      <td style={{ padding: '7px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{formatDuration(job.duration_ms)}</td>
+                      <td style={{ padding: '7px 10px', color: '#94a3b8', textAlign: 'center' }}>{job.parts_per_plate}</td>
+                      <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: statusColor, fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{job.status}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {jobHistory.total_pages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setJobPage(p => Math.max(1, p - 1))}
+                disabled={jobPage === 1}
+                style={{
+                  background: jobPage === 1 ? '#1e2433' : '#1e3a5f',
+                  color: jobPage === 1 ? '#475569' : '#93c5fd',
+                  border: 'none', borderRadius: 5, padding: '5px 14px',
+                  fontSize: 13, fontWeight: 600, cursor: jobPage === 1 ? 'not-allowed' : 'pointer',
+                }}
+              >← Prev</button>
+              <span style={{ fontSize: 13, color: '#64748b' }}>
+                Page {jobPage} of {jobHistory.total_pages}
+              </span>
+              <button
+                onClick={() => setJobPage(p => Math.min(jobHistory.total_pages, p + 1))}
+                disabled={jobPage === jobHistory.total_pages}
+                style={{
+                  background: jobPage === jobHistory.total_pages ? '#1e2433' : '#1e3a5f',
+                  color: jobPage === jobHistory.total_pages ? '#475569' : '#93c5fd',
+                  border: 'none', borderRadius: 5, padding: '5px 14px',
+                  fontSize: 13, fontWeight: 600, cursor: jobPage === jobHistory.total_pages ? 'not-allowed' : 'pointer',
+                }}
+              >Next →</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
