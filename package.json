@@ -17,7 +17,8 @@
     "express": "^4.19.2",
     "form-data": "^4.0.5",
     "multer": "^2.1.1",
-    "papaparse": "^5.4.1"
+    "papaparse": "^5.4.1",
+    "sdcp": "^0.5.4"
   },
   "devDependencies": {
     "jest": "^30.3.0",

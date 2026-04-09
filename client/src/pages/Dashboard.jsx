@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MODEL_ORDER  = ['mk4', 'mk4s', 'c1', 'c1l', 'xl'];
-const MODEL_LABELS = { mk4: 'MK4', mk4s: 'MK4S', c1: 'Core One', c1l: 'Core 1L', xl: 'XL', other: 'Other' };
+const MODEL_ORDER  = ['mk4', 'mk4s', 'c1', 'c1l', 'xl', 'centauri-carbon'];
+const MODEL_LABELS = { mk4: 'MK4', mk4s: 'MK4S', c1: 'Core One', c1l: 'Core 1L', xl: 'XL', 'centauri-carbon': 'Centauri Carbon', other: 'Other' };
 
 const CELL_COLORS = {
   PRINTING:  { bg: '#1e3a5f', text: '#60a5fa', border: '#1e40af' },

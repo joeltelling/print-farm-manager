@@ -6,7 +6,8 @@ const router = express.Router();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-const VALID_MODELS = ['mk4', 'mk4s', 'c1', 'c1l', 'xl'];
+const VALID_MODELS = ['mk4', 'mk4s', 'c1', 'c1l', 'xl', 'centauri-carbon'];
+const ELEGOO_TYPES = new Set(['elegoo-centauri']);
 
 // Normalize a CSV model column value to internal ID.
 // Accepts the canonical value set (case-insensitive): MK4, MK4S, C1, C1L, XL
@@ -65,8 +66,11 @@ module.exports = (db) => {
   // POST /api/printers — add single printer
   router.post('/', (req, res) => {
     const { name, ip, api_key, group_name, type, model } = req.body;
-    if (!name || !ip || !api_key || !model) {
-      return res.status(400).json({ error: 'name, ip, api_key, and model are required' });
+    const printerType = type || 'prusa';
+    const requiresApiKey = !ELEGOO_TYPES.has(printerType);
+    if (!name || !ip || !model || (requiresApiKey && !api_key)) {
+      const keyMsg = requiresApiKey ? ', api_key' : '';
+      return res.status(400).json({ error: `name, ip${keyMsg}, and model are required` });
     }
     const normalized = normalizeModel(model);
     if (!normalized) {
@@ -76,7 +80,7 @@ module.exports = (db) => {
       const result = db.prepare(`
         INSERT INTO printers (name, ip, api_key, group_name, type, model, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(name, ip, api_key, group_name || null, type || 'prusa', normalized, Date.now());
+      `).run(name, ip, api_key || '', group_name || null, printerType, normalized, Date.now());
       res.status(201).json(db.prepare('SELECT * FROM printers WHERE id = ?').get(result.lastInsertRowid));
     } catch (err) {
       if (err.message.includes('UNIQUE')) {
@@ -237,7 +241,8 @@ module.exports = (db) => {
       const group_name = (row.group || '').trim() || null;
       const type     = (row.type    || 'prusa').trim();
 
-      if (!name || !ip || !api_key) {
+      const rowRequiresApiKey = !ELEGOO_TYPES.has(type);
+      if (!name || !ip || (rowRequiresApiKey && !api_key)) {
         summary.flagged.push({ row, reason: 'Missing required field (name, ip, or api_key)' });
         continue;
       }

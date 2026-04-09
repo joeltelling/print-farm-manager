@@ -233,7 +233,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
   );
 }
 
-const MODEL_ORDER = ['mk4', 'mk4s', 'c1', 'c1l', 'xl'];
+const MODEL_ORDER = ['mk4', 'mk4s', 'c1', 'c1l', 'xl', 'centauri-carbon'];
 
 export default function Fleet() {
   const [printers, setPrinters]               = useState([]);
@@ -373,7 +373,7 @@ export default function Fleet() {
   const otherModels = filtered.filter((p) => !MODEL_ORDER.includes(p.model));
   if (otherModels.length > 0) grouped['other'] = otherModels;
 
-  const MODEL_LABELS = { mk4: 'MK4', mk4s: 'MK4S', c1: 'Core One', c1l: 'Core 1L', xl: 'XL', other: 'Other' };
+  const MODEL_LABELS = { mk4: 'MK4', mk4s: 'MK4S', c1: 'Core One', c1l: 'Core 1L', xl: 'XL', 'centauri-carbon': 'Centauri Carbon', other: 'Other' };
 
   async function sweep() {
     await fetch('/api/scheduler/dispatch', { method: 'POST' });

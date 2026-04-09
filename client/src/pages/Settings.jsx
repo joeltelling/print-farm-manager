@@ -11,7 +11,14 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
-const MODEL_OPTIONS = ['mk4', 'mk4s', 'c1', 'c1l', 'xl'];
+const PRUSA_MODELS  = ['mk4', 'mk4s', 'c1', 'c1l', 'xl'];
+const ELEGOO_MODELS = ['centauri-carbon'];
+const MODEL_OPTIONS = [...PRUSA_MODELS, ...ELEGOO_MODELS];
+
+const TYPE_OPTIONS = [
+  { value: 'prusa',           label: 'Prusa (PrusaLink)' },
+  { value: 'elegoo-centauri', label: 'Elegoo (SDCP)' },
+];
 
 export default function Settings() {
   const [importing, setImporting] = useState(false);
@@ -21,7 +28,7 @@ export default function Settings() {
   const fileRef = useRef(null);
 
   // Add single printer
-  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', model: 'mk4s', group_name: '' });
+  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', model: 'mk4s', group_name: '', type: 'prusa' });
   const [addResult, setAddResult] = useState(null);
   const [addError, setAddError] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -41,13 +48,13 @@ export default function Settings() {
           api_key: addForm.api_key.trim(),
           model: addForm.model,
           group_name: addForm.group_name.trim() || null,
-          type: 'prusa',
+          type: addForm.type,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Add failed');
       setAddResult(data);
-      setAddForm({ name: '', ip: '', api_key: '', model: 'mk4s', group_name: '' });
+      setAddForm({ name: '', ip: '', api_key: '', model: 'mk4s', group_name: '', type: 'prusa' });
     } catch (err) {
       setAddError(err.message);
     } finally {
@@ -377,12 +384,38 @@ export default function Settings() {
         <form onSubmit={handleAddPrinter}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Brand *</label>
+              <select
+                value={addForm.type}
+                onChange={e => {
+                  const t = e.target.value;
+                  const defaultModel = t === 'elegoo-centauri' ? 'centauri-carbon' : 'mk4s';
+                  setAddForm(p => ({ ...p, type: t, model: defaultModel }));
+                }}
+                style={inputStyle}
+              >
+                {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model *</label>
+              <select
+                value={addForm.model}
+                onChange={e => setAddForm(p => ({ ...p, model: e.target.value }))}
+                style={inputStyle}
+              >
+                {(addForm.type === 'elegoo-centauri' ? ELEGOO_MODELS : PRUSA_MODELS).map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Name *</label>
               <input
                 value={addForm.name}
                 onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))}
                 required
-                placeholder="MK4S_11"
+                placeholder={addForm.type === 'elegoo-centauri' ? 'Centauri_01' : 'MK4S_11'}
                 style={inputStyle}
               />
             </div>
@@ -396,26 +429,18 @@ export default function Settings() {
                 style={inputStyle}
               />
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>API Key *</label>
-              <input
-                value={addForm.api_key}
-                onChange={e => setAddForm(p => ({ ...p, api_key: e.target.value }))}
-                required
-                placeholder="xxxxxxxxxxxxxxxx"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model *</label>
-              <select
-                value={addForm.model}
-                onChange={e => setAddForm(p => ({ ...p, model: e.target.value }))}
-                style={inputStyle}
-              >
-                {MODEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
+            {addForm.type !== 'elegoo-centauri' && (
+              <div>
+                <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>API Key *</label>
+                <input
+                  value={addForm.api_key}
+                  onChange={e => setAddForm(p => ({ ...p, api_key: e.target.value }))}
+                  required
+                  placeholder="xxxxxxxxxxxxxxxx"
+                  style={inputStyle}
+                />
+              </div>
+            )}
             <div>
               <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Group (optional)</label>
               <input

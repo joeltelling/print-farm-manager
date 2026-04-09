@@ -1,6 +1,6 @@
 # Multi-Brand Printer Support
 
-> **Phase 6A complete (2026-04-08).** The Prusa driver abstraction layer is implemented and running in production. Elegoo Centauri Carbon support (Phase 6B) is next.
+> **Phase 6B complete (2026-04-08).** Elegoo Centauri Carbon support is implemented via the `sdcp` npm package. Both Prusa and Elegoo printers are fully supported.
 
 ## Overview
 
@@ -66,7 +66,7 @@ The driver registry (`server/drivers/index.js`) maps `printer.type → driver mo
 |---|---|---|
 | `server/drivers/index.js` | Driver registry — maps type string to module | **Done** |
 | `server/drivers/prusa.js` | Extracts existing PrusaLink logic from poller.js / scheduler.js | **Done** |
-| `server/drivers/elegoo-centauri.js` | New SDCP WebSocket implementation | Pending (Phase 6B) |
+| `server/drivers/elegoo-centauri.js` | New SDCP WebSocket implementation | **Done** |
 
 ---
 
@@ -76,10 +76,10 @@ The driver registry (`server/drivers/index.js`) maps `printer.type → driver mo
 |---|---|---|
 | `server/poller.js` | Replace direct axios PrusaLink calls with `driver.getStatus(printer)` | **Done** |
 | `server/scheduler.js` | Replace `_uploadGCode()` with `driver.uploadAndPrint(...)` | **Done** |
-| `server/routes/printers.js` | Add `elegoo-centauri` type, `centauri-carbon` model, make `api_key` optional | Pending (Phase 6B) |
-| `client/src/pages/Fleet.jsx` | Add `centauri-carbon` to model list and labels | Pending (Phase 6B) |
-| `client/src/pages/Dashboard.jsx` | Same model list additions | Pending (Phase 6B) |
-| `client/src/pages/Settings.jsx` | Add model option; hide API key field for Elegoo brand | Pending (Phase 6B) |
+| `server/routes/printers.js` | Add `elegoo-centauri` type, `centauri-carbon` model, make `api_key` optional | **Done** |
+| `client/src/pages/Fleet.jsx` | Add `centauri-carbon` to model list and labels | **Done** |
+| `client/src/pages/Dashboard.jsx` | Same model list additions | **Done** |
+| `client/src/pages/Settings.jsx` | Add model option; hide API key field for Elegoo brand | **Done** |
 
 No DB schema changes are needed. The existing columns (`type`, `api_key`, `model`, `job_name`, `job_progress`, `job_time_remaining`) are all reusable.
 
@@ -88,10 +88,10 @@ No DB schema changes are needed. The existing columns (`type`, `api_key`, `model
 ## New Dependency
 
 ```bash
-npm install ws
+npm install sdcp
 ```
 
-Node.js does not have a built-in WebSocket client. `ws` is the standard package.
+Uses the `sdcp` npm package (blakejrobinson) which wraps the SDCP WebSocket protocol, handling connection management, message framing, UUID-matched request/response correlation, and auto-reconnect. This replaced the original plan to use `ws` directly.
 
 ---
 

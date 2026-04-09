@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-04-08 — Phase 6B: Elegoo Centauri Carbon support
+
+Adds full support for the Elegoo Centauri Carbon FDM printer via the SDCP WebSocket protocol (V3.0.0). Prusa printers are completely unaffected.
+
+### New files
+- `server/drivers/elegoo-centauri.js` — SDCP driver implementing `getStatus`, `uploadAndPrint`, `cancelJob`, `checkIfPrinting`. Uses the `sdcp` npm package for WebSocket connection management, message framing, and request/response correlation. Connections are kept alive in a module-level Map (one per printer ID) with `AutoReconnect = 5000` so drops are handled transparently between poll ticks.
+
+### Modified files
+- `server/drivers/index.js` — registered `'elegoo-centauri'` type → `elegoo-centauri` driver
+- `server/routes/printers.js` — added `'centauri-carbon'` to `VALID_MODELS`; `api_key` is now optional for Elegoo printer types (stored as empty string); validation is brand-aware in both manual add and CSV import
+- `client/src/pages/Settings.jsx` — Add Printer form now has a Brand selector (Prusa/Elegoo); model list filters to the selected brand; API Key field is hidden for Elegoo; default model auto-selects on brand change
+- `client/src/pages/Fleet.jsx` — `centauri-carbon` added to `MODEL_ORDER` and `MODEL_LABELS` ("Centauri Carbon")
+- `client/src/pages/Dashboard.jsx` — same model additions
+
+### New dependency
+- `sdcp` (npm) — Node.js SDCP protocol client by blakejrobinson. Handles WebSocket framing, UUID-matched request/response, and reconnection. Replaces the need for `ws` + raw SDCP implementation.
+
+### State mapping (SDCP status codes → canonical)
+| SDCP code | Canonical |
+|---|---|
+| 0 | IDLE |
+| 1 | PRINTING |
+| 2 | PAUSED |
+| 3 | FINISHED (stopped — requires operator confirmation) |
+| 4 | FINISHED |
+| 16+ | ERROR |
+
+---
+
 ## 2026-04-08 — Missed-finish operator confirmation
 
 Fixed a condition where a print that completed while the server was offline was left permanently unresolved and its output was never counted.
