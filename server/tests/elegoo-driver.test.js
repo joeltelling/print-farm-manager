@@ -41,14 +41,14 @@ function nextPrinter() {
 
 describe('getStatus — SDCP status code mapping', () => {
   const cases = [
-    { code: 0, expected: 'IDLE',     desc: 'code 0 → IDLE' },
-    { code: 1, expected: 'PRINTING', desc: 'code 1 → PRINTING' },
-    { code: 2, expected: 'PAUSED',   desc: 'code 2 → PAUSED' },
-    { code: 3, expected: 'FINISHED', desc: 'code 3 (stopped) → FINISHED' },
-    { code: 4, expected: 'FINISHED', desc: 'code 4 (complete) → FINISHED' },
+    { code: 0,  expected: 'IDLE',     desc: 'code 0 → IDLE' },
+    { code: 1,  expected: 'PRINTING', desc: 'code 1 → PRINTING' },
+    { code: 2,  expected: 'PAUSED',   desc: 'code 2 → PAUSED' },
+    { code: 3,  expected: 'FINISHED', desc: 'code 3 (stopped) → FINISHED' },
+    { code: 4,  expected: 'FINISHED', desc: 'code 4 (complete) → FINISHED' },
+    { code: 13, expected: 'PRINTING', desc: 'code 13 → PRINTING (active print, layer incrementing)' },
     { code: 16, expected: 'PRINTING', desc: 'code 16 → PRINTING (FDM preparing/preheating startup state)' },
-    { code: 17, expected: 'ERROR',   desc: 'code 17 → ERROR' },
-    { code: 32, expected: 'ERROR',   desc: 'code 32+ → ERROR' },
+    { code: 21, expected: 'PRINTING', desc: 'code 21 → PRINTING (startup/init state, file loaded)' },
   ];
 
   for (const { code, expected, desc } of cases) {
@@ -61,6 +61,12 @@ describe('getStatus — SDCP status code mapping', () => {
 
   test('returns UNKNOWN for unrecognised code (e.g. 5)', async () => {
     mockClient.GetStatus.mockResolvedValueOnce({ Status: { PrintInfo: { Status: 5 } } });
+    const result = await elegoo.getStatus(nextPrinter());
+    expect(result.status).toBe('UNKNOWN');
+  });
+
+  test('returns UNKNOWN for unrecognised code ≥ 17 (not ERROR — avoids false holds)', async () => {
+    mockClient.GetStatus.mockResolvedValueOnce({ Status: { PrintInfo: { Status: 99 } } });
     const result = await elegoo.getStatus(nextPrinter());
     expect(result.status).toBe('UNKNOWN');
   });

@@ -70,10 +70,13 @@ function dropConnection(printerId) {
 // 2  = Paused
 // 3  = Stopped (user-stopped — treat as FINISHED so operator confirmation fires)
 // 4  = Complete (print finished)
+// 13 = Active print (layer incrementing) — observed on Centauri Carbon during normal print
 // 16 = Preparing / preheating / homing before print starts — treat as PRINTING.
 //      Confirmed via raw PrintInfo: TotalLayer and Filename are populated,
 //      Progress=0. This is normal FDM startup, not a fault.
-// 17+ = Error codes (actual faults)
+// 21 = Another startup/init state (CurrentLayer=0, file loaded) — observed on Centauri Carbon
+// Unrecognised codes: UNKNOWN (not ERROR) so stray transient codes don't hold printers.
+// Add explicit cases above for any new codes observed in debug logs.
 function mapStatus(printInfo) {
   if (!printInfo) return 'UNKNOWN';
   const code = printInfo.Status ?? printInfo.CurrentStatus;
@@ -83,10 +86,10 @@ function mapStatus(printInfo) {
     case 2:  return 'PAUSED';
     case 3:  return 'FINISHED'; // stopped — operator must confirm
     case 4:  return 'FINISHED';
+    case 13: return 'PRINTING'; // active print, layer incrementing (observed on Centauri Carbon)
     case 16: return 'PRINTING'; // preparing/preheating — normal FDM startup state
-    default:
-      if (code >= 17) return 'ERROR';
-      return 'UNKNOWN';
+    case 21: return 'PRINTING'; // startup/init state, file loaded (observed on Centauri Carbon)
+    default: return 'UNKNOWN';
   }
 }
 
@@ -106,7 +109,7 @@ async function getStatus(printer) {
     // Log raw status code whenever it maps to something unexpected so we can
     // refine the mapping based on real Centauri Carbon firmware behaviour.
     const rawCode = printInfo?.Status ?? printInfo?.CurrentStatus;
-    if (status === 'ERROR' || status === 'UNKNOWN') {
+    if (status === 'UNKNOWN') {
       console.log(`[elegoo] ${printer.name} raw status code: ${rawCode} → ${status} (full PrintInfo: ${JSON.stringify(printInfo)})`);
     }
 
