@@ -190,10 +190,19 @@ const server = app.listen(PORT, () => {
       // Gated on finished_at > scheduler.startedAt — the job must have been marked
       // failed in the current server process. A stale failed job from a previous
       // session must not be credited just because the operator clicked Set Ready.
-      const activeJob = printingJob || db.prepare(`
-        SELECT * FROM jobs WHERE printer_id = ? AND status = 'failed' AND finished_at > ?
-        ORDER BY finished_at DESC LIMIT 1
-      `).get(printer.id, scheduler.startedAt);
+      //
+      // Also check for a cancelled job (operator stopped on printer screen). No
+      // startedAt gate — a cancelled job that survived a server restart is still
+      // the right job to credit when the operator confirms it was good.
+      const activeJob = printingJob
+        || db.prepare(`
+            SELECT * FROM jobs WHERE printer_id = ? AND status = 'failed' AND finished_at > ?
+            ORDER BY finished_at DESC LIMIT 1
+          `).get(printer.id, scheduler.startedAt)
+        || db.prepare(`
+            SELECT * FROM jobs WHERE printer_id = ? AND status = 'cancelled'
+            ORDER BY finished_at DESC LIMIT 1
+          `).get(printer.id);
 
       if (activeJob) {
         // OFFLINE-with-job: operator is saying "job is still running, resume" — do not
@@ -214,7 +223,7 @@ const server = app.listen(PORT, () => {
         `).run(creditQty, now, activeJob.part_id);
 
         const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(activeJob.part_id);
-        const label = printingJob ? 'missed-finish' : 'MQTT-recovered finish';
+        const label = printingJob ? 'missed-finish' : activeJob.status === 'cancelled' ? 'cancelled-confirmed-good' : 'MQTT-recovered finish';
         console.log(`[server] ${printer.name} ${label} confirmed good — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
 
         if (part.completed_qty >= part.target_qty) {

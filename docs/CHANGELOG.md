@@ -2,17 +2,22 @@
 
 ---
 
-## 2026-05-06 — Fix: cancelled/failed jobs not used for last_parts_per_plate
+## 2026-05-06 — Fix: cancelled jobs not credited or displayed correctly on Set Ready
 
-**Bug:** When an operator manually stopped a print on the printer screen, the Fleet UI showed the wrong quantity (e.g. "1/1" instead of "25/25") on the green/red confirmation buttons.
+Two related bugs triggered when an operator manually stops a print on the printer screen (`_handlePrinterStopped` marks the job `'cancelled'`):
 
-**Root cause:** `_handlePrinterStopped` marks the in-progress job as `'cancelled'`. The `last_parts_per_plate` subquery in `GET /api/printers` only looked at jobs with status `'finished'` or `'printing'`, so it skipped the cancelled job entirely and fell back to an older unrelated job with a different `parts_per_plate`.
+**Bug 1 — wrong quantity shown (1/1 instead of 25/25):** The `last_parts_per_plate` subquery in `GET /api/printers` only matched `'finished'` or `'printing'` jobs. A `cancelled` job was invisible, so the query fell back to an older unrelated job with a different `parts_per_plate`.
 
-**Fix:** Replaced the two-part COALESCE with a single subquery covering all terminal and active statuses (`finished`, `printing`, `failed`, `cancelled`), ordered by `COALESCE(finished_at, started_at) DESC` to always surface the most recent job.
+**Bug 2 — no parts credited on green button:** The `set-ready` handler's missed-finish branch searched for `printing` and (session-gated) `failed` jobs, but not `cancelled` jobs. After a server restart (e.g. running `update.bat`), the `scheduler.startedAt` gate also blocked the failed-job fallback, so clicking green released the printer with zero parts credited.
+
+**Fix 1:** Replaced the two-part COALESCE in `GET /api/printers` with a single subquery covering `finished`, `printing`, `failed`, and `cancelled`, ordered by `COALESCE(finished_at, started_at) DESC`.
+
+**Fix 2:** Added a `cancelled` fallback to the `activeJob` lookup in `set-ready`, without a `startedAt` gate — a cancelled job that survived a server restart is still the right job to credit when the operator confirms it was good.
 
 ### Changes
 
-**`server/routes/printers.js`** — updated `last_parts_per_plate` subquery
+**`server/routes/printers.js`** — updated `last_parts_per_plate` subquery  
+**`server/index.js`** — added `cancelled` fallback in set-ready handler
 
 ---
 
