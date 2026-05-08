@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-05-07 — UX: friendly startup error when client hasn't been built
+
+A first-time installer who skipped `npm run build` and went straight to `npm start` saw a confusing in-browser `ENOENT: no such file or directory ... client\dist\index.html` only after opening localhost:3000. The server itself appeared to be running fine, so the cause was non-obvious.
+
+`server/index.js` now checks for `client/dist/index.html` at startup. If missing, the server prints a clear instruction and exits 1 before opening the listening socket — there is no ambiguity about whether the server "started":
+
+```
+  ERROR: client/dist/index.html not found.
+  The React client has not been built yet.
+
+  Run this once before starting the server:
+    npm run build
+```
+
+### Changes
+**`server/index.js`** — added existence check for `client/dist/index.html` ahead of `express.static`; imports `fs`.
+
+---
+
 ## 2026-05-07 — Security: clear all npm audit vulnerabilities for open-source release
 
 `npm audit` reported 4 vulnerabilities (2 high, 2 moderate) on the server and 3 moderate on the client. All have been resolved so a fresh install reports `found 0 vulnerabilities` on both sides.
