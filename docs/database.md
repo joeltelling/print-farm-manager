@@ -77,21 +77,25 @@ A distinct physical component within a project. Tracks production quantity progr
 
 ```sql
 CREATE TABLE IF NOT EXISTS parts (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id     INTEGER NOT NULL REFERENCES projects(id),
-  name           TEXT NOT NULL,
-  target_qty     INTEGER NOT NULL,
-  completed_qty  INTEGER DEFAULT 0,
-  status         TEXT DEFAULT 'open',   -- open | closed
-  sort_order     INTEGER NOT NULL DEFAULT 0,
-  created_at     INTEGER NOT NULL,
-  updated_at     INTEGER NOT NULL
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id          INTEGER NOT NULL REFERENCES projects(id),
+  name                TEXT NOT NULL,
+  target_qty          INTEGER NOT NULL,
+  completed_qty       INTEGER DEFAULT 0,
+  status              TEXT DEFAULT 'open',   -- open | closed
+  sort_order          INTEGER NOT NULL DEFAULT 0,
+  print_time_seconds  INTEGER,               -- nullable; per-part print time in seconds
+  material_grams      REAL,                  -- nullable; per-part filament usage in grams
+  created_at          INTEGER NOT NULL,
+  updated_at          INTEGER NOT NULL
 );
 ```
 
 A Part is **open** while `completed_qty < target_qty`. It transitions to **closed** automatically when `completed_qty >= target_qty`. `completed_qty` is allowed to exceed `target_qty` (expected due to plate-based printing — never dispatch half a plate).
 
 `sort_order` controls dispatch priority within a project — the scheduler picks the lowest `sort_order` part first. Set via `PUT /api/parts/reorder`. New parts default to `0` and fall back to `created_at` as a tiebreaker.
+
+`print_time_seconds` and `material_grams` are optional operator-supplied estimates for a single part. The dashboard uses these to project remaining time and material across each project. Both can be set manually via `PUT /api/parts/:id` (the server normalizes human-readable input like `"2h15m"` or `"45g"`) or populated via `POST /api/parts/:id/parse-gcode`, which attempts to extract the values from a gcode filename.
 
 ### gcodes
 

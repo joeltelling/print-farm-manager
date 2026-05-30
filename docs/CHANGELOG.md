@@ -2,6 +2,41 @@
 
 ---
 
+## 2026-05-29 — Part print estimates; full-width Active Projects dashboard
+
+### Feature: per-part print time and material estimates
+
+Parts now optionally store `print_time_seconds` and `material_grams`. The dashboard uses these to show remaining print time and material on each part row and as a project-level total.
+
+**How values are set (Projects → part Details panel):**
+- New "Print Estimate (per part)" section with free-text inputs for print time and material.
+- Server normalizes whatever the operator types: `"2h15m"`, `"90m"`, `"5400s"`, `"1:30:00"`, bare integer (seconds) for time; `"45g"`, `"45.5g"`, `"1.2kg"`, bare number (grams) for material. Returns `400` if non-empty input can't be parsed.
+- **Parse from file** button: calls `POST /api/parts/:id/parse-gcode`, which reads the gcode filename attached to the part and extracts time (`2h15m` pattern) and material (`45g` / `1.2kg` pattern), dividing by `parts_per_plate` to get per-part values. Populates the inputs; operator reviews and clicks Save.
+
+**Dashboard display:**
+- When time or material is set and a part still has remaining qty, a compact info line appears below the progress bar: `~2h 15m remaining · ~450g remaining`.
+- Each project card shows a footer row totalling remaining time and material across all open parts.
+
+### Change: Active Projects goes full width
+
+Removed the "Needs Attention" panel. Active Projects now occupies the full dashboard width. Printer attention states remain visible in the fleet grid cells and Fleet/Printers pages.
+
+### Changes
+
+**`server/db.js`** — two `ALTER TABLE` migrations: `print_time_seconds INTEGER` and `material_grams REAL` on `parts` (both nullable).
+
+**`server/routes/parts.js`** — `normalizePrintTime()` and `normalizeMaterialGrams()` helpers; filename extractors `extractTimeSecsFromFilename()` / `extractMaterialGramsFromFilename()`; new `POST /:id/parse-gcode` endpoint; updated `PUT /:id` to accept `print_time` and `material` fields.
+
+**`client/src/pages/Dashboard.jsx`** — removed `NeedsAttention`, `PanelShell`, and related helpers; Active Projects now full width; added `formatDuration()` / `formatMaterial()` helpers; per-part info lines and project total footer.
+
+**`client/src/pages/Projects.jsx`** — `formatDurationForInput()` / `formatMaterialForInput()` helpers; Print Estimate section in `PartDetailsPanel` with time/material inputs, Parse from file button, and Save.
+
+**`docs/database.md`** — updated `parts` schema with new columns.
+
+**`docs/api.md`** — documented `print_time` / `material` fields on `PUT /api/parts/:id`; documented new `POST /api/parts/:id/parse-gcode` endpoint.
+
+---
+
 ## 2026-05-27 — UI/UX fit-and-finish: Printers grouping, Dashboard panels, Decommissioned grid
 
 Open-source-release polish pass on three high-traffic screens.

@@ -2,6 +2,23 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../useToast';
 import { useConfirm } from '../useConfirm';
 
+// ── Estimate helpers ──────────────────────────────────────────────────────────
+
+function formatDurationForInput(secs) {
+  if (!secs) return '';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
+function formatMaterialForInput(grams) {
+  if (grams == null) return '';
+  if (grams < 1000) return `${Math.round(grams)}g`;
+  const kg = (grams / 1000).toFixed(2).replace(/\.?0+$/, '');
+  return `${kg}kg`;
+}
+
 // Model options are loaded from /api/models at runtime — no hardcoded list here.
 
 const PROJECT_STATUS = {
@@ -268,10 +285,21 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm }) {
   const [nameDraft, setNameDraft]     = useState('');
   const nameEscapedRef = useRef(false);
 
+  const [printTimeDraft, setPrintTimeDraft] = useState(formatDurationForInput(part.print_time_seconds));
+  const [materialDraft, setMaterialDraft]   = useState(formatMaterialForInput(part.material_grams));
+  const [estimateError, setEstimateError]   = useState(null);
+  const [savingEstimate, setSavingEstimate] = useState(false);
+  const [parsing, setParsing]               = useState(false);
+
   useEffect(() => {
     setHave(String(part.completed_qty));
     setNeed(String(part.target_qty));
   }, [part.completed_qty, part.target_qty]);
+
+  useEffect(() => {
+    setPrintTimeDraft(formatDurationForInput(part.print_time_seconds));
+    setMaterialDraft(formatMaterialForInput(part.material_grams));
+  }, [part.print_time_seconds, part.material_grams]);
 
   async function saveName() {
     if (nameEscapedRef.current) { nameEscapedRef.current = false; return; }
@@ -285,6 +313,59 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm }) {
     });
     onRefresh();
     onSaved?.('Saved');
+  }
+
+  async function parseFromGcode() {
+    if (gcodes.length === 0) return;
+    setParsing(true);
+    setEstimateError(null);
+    try {
+      const res = await fetch(`/api/parts/${part.id}/parse-gcode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gcode_id: gcodes[0].id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEstimateError(data.error || 'Parse failed.');
+      } else if (data.nothing_found) {
+        setEstimateError(`No time or material data found in "${data.source}".`);
+      } else {
+        if (data.print_time_seconds != null) setPrintTimeDraft(formatDurationForInput(data.print_time_seconds));
+        if (data.material_grams     != null) setMaterialDraft(formatMaterialForInput(data.material_grams));
+        if (data.print_time_seconds == null || data.material_grams == null) {
+          setEstimateError(
+            `Partial parse from "${data.source}" — ` +
+            [data.print_time_seconds == null && 'time not found', data.material_grams == null && 'material not found']
+              .filter(Boolean).join(', ') + '.'
+          );
+        }
+      }
+    } catch (err) {
+      setEstimateError(err.message);
+    }
+    setParsing(false);
+  }
+
+  async function saveEstimate() {
+    setSavingEstimate(true);
+    setEstimateError(null);
+    const res = await fetch(`/api/parts/${part.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        print_time: printTimeDraft.trim() || null,
+        material:   materialDraft.trim()  || null,
+      }),
+    });
+    setSavingEstimate(false);
+    if (res.ok) {
+      onRefresh();
+      onSaved?.('Estimate saved');
+    } else {
+      const d = await res.json();
+      setEstimateError(d.error || 'Save failed.');
+    }
   }
 
   async function saveQtys() {
@@ -414,6 +495,65 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm }) {
           </button>
         </div>
         {qtyError && <p style={{ color: '#f87171', fontSize: 12, margin: '6px 0 0' }}>{qtyError}</p>}
+      </div>
+
+      {/* Print Estimate */}
+      <div>
+        <div style={sectionLabel}>Print Estimate (per part)</div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ color: '#64748b', fontSize: 12 }}>Print time</label>
+            <input
+              type="text"
+              placeholder='e.g. 2h15m, 90m, 1:30:00'
+              value={printTimeDraft}
+              onChange={e => setPrintTimeDraft(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveEstimate()}
+              style={{ ...inputSx, width: 150 }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ color: '#64748b', fontSize: 12 }}>Material</label>
+            <input
+              type="text"
+              placeholder='e.g. 45g, 1.2kg'
+              value={materialDraft}
+              onChange={e => setMaterialDraft(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveEstimate()}
+              style={{ ...inputSx, width: 120 }}
+            />
+          </div>
+          {gcodes.length > 0 && (
+            <button
+              onClick={parseFromGcode}
+              disabled={parsing}
+              title={`Parse from ${gcodes[0].filename}`}
+              style={{
+                background: '#1f2937', color: '#94a3b8',
+                border: '1px solid #2d3748', borderRadius: 4,
+                padding: '5px 12px', fontSize: 12, cursor: parsing ? 'not-allowed' : 'pointer',
+                opacity: parsing ? 0.7 : 1,
+              }}
+            >
+              {parsing ? 'Parsing…' : 'Parse from file'}
+            </button>
+          )}
+          <button
+            onClick={saveEstimate}
+            disabled={savingEstimate}
+            style={{
+              background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+              padding: '5px 14px', fontSize: 12, fontWeight: 600,
+              cursor: savingEstimate ? 'not-allowed' : 'pointer',
+              opacity: savingEstimate ? 0.7 : 1,
+            }}
+          >
+            {savingEstimate ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        {estimateError && (
+          <p style={{ color: '#f87171', fontSize: 12, margin: '6px 0 0' }}>{estimateError}</p>
+        )}
       </div>
 
       {/* G-code files */}

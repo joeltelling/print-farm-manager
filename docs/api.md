@@ -299,9 +299,33 @@ Required: `project_id`, `name`, `target_qty`.
 
 ### `PUT /api/parts/:id`
 
-Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`.
+Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`, `print_time`, `material`.
 
 **`completed_qty` auto-status:** when `completed_qty` is included in the request body, `status` is recalculated server-side — `closed` if `completed_qty >= target_qty`, `open` otherwise. An explicit `status` field in the body is ignored when `completed_qty` is also present.
+
+**`print_time`** — optional, sets `print_time_seconds`. Server normalizes human-readable input: `"2h15m"`, `"90m"`, `"5400s"`, `"1:30:00"`, `"2:15"`, bare integer (seconds). Send `null` or `""` to clear. Returns `400` if the string is non-empty but unparseable.
+
+**`material`** — optional, sets `material_grams`. Accepts: `"45g"`, `"45.5g"`, `"1.2kg"`, bare number (grams). Send `null` or `""` to clear. Returns `400` if the string is non-empty but unparseable.
+
+### `POST /api/parts/:id/parse-gcode`
+
+Extracts `print_time_seconds` and `material_grams` (per part) from the filename of a gcode attached to this part, without modifying any records. Useful for populating the estimate fields before confirming.
+
+**Body:** `{ "gcode_id": 12 }` — optional. If omitted, the part's earliest gcode is used.
+
+**Response:**
+```json
+{
+  "print_time_seconds": 8100,
+  "material_grams": 42.5,
+  "source": "1x XRP_Chassis_2h15m_42.5g_PLA_MK4S_4.bgcode",
+  "nothing_found": false
+}
+```
+
+Either `print_time_seconds` or `material_grams` may be `null` if not found in the filename. `nothing_found: true` when both are null.
+
+Returns `404` if no gcode exists for this part (or the specified `gcode_id` doesn't belong to it).
 
 ### `PUT /api/parts/reorder`
 
@@ -490,7 +514,9 @@ Single endpoint that returns all data required by the TV dashboard in one call. 
 - `awaiting` — printers held (`is_held = 1`) in `FINISHED` or `IDLE` state, waiting for operator sign-off
 - `parts_today` — sum of `parts_per_plate` on `finished` jobs in the rolling 24-hour window (`finished_at >= now - 86400000`)
 
-`printers` is the same shape as `GET /api/printers` (includes `last_parts_per_plate`) plus `last_event_at` — the timestamp of the most recent `printer_events` row for that printer. Used by the dashboard's "Needs Attention" panel to compute how long a printer has been in its current state (waiting for sign-off, in error, etc.).
+`printers` is the same shape as `GET /api/printers` (includes `last_parts_per_plate`) plus `last_event_at` — the timestamp of the most recent `printer_events` row for that printer.
+
+`active_projects` parts include `print_time_seconds` and `material_grams` when set — the dashboard uses these to project remaining print time and material per part and per project.
 
 `active_projects` includes only `status = 'active'` projects, each with a nested `parts` array ordered by `sort_order`.
 

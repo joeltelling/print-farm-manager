@@ -50,24 +50,19 @@ function formatDate(d) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function timeAgo(ts) {
-  if (!ts) return '—';
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
+function formatDuration(secs) {
+  if (!secs) return null;
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
 }
 
-function formatWait(ts) {
-  if (!ts) return '';
-  const mins = Math.floor((Date.now() - ts) / 60000);
-  if (mins < 1)  return 'just now';
-  if (mins < 60) return `${mins}m`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+function formatMaterial(grams) {
+  if (grams == null) return null;
+  if (grams < 1000) return `${Math.round(grams)}g`;
+  const kg = (grams / 1000).toFixed(2).replace(/\.?0+$/, '');
+  return `${kg}kg`;
 }
 
 // ── Row-level status summary badges for the fleet grid ───────────────────────
@@ -336,24 +331,33 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── BOTTOM ROW ──────────────────────────────────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+        {/* ── ACTIVE PROJECTS ─────────────────────────────────────────────── */}
+        <div style={{ background: '#111827', borderRadius: 10, padding: '16px 20px' }}>
+          <div style={{
+            fontSize: 11, color: '#374151',
+            textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700,
+            marginBottom: 14,
+          }}>
+            Active Projects
+          </div>
 
-          {/* Active Projects */}
-          <div style={{ background: '#111827', borderRadius: 10, padding: '16px 20px' }}>
-            <div style={{
-              fontSize: 11, color: '#374151',
-              textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700,
-              marginBottom: 14,
-            }}>
-              Active Projects
-            </div>
+          {active_projects.length === 0 ? (
+            <p style={{ color: '#374151', fontSize: 13, margin: 0 }}>No active projects.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {active_projects.map(proj => {
+                // Project-level totals for parts that have estimate data and are not closed
+                let projTimeSecs = 0, projMaterialG = 0;
+                proj.parts.forEach(part => {
+                  const rem = Math.max(0, part.target_qty - part.completed_qty);
+                  if (part.status !== 'closed' && rem > 0) {
+                    if (part.print_time_seconds) projTimeSecs  += rem * part.print_time_seconds;
+                    if (part.material_grams)     projMaterialG += rem * part.material_grams;
+                  }
+                });
+                const hasProjectEstimate = projTimeSecs > 0 || projMaterialG > 0;
 
-            {active_projects.length === 0 ? (
-              <p style={{ color: '#374151', fontSize: 13, margin: 0 }}>No active projects.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {active_projects.map(proj => (
+                return (
                   <div key={proj.id} style={{
                     background: '#1e2433', borderRadius: 8, padding: '12px 14px',
                   }}>
@@ -379,21 +383,43 @@ export default function Dashboard() {
                         const pct = part.target_qty > 0
                           ? Math.round((part.completed_qty / part.target_qty) * 100)
                           : 0;
+                        const remaining = Math.max(0, part.target_qty - part.completed_qty);
+                        const timeLabel     = part.print_time_seconds && remaining > 0
+                          ? formatDuration(remaining * part.print_time_seconds)
+                          : null;
+                        const materialLabel = part.material_grams && remaining > 0
+                          ? formatMaterial(remaining * part.material_grams)
+                          : null;
                         return (
                           <div key={part.id}>
                             <div style={{
                               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                               marginBottom: 4,
                             }}>
-                              <span style={{ fontSize: 12, color: '#94a3b8' }}>{part.name}</span>
+                              {/* Left: name anchor + dot separator + time + dot + material */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontSize: 12, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
-                                  {part.completed_qty.toLocaleString()}
+                                <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500 }}>{part.name}</span>
+                                {(timeLabel || materialLabel) && (
+                                  <span style={{ color: '#374151', fontSize: 11 }}>·</span>
+                                )}
+                                {timeLabel && (
+                                  <span style={{ fontSize: 11, color: '#94a3b8' }}>~{timeLabel}</span>
+                                )}
+                                {timeLabel && materialLabel && (
+                                  <span style={{ color: '#374151', fontSize: 11 }}>·</span>
+                                )}
+                                {materialLabel && (
+                                  <span style={{ fontSize: 11, color: '#a78bfa' }}>~{materialLabel}</span>
+                                )}
+                              </div>
+                              {/* Right: completed pops, target muted */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                                  <span style={{ color: '#e2e8f0' }}>{part.completed_qty.toLocaleString()}</span>
                                   {activeQty > 0 && (
                                     <span style={{ color: '#60a5fa' }}> +{activeQty.toLocaleString()}</span>
                                   )}
-                                  {' / '}
-                                  {part.target_qty.toLocaleString()}
+                                  <span style={{ color: '#475569' }}>{' / '}{part.target_qty.toLocaleString()}</span>
                                 </span>
                                 <span style={{ fontSize: 12, fontWeight: 700, color: part.status === 'closed' ? '#4ade80' : '#60a5fa', minWidth: 34, textAlign: 'right' }}>
                                   {pct}%
@@ -409,26 +435,23 @@ export default function Dashboard() {
                                 )}
                               </div>
                             </div>
-                            <div style={{ position: 'relative', background: '#0f172a', borderRadius: 3, height: 7 }}>
-                              {/* Completed segment */}
+                            <div style={{ position: 'relative', background: '#0f172a', borderRadius: 4, height: 9 }}>
                               <div style={{
                                 position: 'absolute', left: 0, top: 0, height: '100%',
                                 width: `${completedPct}%`,
                                 background: '#22c55e',
-                                borderRadius: activePct > 0 ? '3px 0 0 3px' : 3,
+                                borderRadius: activePct > 0 ? '4px 0 0 4px' : 4,
                                 transition: 'width 0.5s',
                               }} />
-                              {/* Printing segment */}
                               {activePct > 0 && (
                                 <div style={{
                                   position: 'absolute', left: `${completedPct}%`, top: 0, height: '100%',
                                   width: `${activePct}%`,
                                   background: '#3b82f6',
-                                  borderRadius: '0 3px 3px 0',
+                                  borderRadius: '0 4px 4px 0',
                                   transition: 'width 0.5s',
                                 }} />
                               )}
-                              {/* Target tick when active jobs push past the goal */}
                               {targetTickPct !== null && (
                                 <div style={{
                                   position: 'absolute', left: `${targetTickPct}%`, top: 0,
@@ -442,130 +465,28 @@ export default function Dashboard() {
                         );
                       })}
                     </div>
+
+                    {hasProjectEstimate && (
+                      <div style={{
+                        borderTop: '1px solid #1a2030', marginTop: 10, paddingTop: 8,
+                        display: 'flex', alignItems: 'center', gap: 10, fontSize: 11,
+                      }}>
+                        <span style={{ fontWeight: 700, color: '#cbd5e1' }}>Project total remaining</span>
+                        <span style={{ color: '#374151' }}>·</span>
+                        {projTimeSecs  > 0 && <span style={{ color: '#94a3b8' }}>~{formatDuration(projTimeSecs)}</span>}
+                        {projTimeSecs > 0 && projMaterialG > 0 && <span style={{ color: '#374151' }}>·</span>}
+                        {projMaterialG > 0 && <span style={{ color: '#a78bfa' }}>~{formatMaterial(projMaterialG)}</span>}
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Needs Attention — anything requiring a human, sorted by urgency */}
-          <NeedsAttention printers={printers} />
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// ── Bottom-row panels ────────────────────────────────────────────────────────
-
-const PanelShell = ({ title, count, children }) => (
-  <div style={{ background: '#111827', borderRadius: 10, padding: '16px 20px' }}>
-    <div style={{
-      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-      marginBottom: 14,
-    }}>
-      <div style={{
-        fontSize: 11, color: '#374151',
-        textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700,
-      }}>
-        {title}
-      </div>
-      {count != null && (
-        <div style={{ fontSize: 11, color: '#475569', fontVariantNumeric: 'tabular-nums' }}>
-          {count}
-        </div>
-      )}
-    </div>
-    {children}
-  </div>
-);
-
-const REASON_STYLES = {
-  AWAITING: { bg: '#14532d', text: '#4ade80', label: 'AWAITING' },
-  ERROR:    { bg: '#450a0a', text: '#ef4444', label: 'ERROR' },
-  STOPPED:  { bg: '#431407', text: '#fb923c', label: 'STOPPED' },
-  PAUSED:   { bg: '#451a03', text: '#f59e0b', label: 'PAUSED' },
-  OFFLINE:  { bg: '#0d1117', text: '#475569', label: 'OFFLINE' },
-};
-
-function classifyAttention(p) {
-  // Highest-priority reason first
-  if (p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE')) return 'AWAITING';
-  if (p.status === 'ERROR')   return 'ERROR';
-  if (p.status === 'STOPPED') return 'STOPPED';
-  if (p.status === 'PAUSED')  return 'PAUSED';
-  if (p.status === 'OFFLINE') return 'OFFLINE';
-  return null;
-}
-
-// Priority for sort: AWAITING > ERROR > STOPPED > PAUSED > OFFLINE,
-// then longest-waiting first.
-const REASON_PRIORITY = { AWAITING: 0, ERROR: 1, STOPPED: 2, PAUSED: 3, OFFLINE: 4 };
-
-function NeedsAttention({ printers }) {
-  const items = printers
-    .map(p => ({ printer: p, reason: classifyAttention(p) }))
-    .filter(x => x.reason)
-    .sort((a, b) => {
-      const pr = REASON_PRIORITY[a.reason] - REASON_PRIORITY[b.reason];
-      if (pr !== 0) return pr;
-      return (a.printer.last_event_at || 0) - (b.printer.last_event_at || 0);
-    });
-
-  return (
-    <PanelShell title="Needs Attention" count={items.length || null}>
-      {items.length === 0 ? (
-        <div style={{
-          color: '#22c55e', fontSize: 13, fontWeight: 600,
-          background: '#0f1f17', border: '1px solid #14532d',
-          borderRadius: 6, padding: '14px 12px', textAlign: 'center',
-          letterSpacing: '0.05em',
-        }}>
-          ✓ All clear
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
-          {items.map(({ printer, reason }) => {
-            const s = REASON_STYLES[reason];
-            const wait = formatWait(printer.last_event_at);
-            return (
-              <div
-                key={printer.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px', borderRadius: 6,
-                  background: '#1a2030',
-                  borderLeft: `3px solid ${s.text}`,
-                }}
-              >
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: '0.06em',
-                  color: s.text, background: s.bg,
-                  borderRadius: 3, padding: '2px 6px',
-                  minWidth: 64, textAlign: 'center', flexShrink: 0,
-                }}>
-                  {s.label}
-                </span>
-                <span style={{
-                  flex: 1, fontSize: 13, color: '#e2e8f0', fontWeight: 600,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {printer.name}
-                </span>
-                {wait && (
-                  <span style={{
-                    fontSize: 11, color: '#94a3b8',
-                    fontVariantNumeric: 'tabular-nums', flexShrink: 0,
-                  }}>
-                    {wait}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </PanelShell>
-  );
-}
 

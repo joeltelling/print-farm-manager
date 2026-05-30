@@ -5,6 +5,68 @@ const router = express.Router();
 
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
+// ── Input normalizers ─────────────────────────────────────────────────────────
+
+// Accepts: bare integer (seconds), HH:MM:SS, H:MM, or component form (2h15m, 90m, 1h 30m 45s, etc.)
+// Returns seconds (integer) or null if unparseable.
+function normalizePrintTime(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const s = String(raw).trim();
+
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+
+  // HH:MM:SS
+  let m = s.match(/^(\d{1,3}):(\d{2}):(\d{2})$/);
+  if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3];
+
+  // H:MM
+  m = s.match(/^(\d{1,3}):(\d{2})$/);
+  if (m) return +m[1] * 3600 + +m[2] * 60;
+
+  // Component: any combo of h / m / s tokens
+  let total = 0, found = false;
+  m = s.match(/(\d+)\s*h/i);   if (m) { total += +m[1] * 3600; found = true; }
+  m = s.match(/(\d+)\s*m/i);   if (m) { total += +m[1] * 60;   found = true; }
+  m = s.match(/(\d+)\s*s/i);   if (m) { total += +m[1];        found = true; }
+
+  return found ? total : null;
+}
+
+// Accepts: bare number (grams), "45g", "45.5 grams", "1.2kg", "1.2 kilograms"
+// Returns grams (float) or null if unparseable.
+function normalizeMaterialGrams(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const s = String(raw).trim();
+
+  if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+
+  let m = s.match(/^(\d+(?:\.\d+)?)\s*kg(?:ilograms?)?$/i);
+  if (m) return parseFloat(m[1]) * 1000;
+
+  m = s.match(/^(\d+(?:\.\d+)?)\s*g(?:rams?)?$/i);
+  if (m) return parseFloat(m[1]);
+
+  return null;
+}
+
+// ── Filename extractors (best-effort, used by parse-gcode endpoint) ───────────
+
+function extractTimeSecsFromFilename(filename) {
+  // Match "2h15m" or "2h15m30s" anywhere in the filename
+  const m = filename.match(/(\d+)h\s*(\d+)m\s*(?:(\d+)s)?/i);
+  if (m) return +m[1] * 3600 + +m[2] * 60 + (m[3] ? +m[3] : 0);
+  return null;
+}
+
+function extractMaterialGramsFromFilename(filename) {
+  // kg before g to avoid partial match on "1.2kg" matching "2" with /g/
+  const kg = filename.match(/(?:^|[_\s\-\.])(\d+(?:\.\d+)?)\s*kg(?:[_\s\-\.\(]|$)/i);
+  if (kg) return parseFloat(kg[1]) * 1000;
+  const g = filename.match(/(?:^|[_\s\-\.])(\d+(?:\.\d+)?)\s*g(?:[_\s\-\.\(]|$)/i);
+  if (g) return parseFloat(g[1]);
+  return null;
+}
+
 module.exports = (db) => {
   const ACTIVE_QTY_SQL = `
     COALESCE((
@@ -60,6 +122,35 @@ module.exports = (db) => {
     res.json({ success: true });
   });
 
+  // POST /api/parts/:id/parse-gcode — extract time and material from a gcode filename.
+  // Body: { gcode_id? } — if omitted, uses the part's first gcode.
+  // Returns: { print_time_seconds, material_grams, source } — either field may be null.
+  router.post('/:id/parse-gcode', (req, res) => {
+    const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(req.params.id);
+    if (!part) return res.status(404).json({ error: 'Part not found' });
+
+    const { gcode_id } = req.body;
+    const gcode = gcode_id
+      ? db.prepare('SELECT * FROM gcodes WHERE id = ? AND part_id = ?').get(gcode_id, req.params.id)
+      : db.prepare('SELECT * FROM gcodes WHERE part_id = ? ORDER BY created_at ASC LIMIT 1').get(req.params.id);
+
+    if (!gcode) return res.status(404).json({ error: 'No gcode found for this part' });
+
+    const rawTimeSecs = extractTimeSecsFromFilename(gcode.filename);
+    const rawMaterialG = extractMaterialGramsFromFilename(gcode.filename);
+
+    const ppp = gcode.parts_per_plate || 1;
+    const printTimeSecs   = rawTimeSecs   !== null ? Math.round(rawTimeSecs   / ppp) : null;
+    const materialGrams   = rawMaterialG  !== null ? rawMaterialG              / ppp : null;
+
+    res.json({
+      print_time_seconds: printTimeSecs,
+      material_grams:     materialGrams,
+      source:             gcode.filename,
+      nothing_found:      printTimeSecs === null && materialGrams === null,
+    });
+  });
+
   router.put('/:id', (req, res) => {
     const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(req.params.id);
     if (!part) return res.status(404).json({ error: 'Part not found' });
@@ -75,20 +166,54 @@ module.exports = (db) => {
       resolvedStatus = status;
     }
 
+    // print_time / material: if field absent from body, preserve existing value.
+    // If present and empty/null, clear to NULL. If present and non-empty, normalize.
+    let printTimeSecs = part.print_time_seconds;
+    if ('print_time' in req.body) {
+      if (!req.body.print_time) {
+        printTimeSecs = null;
+      } else {
+        printTimeSecs = normalizePrintTime(req.body.print_time);
+        if (printTimeSecs === null) {
+          return res.status(400).json({
+            error: 'Cannot parse print time. Use formats like "2h15m", "90m", "5400s", or "1:30:00".',
+          });
+        }
+      }
+    }
+
+    let materialGrams = part.material_grams;
+    if ('material' in req.body) {
+      if (!req.body.material) {
+        materialGrams = null;
+      } else {
+        materialGrams = normalizeMaterialGrams(req.body.material);
+        if (materialGrams === null) {
+          return res.status(400).json({
+            error: 'Cannot parse material. Use formats like "45g", "45.5g", or "1.2kg".',
+          });
+        }
+      }
+    }
+
     const now = Date.now();
     db.prepare(`
       UPDATE parts
-      SET name          = COALESCE(?, name),
-          target_qty    = COALESCE(?, target_qty),
-          completed_qty = COALESCE(?, completed_qty),
-          status        = ?,
-          updated_at    = ?
+      SET name                = COALESCE(?, name),
+          target_qty          = COALESCE(?, target_qty),
+          completed_qty       = COALESCE(?, completed_qty),
+          status              = ?,
+          print_time_seconds  = ?,
+          material_grams      = ?,
+          updated_at          = ?
       WHERE id = ?
     `).run(
       name,
       target_qty !== undefined ? parseInt(target_qty, 10) : null,
       completed_qty !== undefined ? parseInt(completed_qty, 10) : null,
       resolvedStatus,
+      printTimeSecs,
+      materialGrams,
       now,
       req.params.id
     );
