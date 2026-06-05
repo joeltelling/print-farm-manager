@@ -364,7 +364,8 @@ function GcodeEstimateRow({ gc, onDelete, onSaved }) {
         >×</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ color: '#475569', fontSize: 11, width: 70, flexShrink: 0 }}>per plate:</span>
+        <span style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{gc.parts_per_plate}x</span>
+        <span style={{ color: '#475569', fontSize: 11, flexShrink: 0 }}>per plate:</span>
         <input
           type="text"
           placeholder="time e.g. 2h15m"
