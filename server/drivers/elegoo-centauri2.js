@@ -370,13 +370,15 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
   const conn      = await getConn(printer);
   const startResp = await sendCommand(conn, 1020, {
+    storage_media: 'local',
     filename,
-    storage_location:  'local',
-    auto_bed_leveling: false,
-    heated_bed_type:   0,
-    enable_time_lapse: false,
-    force_bed_level:   false,
-    slot_map:          [],
+    config: {
+      delay_video:    false, // time-lapse
+      printer_check:  false, // auto bed leveling
+      print_layout:   'A',   // heated bed type: A = standard, B = alternate
+      bedlevel_force: false,
+      slot_map:       [],
+    },
   });
 
   if (startResp.result?.error_code !== 0) {
