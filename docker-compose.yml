@@ -1,0 +1,15 @@
+services:
+  print-farm-manager:
+    build: .
+    image: print-farm-manager:latest
+    container_name: print-farm-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - farm-data:/app/server/data
+      - farm-gcode:/app/server/gcode
+
+volumes:
+  farm-data:
+  farm-gcode:

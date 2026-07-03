@@ -63,7 +63,9 @@ print-farm-manager/
 │   │       ├── Projects.jsx       # Project/Part/G-code management
 │   │       └── Jobs.jsx           # Job queue table
 ├── docs/                 # This folder
-└── ARCHITECTURE.md       # Full product spec and phase planning
+├── ARCHITECTURE.md       # Full product spec and phase planning
+├── Dockerfile            # Multi-stage production image
+└── docker-compose.yml    # Production container + persistent volumes
 ```
 
 ## Development Phases

@@ -1,0 +1,43 @@
+# Dependencies — reinstalled inside the image
+node_modules/
+client/node_modules/
+
+# Build output — rebuilt inside the image
+client/dist/
+dist/
+
+# Persistent runtime state — must not be baked into the image; mount as volumes instead
+server/data/
+server/gcode/
+
+# Version control / editor / OS cruft
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.idea/
+
+# Claude Code / docs / project meta — not needed at runtime
+.claude/
+CLAUDE.md
+docs/
+ARCHITECTURE.md
+README.md
+LICENSE
+*.md
+
+# Secrets and local env
+.env
+.env.*
+
+# Misc data files that shouldn't ship in the image
+*.csv
+*.docx
+
+# Windows-only helper script
+update.bat
+
+# Docker files themselves (no need to copy into build context recursively)
+Dockerfile
+.dockerignore
+docker-compose.yml

@@ -84,6 +84,51 @@ npm run dev
 
 ## Installation (Production)
 
+### Option A — Docker (recommended)
+
+Requires [Docker](https://docs.docker.com/get-docker/) (and Compose, bundled with Docker Desktop and modern Docker Engine installs). This runs the same production build described in Option B, packaged into a container — no local Node.js install needed on the host.
+
+```bash
+git clone https://github.com/joeltelling/print-farm-manager.git
+cd print-farm-manager
+docker compose up -d --build
+```
+
+This builds the image (compiling `better-sqlite3` and building the React client inside the container) and starts it in the background, restarting automatically on crash or host reboot. The SQLite database, hourly backups, and uploaded G-code files are stored in the named Docker volumes `farm-data` and `farm-gcode`, so they survive container rebuilds and updates.
+
+Open `http://localhost:3000` in a browser, or replace `localhost` with the machine's LAN IP to access it from any device on the network.
+
+**Updating** to a new version:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+**Useful commands:**
+
+| Command | What it does |
+|---|---|
+| `docker compose logs -f` | Follow server logs |
+| `docker compose stop` | Stop the container (data is preserved) |
+| `docker compose up -d` | Start it again |
+| `docker compose down` | Stop and remove the container (volumes are preserved) |
+
+Without Compose, the equivalent `docker run` is:
+
+```bash
+docker build -t print-farm-manager .
+docker run -d --name print-farm-manager --restart unless-stopped \
+  -p 3000:3000 \
+  -v farm-data:/app/server/data \
+  -v farm-gcode:/app/server/gcode \
+  print-farm-manager
+```
+
+> Same security note as above applies inside Docker: only publish port 3000 to interfaces on your trusted LAN, not `0.0.0.0` on an internet-facing host.
+
+### Option B — Bare metal (Node.js on the host)
+
 For a full walkthrough covering prerequisites, network setup, auto-start with PM2, backup, updating, and troubleshooting on both Windows and macOS, see the **[Installation Guide](docs/installation.md)**.
 
 The short version:
@@ -132,7 +177,9 @@ print-farm-manager/
 │       ├── bambu.js       # MQTT + FTPS
 │       └── klipper.js     # Moonraker REST
 ├── client/               # React + Vite frontend
-└── docs/                 # Full documentation
+├── docs/                 # Full documentation
+├── Dockerfile            # Multi-stage production image (build client + server, run on Node 22)
+└── docker-compose.yml    # Production container with persistent data/gcode volumes
 ```
 
 ---

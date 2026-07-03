@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-07-03 — Docker production deployment
+
+Added a container-based path to run the app in production, as an alternative to the bare-metal + PM2 setup. Requested to simplify deployment (no host Node.js/build-tooling install, consistent environment across machines) without changing any Phase 1 conventions — no DB migration system was introduced, and the SQLite/`better-sqlite3` synchronous-API convention is unaffected since the container just runs the existing `server/index.js` entry point.
+
+Three-stage multi-stage `Dockerfile`:
+1. `server-deps` — installs root `node_modules` with dev dependencies present so the `postinstall` script (`patch-package`) can apply `patches/sdcp+0.5.4.patch`; then `npm prune --omit=dev` drops `jest`/`supertest`/`patch-package` from what gets copied forward. Base image `node:22-bookworm-slim` matches the README's Node 22 LTS requirement; `python3 make g++` installed for `better-sqlite3`'s native build.
+2. `client-build` — `npm ci` + `npm run build` for the Vite client, same as the existing bare-metal `npm run build` step.
+3. `runtime` — copies the pruned `node_modules`, `server/`, and the built `client/dist` into a clean `node:22-bookworm-slim` image; no build tools in the final image. `server/data` (SQLite DB + hourly backups) and `server/gcode` (uploaded G-code) are created as mount points for volumes so they persist across container rebuilds.
+
+`docker-compose.yml` wires up named volumes `farm-data` and `farm-gcode` for those two directories, publishes port 3000, and sets `restart: unless-stopped`.
+
+`.dockerignore` excludes `node_modules`, build output, `server/data`/`server/gcode` (must come from volumes, not the image), git/editor/OS files, and docs/project-meta files not needed at runtime.
+
+Verified locally: `docker compose up -d --build` builds cleanly, `/api/health` and the served client both return 200, and `jest`/`supertest`/`patch-package` are absent from the running container's `node_modules` while the `sdcp` patch is present.
+
+### Changes
+- `Dockerfile` (new): multi-stage build described above.
+- `docker-compose.yml` (new): production service definition with persistent volumes.
+- `.dockerignore` (new): build-context exclusions.
+- `README.md`: "Installation (Production)" now leads with a Docker option (recommended) alongside the existing bare-metal option; Project Structure block lists the new files.
+
+No new runtime dependencies — `patch-package` was already a devDependency (used by the existing bare-metal `npm install` too); the Dockerfile just isolates when its output is needed vs. pruned.
+
+---
+
 ## 2026-07-02 — CSV import: Core One printers no longer inferred as Core 1L
 
 `inferModel()` in `server/routes/printers.js` listed the `CoreOne_` prefix in both the `c1l` and `c1` patterns, and `c1l` was checked first — so a printer named `CoreOne_01` imported as a Core 1L instead of a Core One. The `c1l` pattern now uses `CoreOneL_` (alongside `Core1L_` and `C1L `); `CoreOne_` correctly falls through to `c1`.

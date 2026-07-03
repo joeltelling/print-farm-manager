@@ -2,6 +2,8 @@
 
 This guide covers installing Print Farm Manager on a dedicated machine that sits on the same local network as your printer fleet. Steps that differ between **Windows** and **macOS** are clearly labelled. Where instructions are the same on both platforms, no label is shown.
 
+> **Running in Docker instead?** This guide covers a bare-metal Node.js + PM2 install. If you'd rather run the app in a container (no local Node.js or build tooling required), see the **Docker** section in the [README](../README.md#installation-production) — it uses the `Dockerfile` and `docker-compose.yml` at the repo root and handles everything below (build, port, auto-restart, persistent data) through Docker instead.
+
 ---
 
 ## Prerequisites
