@@ -134,6 +134,15 @@ module.exports = (db) => {
       INSERT INTO parts (project_id, name, target_qty, sort_order, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(project_id, name, parseInt(target_qty, 10), sortOrder, now, now);
+
+    // A new part always starts open and unmet — reopen a completed project so it's
+    // schedulable immediately, same as reopening an existing closed part does (see PUT /:id).
+    const project = db.prepare('SELECT id, status FROM projects WHERE id = ?').get(project_id);
+    if (project && project.status === 'completed') {
+      db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
+      console.log(`[server] Project ${project.id} reactivated — new part added after completion`);
+    }
+
     res.status(201).json(db.prepare('SELECT * FROM parts WHERE id = ?').get(result.lastInsertRowid));
   });
 

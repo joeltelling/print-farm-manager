@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-07-04 — Fix: adding a part to a completed project couldn't be reactivated
+
+Reported: adding a new part to a project that had already completed left the project stuck — clicking Re-activate returned "All parts are at target qty — adjust quantities first" even though the new part clearly had remaining qty (0/1).
+
+Root cause: `POST /api/parts` never checked the parent project's status when inserting a new part, unlike `PUT /api/parts/:id` which already reactivates a completed project when a part transitions from closed back to open. A brand-new part always starts `open` with `completed_qty = 0`, so it never goes through that transition — the project was left `completed` with a genuinely unmet part sitting in it. `POST /api/projects/:id/reactivate` then only checked for *closed* parts with remaining qty, so it saw nothing eligible and reported `nothing_to_reopen`.
+
+Fixed both ends: `POST /api/parts` now reactivates a `completed` parent project the same way the PUT handler does, and `POST /api/projects/:id/reactivate` now also counts already-open parts with remaining qty (not just closed ones) so it can't wrongly report nothing-to-reopen in any similar situation.
+
+### Changes
+- `server/routes/parts.js`: `POST /` reactivates the parent project if it's `completed`.
+- `server/routes/projects.js`: `POST /:id/reactivate` also checks for open parts with `completed_qty < target_qty`.
+- `server/tests/parts-sort.test.js`, `server/tests/projects-status.test.js`: added coverage for both.
+
+---
+
 ## 2026-07-03 — README + install guide caught up to the OctoPrint connector
 
 PR #4 added the OctoPrint driver with full docs coverage in `multi-brand.md` but did not touch the two user-facing entry docs. Synced them: README gains an OctoPrint row in Supported Printers, `octoprint` in the CSV `type` list, corrected `api_key` requirements, and the full six-driver list in Project Structure (`elegoo-centauri2.js` and `octoprint.js` were missing); `docs/installation.md` credential table gains an OctoPrint row (API key from **Settings → API**, port included in the IP field, e.g. `:5000`).
