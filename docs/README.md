@@ -26,6 +26,7 @@ npm run dev
 | [docs/CHANGELOG.md](CHANGELOG.md) | Dated log of all implemented features and changes |
 | [docs/multi-brand.md](multi-brand.md) | Phase 6 design — driver abstraction for non-Prusa brands (Elegoo Centauri Carbon) |
 | [docs/filaments.md](filaments.md) | Filament Library — admin-managed type and color lists, API endpoints, client usage |
+| [docs/docker-publish.md](docker-publish.md) | CI workflow that builds and publishes multi-arch Docker images to GHCR |
 
 ## Project Structure
 
@@ -63,6 +64,7 @@ print-farm-manager/
 │   │       ├── Projects.jsx       # Project/Part/G-code management
 │   │       └── Jobs.jsx           # Job queue table
 ├── docs/                 # This folder
+├── .github/workflows/    # CI — see docs/docker-publish.md
 ├── ARCHITECTURE.md       # Full product spec and phase planning
 ├── Dockerfile            # Multi-stage production image
 └── docker-compose.yml    # Production container + persistent volumes
