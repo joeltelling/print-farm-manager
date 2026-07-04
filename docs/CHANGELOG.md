@@ -20,6 +20,13 @@ Re-scanned after the change: 0 Fail, down from 9 to 5 Warn. The remaining 5 are 
 - `server/index.js`: `app.use(helmet({...}))` with the CSP/COEP/HSTS configuration above, mounted first; a small custom middleware sets `Permissions-Policy`.
 
 Verified in a `node:22-bookworm-slim` container: full suite still 381/381 passing. Verified in a rebuilt Docker container via the browser: no console errors, Inter/Fira Code fonts confirmed loaded (`document.fonts`), all inline-styled UI intact.
+## 2026-07-04 — CI: gate Docker publishing on the test suite
+
+`.github/workflows/docker-publish.yml` could previously publish an image even if `server/tests/` was failing — nothing ran the suite. Added a `test` job (`npm ci` + `npm test` on `ubuntu-24.04`) that both `build` and the PR-only `pr_test_build` job now declare as a dependency (`needs: test`), so a red test suite blocks any image build, published or not. `merge` remains gated transitively via `needs: build`.
+
+### Changes
+- `.github/workflows/docker-publish.yml`: added the `test` job; `build` and `pr_test_build` now `needs: test`.
+- `docs/docker-publish.md`: documented the test gate and updated the job breakdown.
 
 ---
 

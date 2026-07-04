@@ -40,6 +40,12 @@ export default function App() {
       .then(r => r.json())
       .then(data => { if (data.farm_name) setFarmName(data.farm_name); })
       .catch(() => {});
+
+    // Settings page dispatches this on save so the sidebar/topbar update live,
+    // without needing a full page refresh.
+    const onFarmNameChanged = (e) => setFarmName(e.detail);
+    window.addEventListener('farmNameChanged', onFarmNameChanged);
+    return () => window.removeEventListener('farmNameChanged', onFarmNameChanged);
   }, []);
 
   return (

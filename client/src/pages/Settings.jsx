@@ -269,7 +269,8 @@ export default function Settings() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
-      showToast('Farm name saved — shown after the next page refresh');
+      window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: data.value }));
+      showToast('Farm name saved');
     } catch (err) {
       setFarmNameError(err.message);
     }

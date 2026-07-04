@@ -87,23 +87,42 @@ npm run dev
 
 ### Option A — Docker (recommended)
 
-Requires [Docker](https://docs.docker.com/get-docker/) (and Compose, bundled with Docker Desktop and modern Docker Engine installs). This runs the same production build described in Option B, packaged into a container — no local Node.js install needed on the host.
+Requires [Docker](https://docs.docker.com/get-docker/) (and Compose, bundled with Docker Desktop and modern Docker Engine installs).
 
-```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
-cd print-farm-manager
-docker compose up -d --build
+#### Quickest start — pull the published image
+
+No clone, no local build. A multi-arch image (`linux/amd64` + `linux/arm64`) is published automatically to GitHub Container Registry on every release — see [docs/docker-publish.md](docs/docker-publish.md). Save this as `docker-compose.yml`:
+
+```yaml
+services:
+  print-farm-manager:
+    image: ghcr.io/joeltelling/print-farm-manager:latest
+    container_name: print-farm-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - farm-data:/app/server/data
+      - farm-gcode:/app/server/gcode
+
+volumes:
+  farm-data:
+  farm-gcode:
 ```
 
-This builds the image (compiling `better-sqlite3` and building the React client inside the container) and starts it in the background, restarting automatically on crash or host reboot. The SQLite database, hourly backups, and uploaded G-code files are stored in the named Docker volumes `farm-data` and `farm-gcode`, so they survive container rebuilds and updates.
+```bash
+docker compose up -d
+```
+
+This same file works as a drop-in stack in Portainer (**Stacks → Add stack → Web editor**, paste it in, deploy) — no repo checkout needed there either.
 
 Open `http://localhost:3000` in a browser, or replace `localhost` with the machine's LAN IP to access it from any device on the network.
 
-**Updating** to a new version:
+**Updating** to the latest published image:
 
 ```bash
-git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 **Useful commands:**
@@ -115,15 +134,33 @@ docker compose up -d --build
 | `docker compose up -d` | Start it again |
 | `docker compose down` | Stop and remove the container (volumes are preserved) |
 
-Without Compose, the equivalent `docker run` is:
+Pin to a specific release instead of always tracking `latest` by using a version tag, e.g. `ghcr.io/joeltelling/print-farm-manager:1.2.0`. `edge` tracks the latest build of `main` between releases.
+
+#### Building from source instead
+
+If you're testing local changes rather than running a release, clone the repo and build with the `docker-compose.yml` at its root (uses `build: .` instead of `image:`):
 
 ```bash
-docker build -t print-farm-manager .
+git clone https://github.com/joeltelling/print-farm-manager.git
+cd print-farm-manager
+docker compose up -d --build
+```
+
+Updating this path pulls new source and rebuilds:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Without Compose, the equivalent `docker run` (published image) is:
+
+```bash
 docker run -d --name print-farm-manager --restart unless-stopped \
   -p 3000:3000 \
   -v farm-data:/app/server/data \
   -v farm-gcode:/app/server/gcode \
-  print-farm-manager
+  ghcr.io/joeltelling/print-farm-manager:latest
 ```
 
 > Same security note as above applies inside Docker: only publish port 3000 to interfaces on your trusted LAN, not `0.0.0.0` on an internet-facing host.

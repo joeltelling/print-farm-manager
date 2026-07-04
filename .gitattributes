@@ -1,0 +1,4 @@
+# Changelog entries are prepended, so every concurrent PR "conflicts" at the
+# top of the file even though the right answer is always to keep both entries.
+# The union merge driver does exactly that automatically.
+docs/CHANGELOG.md merge=union
