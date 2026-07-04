@@ -33,6 +33,10 @@ module.exports = (db) => {
     const gcodes          = db.prepare('SELECT * FROM gcodes').all();
     const jobs            = db.prepare('SELECT * FROM jobs').all();
     const printer_events  = db.prepare('SELECT * FROM printer_events').all();
+    const printer_models  = db.prepare('SELECT * FROM printer_models').all();
+    const filament_types  = db.prepare('SELECT * FROM filament_types').all();
+    const filament_colors = db.prepare('SELECT * FROM filament_colors').all();
+    const settings        = db.prepare('SELECT * FROM settings').all();
 
     // Embed gcode files as base64, keyed by their on-disk basename
     const gcodeFiles = {};
@@ -52,6 +56,10 @@ module.exports = (db) => {
       gcodes,
       jobs,
       printer_events,
+      printer_models,
+      filament_types,
+      filament_colors,
+      settings,
       gcode_files: gcodeFiles,
     };
 
@@ -85,6 +93,14 @@ module.exports = (db) => {
         fs.writeFileSync(path.join(GCODE_DIR, basename), Buffer.from(b64, 'base64'));
       }
 
+      // Older backups (pre-dating printer_models/filament/settings export) won't have these
+      // keys at all — guard each so restoring one doesn't wipe current config with nothing
+      // to restore it from. New backups always include all of them together.
+      const hasPrinterModels  = Array.isArray(backup.printer_models);
+      const hasFilamentTypes  = Array.isArray(backup.filament_types);
+      const hasFilamentColors = Array.isArray(backup.filament_colors);
+      const hasSettings       = Array.isArray(backup.settings);
+
       const restore = db.transaction(() => {
         // Delete in FK dependency order
         db.prepare('DELETE FROM printer_events').run();
@@ -93,6 +109,10 @@ module.exports = (db) => {
         db.prepare('DELETE FROM parts').run();
         db.prepare('DELETE FROM projects').run();
         db.prepare('DELETE FROM printers').run();
+        if (hasFilamentColors) db.prepare('DELETE FROM filament_colors').run(); // before filament_types — FK on type_id
+        if (hasFilamentTypes)  db.prepare('DELETE FROM filament_types').run();
+        if (hasPrinterModels)  db.prepare('DELETE FROM printer_models').run();
+        if (hasSettings)       db.prepare('DELETE FROM settings').run();
 
         // Reinsert with original IDs so FK relationships are preserved
         const stmts = {
@@ -134,8 +154,24 @@ module.exports = (db) => {
             INSERT INTO printer_events (id, printer_id, event_type, note, created_at)
             VALUES (@id, @printer_id, @event_type, @note, @created_at)
           `),
+          printer_model: db.prepare(`
+            INSERT INTO printer_models (model_id, label, connector)
+            VALUES (@model_id, @label, @connector)
+          `),
+          filament_type: db.prepare(`
+            INSERT INTO filament_types (id, name) VALUES (@id, @name)
+          `),
+          filament_color: db.prepare(`
+            INSERT INTO filament_colors (id, type_id, name, hex_color)
+            VALUES (@id, @type_id, @name, @hex_color)
+          `),
+          setting: db.prepare(`
+            INSERT INTO settings (key, value) VALUES (@key, @value)
+          `),
         };
 
+        // printer_models before printers — printers.model refers to it logically
+        for (const m of (backup.printer_models || [])) stmts.printer_model.run(m);
         for (const p of (backup.printers || [])) stmts.printer.run(p);
         for (const p of (backup.projects || [])) stmts.project.run(p);
         for (const p of (backup.parts    || [])) stmts.part.run(p);
@@ -145,12 +181,17 @@ module.exports = (db) => {
         }
         for (const j of (backup.jobs || [])) stmts.job.run(j);
         for (const e of (backup.printer_events || [])) stmts.printer_event.run(e);
+        // filament_types before filament_colors — FK on type_id
+        for (const t of (backup.filament_types  || [])) stmts.filament_type.run(t);
+        for (const c of (backup.filament_colors || [])) stmts.filament_color.run(c);
+        for (const s of (backup.settings || [])) stmts.setting.run(s);
 
         // Sync auto-increment counters so new inserts don't collide
         for (const [table, col] of [
           ['printers', 'printers'], ['projects', 'projects'],
           ['parts', 'parts'], ['gcodes', 'gcodes'], ['jobs', 'jobs'],
           ['printer_events', 'printer_events'],
+          ['filament_types', 'filament_types'], ['filament_colors', 'filament_colors'],
         ]) {
           db.prepare(`
             INSERT OR REPLACE INTO sqlite_sequence (name, seq)
@@ -161,16 +202,19 @@ module.exports = (db) => {
 
       restore();
 
-      console.log(`[backup] Farm restored — ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events`);
+      console.log(`[backup] Farm restored — ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
 
       res.json({
         ok: true,
-        printers:       (backup.printers       || []).length,
-        projects:       (backup.projects       || []).length,
-        parts:          (backup.parts          || []).length,
-        gcodes:         (backup.gcodes         || []).length,
-        jobs:           (backup.jobs           || []).length,
-        printer_events: (backup.printer_events || []).length,
+        printers:        (backup.printers        || []).length,
+        projects:        (backup.projects        || []).length,
+        parts:           (backup.parts           || []).length,
+        gcodes:          (backup.gcodes          || []).length,
+        jobs:            (backup.jobs            || []).length,
+        printer_events:  (backup.printer_events  || []).length,
+        printer_models:  (backup.printer_models  || []).length,
+        filament_types:  (backup.filament_types  || []).length,
+        filament_colors: (backup.filament_colors || []).length,
       });
     } catch (err) {
       console.error('[backup] restore error:', err);

@@ -578,13 +578,15 @@ All error responses use this shape:
 
 ### `GET /api/backup`
 
-Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes all 5 tables and gcode file contents (base64 encoded). No request body.
+Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
 ### `POST /api/backup/restore`
 
 Replaces all farm data from a previously exported backup file. Clears the DB and rewrites all tables; gcode files are written to `server/gcode/`. Since `filepath` stores only the filename, no path rewriting is needed — the restored DB works correctly on any machine.
+
+`printer_models`, `filament_types`, `filament_colors`, and `settings` are restored the same way, but each is only cleared and rewritten if that key is present in the uploaded file — restoring a backup taken before these were added to the export leaves the farm's current printer models, filament library, and settings untouched rather than wiping them with nothing to restore.
 
 **Request:** `multipart/form-data` with field `file` — the `.json` backup file. Max 500 MB.
 
@@ -595,7 +597,11 @@ Replaces all farm data from a previously exported backup file. Clears the DB and
   "projects": 3,
   "parts": 12,
   "gcodes": 18,
-  "jobs": 340
+  "jobs": 340,
+  "printer_events": 210,
+  "printer_models": 6,
+  "filament_types": 3,
+  "filament_colors": 9
 }
 ```
 | `500` | Unhandled server error |

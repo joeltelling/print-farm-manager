@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-07-04 — Farm Backup: fix missing printer models, filament library, and settings
+
+`GET /api/backup` never included `printer_models`, `filament_types`, `filament_colors`, or `settings` — only `printers`, `projects`, `parts`, `gcodes`, `jobs`, and `printer_events`. Restoring a backup brought printers back with a `model` referencing a `printer_models` row that no longer existed, so those printers couldn't be edited or matched by new Add Printer submissions until the operator manually re-added every model (and re-entered the farm's filament library and farm name/dispatch batch size) by hand.
+
+Fixed by adding all four to both export and restore. Restore deletes/reinserts `filament_colors` before `filament_types` (FK on `type_id`) and `printer_models` before `printers` (no enforced FK there, but restoring the models a printer's `model` column names first matches the natural order). Each of the four is only cleared and rewritten if that key is present in the uploaded backup, so restoring an older backup (from before this fix) can't wipe the farm's current printer models/filament library/settings with nothing to restore them from — it just leaves them alone.
+
+The Settings page also now refreshes printer models, filament lists, farm name, and dispatch batch size immediately after a successful restore instead of requiring a manual page reload (same live-update approach as the recent farm name fix).
+
+### Changes
+- `server/routes/backup.js`: export/restore now include `printer_models`, `filament_types`, `filament_colors`, `settings`; guarded restore for backward compatibility with older backup files; response/log now report counts for all restored tables.
+- `client/src/pages/Settings.jsx`: added restore-result chips for the three new counts; refetches models/filament lists/settings after a successful restore.
+- `docs/api.md`: corrected the backup endpoint docs, which previously described the buggy behavior ("all 5 tables") as correct.
+
+---
+
 ## 2026-07-03 — README + install guide caught up to the OctoPrint connector
 
 PR #4 added the OctoPrint driver with full docs coverage in `multi-brand.md` but did not touch the two user-facing entry docs. Synced them: README gains an OctoPrint row in Supported Printers, `octoprint` in the CSV `type` list, corrected `api_key` requirements, and the full six-driver list in Project Structure (`elegoo-centauri2.js` and `octoprint.js` were missing); `docs/installation.md` credential table gains an OctoPrint row (API key from **Settings → API**, port included in the IP field, e.g. `:5000`).
