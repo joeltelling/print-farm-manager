@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-07-04 — Add security response headers via helmet
+
+Ran an OWASP ZAP baseline scan against the running container (0 High findings, but 2 Medium: missing CSP, missing anti-clickjacking header) plus several Low findings (`X-Content-Type-Options` missing, `X-Powered-By` leaking Express, `Permissions-Policy` missing).
+
+Added `helmet` and configured it deliberately rather than taking its defaults, since this app relies on patterns helmet's strict defaults would otherwise break:
+- `style-src` allows `'unsafe-inline'` — every page in `client/src` uses React's `style={{...}}` prop, which renders as inline `style=""` attributes. Blocking that would break the entire UI's styling, not a few components.
+- `style-src`/`font-src` allow `fonts.googleapis.com`/`fonts.gstatic.com` for the Inter/Fira Code font import in `client/src/index.css`.
+- `crossOriginEmbedderPolicy` is disabled — Google Fonts doesn't send the CORP header `COEP: require-corp` needs, so leaving helmet's default on would have silently broken font loading. This app has no need for cross-origin isolation (no `SharedArrayBuffer` usage).
+- `hsts` is disabled — this app is served over plain HTTP on the LAN (see README); browsers ignore `Strict-Transport-Security` entirely when it's not delivered over HTTPS, so sending it is just misleading noise.
+- `Permissions-Policy` isn't part of helmet's maintained defaults (removed for spec churn), so it's set directly via a small custom middleware, denying geolocation/camera/microphone/payment/usb — none of which this app uses.
+
+Re-scanned after the change: 0 Fail, down from 9 to 5 Warn. The remaining 5 are either informational, the deliberate `style-src unsafe-inline`/COEP tradeoffs documented above, or a pre-existing false positive (ZAP flags the placeholder example IPs `192.168.1.50:5000`/`192.168.1.100` in the Add Printer form's help text as a "private IP disclosure" — they're placeholder text, not real infrastructure).
+
+### Changes
+- `package.json`: added `helmet` (`^8.2.0`).
+- `server/index.js`: `app.use(helmet({...}))` with the CSP/COEP/HSTS configuration above, mounted first; a small custom middleware sets `Permissions-Policy`.
+
+Verified in a `node:22-bookworm-slim` container: full suite still 381/381 passing. Verified in a rebuilt Docker container via the browser: no console errors, Inter/Fira Code fonts confirmed loaded (`document.fonts`), all inline-styled UI intact.
+
+---
+
 ## 2026-07-03 — README + install guide caught up to the OctoPrint connector
 
 PR #4 added the OctoPrint driver with full docs coverage in `multi-brand.md` but did not touch the two user-facing entry docs. Synced them: README gains an OctoPrint row in Supported Printers, `octoprint` in the CSV `type` list, corrected `api_key` requirements, and the full six-driver list in Project Structure (`elegoo-centauri2.js` and `octoprint.js` were missing); `docs/installation.md` credential table gains an OctoPrint row (API key from **Settings → API**, port included in the IP field, e.g. `:5000`).

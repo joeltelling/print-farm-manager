@@ -21,7 +21,7 @@
 
 1. `db.js` is `require()`d — this synchronously creates `server/data/` and `server/gcode/` if missing, opens the SQLite database, and runs all `CREATE TABLE IF NOT EXISTS` statements.
 2. All route modules are instantiated with the `db` instance injected.
-3. Express app is configured with `express.json()` and route mounting.
+3. Express app is configured with `helmet()` (security response headers — CSP, no `X-Powered-By`, etc.; see `docs/CHANGELOG.md` 2026-07-04), `express.json()`, and route mounting.
 4. `app.listen()` binds to the port.
 5. Inside the listen callback, `PrinterPoller` and `JobScheduler` are instantiated. `scheduler.start()` is called first (subscribes to poller events), then `poller.start()` fires the first poll tick and starts the 15-second interval.
 6. The startup sweep (`sweepIdlePrinters`) is deferred until the poller emits `pollComplete` after its first tick. This ensures dispatch works from live printer state rather than stale DB values from before the last shutdown — preventing accidental dispatch to a printer that started printing while the server was down.
@@ -75,6 +75,7 @@ app.use('/api/printers', printersRouter);
 | Package | Version | Purpose |
 |---|---|---|
 | `express` | ^4.19.2 | HTTP server and routing |
+| `helmet` | ^8.2.0 | Security response headers (CSP, no `X-Powered-By`, etc.) |
 | `better-sqlite3` | ^9.6.0 | Synchronous SQLite driver |
 | `multer` | ^2.1.1 | Multipart file upload handling (CSV import + G-code upload) |
 | `papaparse` | ^5.4.1 | CSV parsing for printer import |
