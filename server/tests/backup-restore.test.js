@@ -4,8 +4,6 @@ const path     = require('path');
 const fs       = require('fs');
 const Database = require('better-sqlite3');
 
-const backupRouter = require('../routes/backup');
-
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
 // Restore prepares each table's INSERT eagerly, so the columns it names must exist even
@@ -43,7 +41,11 @@ function makeDb() {
   return db;
 }
 
+// backup.js builds its router at module scope, so a fresh module instance is loaded per
+// app to avoid stacking /restore handlers (and their DBs) across tests.
 function makeApp() {
+  let backupRouter;
+  jest.isolateModules(() => { backupRouter = require('../routes/backup'); });
   const app = express();
   app.use(express.json());
   app.use('/api/backup', backupRouter(makeDb()));
