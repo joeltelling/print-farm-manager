@@ -161,9 +161,9 @@ Printer responses now go through a serializer that drops `api_key` and adds a bo
 
 ### Changes
 - `server/printer-public.js` (new): `publicPrinter()` serializer that strips `api_key` and adds `has_api_key`.
-- `server/routes/printers.js`, `server/index.js`: route all printer responses through it; `PUT` keeps the stored key when none is supplied.
+- `server/routes/printers.js`, `server/routes/dashboard.js`, `server/index.js`: route all printer responses through it; `PUT` keeps the stored key when none is supplied.
 - `client/src/pages/PrinterDetail.jsx`: write-only key field.
-- `server/tests/printers-api-key.test.js` (new): responses omit `api_key`; blank `PUT` keeps the key; a new key updates it.
+- `server/tests/printers-api-key.test.js`, `server/tests/dashboard-api-key.test.js` (new): responses omit `api_key`; blank `PUT` keeps the key; a new key updates it; the dashboard payload omits the key.
 - `docs/api.md`: documented `has_api_key` and the write-only key.
 
 ---

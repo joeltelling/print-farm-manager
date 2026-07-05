@@ -596,7 +596,7 @@ Single endpoint that returns all data required by the TV dashboard in one call. 
 - `awaiting` — printers held (`is_held = 1`) in `FINISHED` or `IDLE` state, waiting for operator sign-off
 - `parts_today` — sum of `parts_per_plate` on `finished` jobs in the rolling 24-hour window (`finished_at >= now - 86400000`)
 
-`printers` is the same shape as `GET /api/printers` (includes `last_parts_per_plate`) plus `last_event_at` — the timestamp of the most recent `printer_events` row for that printer.
+`printers` is the same shape as `GET /api/printers` (includes `last_parts_per_plate`, omits `api_key`, includes `has_api_key`) plus `last_event_at` — the timestamp of the most recent `printer_events` row for that printer.
 
 `active_projects` includes only `status = 'active'` projects, each with a nested `parts` array ordered by `sort_order`, plus three computed stats fields:
 
