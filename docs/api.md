@@ -324,6 +324,8 @@ Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`.
 
 **`completed_qty` auto-status:** when `completed_qty` is included in the request body, `status` is recalculated server-side — `closed` if `completed_qty >= target_qty`, `open` otherwise. An explicit `status` field in the body is ignored when `completed_qty` is also present.
 
+**Reactivation:** if this update flips the part from `closed` back to `open` (e.g. raising `target_qty` above `completed_qty`) and the parent project's status is `completed`, the project is reactivated to `active` and the scheduler sweeps for idle printers immediately — same behavior as `POST /api/parts` and `POST /api/projects/:id/reactivate`.
+
 ### `PUT /api/parts/reorder`
 
 Sets `sort_order` for a list of parts in one transaction. Send the full ordered array of IDs — index position becomes the new `sort_order`.
@@ -401,6 +403,8 @@ Upload a G-code file and create a DB record. `Content-Type: multipart/form-data`
 - `ams_slot` (optional) — Bambu only
 
 Returns `201` with created G-code record. Returns `409` if a G-code for this `(part_id, printer_model)` combination already exists.
+
+A part only becomes a real dispatch candidate once it has at least one matching G-code — the scheduler's candidate query joins on `gcodes`. A successful upload triggers a scheduler sweep immediately, so an idle printer can pick up the part right away instead of waiting for a manual dispatch or the next printer status transition.
 
 ### `PUT /api/gcodes/:id`
 

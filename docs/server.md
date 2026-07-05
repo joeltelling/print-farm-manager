@@ -44,7 +44,7 @@ DELETE /api/notifications/:id       → notifications.dismiss() (inline handler)
 *      /api/printers                → server/routes/printers.js
 *      /api/projects                → server/routes/projects.js (mounted after scheduler exists — see below)
 *      /api/parts                   → server/routes/parts.js (mounted after scheduler exists — see below)
-*      /api/gcodes                  → server/routes/gcodes.js
+*      /api/gcodes                  → server/routes/gcodes.js (mounted after scheduler exists — see below)
 *      /api/jobs                    → server/routes/jobs.js
 *      /api/backup                  → server/routes/backup.js
 ```
@@ -70,7 +70,12 @@ const printersRouter = require('./routes/printers')(db);
 app.use('/api/printers', printersRouter);
 ```
 
-**`projects.js` and `parts.js` take an optional second `scheduler` argument** (`(db, scheduler = null) => router`), needed for `sweepIdlePrinters()` — `projects.js` on `POST /:id/reactivate`, `parts.js` on `POST /` when adding a part reactivates a completed project. `scheduler` is only constructed inside the `app.listen()` callback (it depends on `poller`, which is also constructed there), so both routers are mounted lazily inside that callback instead of at module load time:
+**`projects.js`, `parts.js`, and `gcodes.js` take an optional second `scheduler` argument** (`(db, scheduler = null) => router`), needed for `sweepIdlePrinters()`:
+- `projects.js` on `POST /:id/reactivate`
+- `parts.js` on `POST /` (adding a part) and `PUT /:id` (raising `target_qty` above `completed_qty`), whenever either reactivates a completed project
+- `gcodes.js` on `POST /upload` — a part only becomes a dispatch candidate once it has a matching G-code, so the sweep from reactivating the project alone isn't enough; the upload itself needs to trigger one too
+
+`scheduler` is only constructed inside the `app.listen()` callback (it depends on `poller`, which is also constructed there), so all three routers are mounted lazily inside that callback instead of at module load time:
 
 ```js
 app.listen(PORT, () => {
@@ -78,13 +83,14 @@ app.listen(PORT, () => {
   const scheduler = new JobScheduler(db, poller);
   app.use('/api/projects', require('./routes/projects')(db, scheduler));
   app.use('/api/parts',    require('./routes/parts')(db, scheduler));
+  app.use('/api/gcodes',   require('./routes/gcodes')(db, scheduler));
   // ...
 });
 ```
 
 Tests pass `null` (or omit the argument) for `scheduler`, so router unit tests never need a live scheduler/poller.
 
-Each route file that needs this pattern also declares its `express.Router()` at module scope, outside the exported factory — harmless in production (each module is `require()`d exactly once for the server's lifetime) but worth knowing if a test ever needs two independent instances of the same router with different `scheduler` mocks in one process: Node's `require()` cache means a second call to the factory reuses the same router, and only the first-registered handler for a given path actually runs. Use `jest.resetModules()` before each `require(...)` to force a fresh instance (see `server/tests/parts-reactivate-sweep.test.js`).
+Each route file that needs this pattern also declares its `express.Router()` at module scope, outside the exported factory — harmless in production (each module is `require()`d exactly once for the server's lifetime) but worth knowing if a test ever needs two independent instances of the same router with different `scheduler` mocks in one process: Node's `require()` cache means a second call to the factory reuses the same router, and only the first-registered handler for a given path actually runs. Use `jest.resetModules()` before each `require(...)` to force a fresh instance (see `server/tests/parts-reactivate-sweep.test.js`, `server/tests/gcodes-upload-sweep.test.js`).
 
 ## Dependencies
 

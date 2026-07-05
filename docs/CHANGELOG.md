@@ -10,16 +10,24 @@ Root cause: `POST /api/parts` never checked the parent project's status when ins
 
 Fixed both ends: `POST /api/parts` now reactivates a `completed` parent project the same way the PUT handler does, and `POST /api/projects/:id/reactivate` now also counts already-open parts with remaining qty (not just closed ones) so it can't wrongly report nothing-to-reopen in any similar situation.
 
-**Follow-up (PR review):** the initial version reactivated the project but never triggered a dispatch sweep — `POST /api/projects/:id/reactivate` calls `scheduler.sweepIdlePrinters()` after changing project status, but `POST /api/parts` didn't, so a printer already idle when the new part was added would sit unused until some later manual dispatch or unrelated status change. `parts.js` now takes an optional `scheduler` argument (same `(db, scheduler = null)` pattern already used by `projects.js`) and calls `sweepIdlePrinters()` right after reactivating. Since `scheduler` is only constructed inside the `app.listen()` callback, `parts.js` is now mounted there too (alongside `projects.js`) instead of at module load time.
+**Follow-up (PR review, round 1):** the initial version reactivated the project but never triggered a dispatch sweep — `POST /api/projects/:id/reactivate` calls `scheduler.sweepIdlePrinters()` after changing project status, but `POST /api/parts` didn't, so a printer already idle when the new part was added would sit unused until some later manual dispatch or unrelated status change. `parts.js` now takes an optional `scheduler` argument (same `(db, scheduler = null)` pattern already used by `projects.js`) and calls `sweepIdlePrinters()` right after reactivating. Since `scheduler` is only constructed inside the `app.listen()` callback, `parts.js` is now mounted there too (alongside `projects.js`) instead of at module load time.
+
+**Follow-up (PR review, round 2):** two more sweep gaps in the same family:
+- A brand-new part's sweep from `POST /api/parts` fires before any G-code exists for it — the scheduler's candidate query joins on `gcodes`, so a part with no G-code yet is never actually dispatchable regardless of the sweep. The real trigger point is the G-code upload, not the part creation. `gcodes.js` now also takes an optional `scheduler` argument and sweeps after a successful `POST /upload`, so an idle printer picks up the part as soon as it has a matching G-code rather than waiting for a manual dispatch or later printer status transition. `gcodes.js` is now mounted inside `app.listen()` too.
+- `PUT /api/parts/:id` has its own, older reactivation branch (raising `target_qty` above `completed_qty` flips a `closed` part back to `open`, and reopens a `completed` parent project) that had the exact same sweep gap the first round fixed for `POST /api/parts`. It now calls `scheduler.sweepIdlePrinters()` too.
+
+Verified live against a running instance for all three trigger points: adding a part, uploading its first G-code, and reopening an existing closed part via raised `target_qty` — each produces a fresh `[scheduler] Sweeping N eligible printer(s)...` log line immediately, distinct from the periodic 15s poll-driven sweep.
 
 ### Changes
-- `server/routes/parts.js`: `POST /` reactivates the parent project if it's `completed`, and now also sweeps for idle printers via an optional `scheduler` argument.
-- `server/index.js`: `partsRouter` moved from module-load-time instantiation to inside the `app.listen()` callback, passed `scheduler` like `projectsRouter` already was.
+- `server/routes/parts.js`: `POST /` reactivates the parent project if it's `completed` and sweeps; `PUT /:id` now also sweeps when its existing reactivation branch fires.
+- `server/routes/gcodes.js`: `POST /upload` sweeps for idle printers after a successful upload, via an optional `scheduler` argument.
+- `server/index.js`: `partsRouter` and `gcodesRouter` moved from module-load-time instantiation to inside the `app.listen()` callback, passed `scheduler` like `projectsRouter` already was.
 - `server/routes/projects.js`: `POST /:id/reactivate` also checks for open parts with `completed_qty < target_qty`.
 - `server/tests/parts-sort.test.js`, `server/tests/projects-status.test.js`: added coverage for the reactivation logic.
-- `server/tests/parts-reactivate-sweep.test.js` (new): covers the `sweepIdlePrinters()` call specifically, in its own file — `server/routes/parts.js` declares its router at module scope like every other route file, so a test needing multiple independently-mocked `scheduler` instances in one process has to force fresh modules via `jest.resetModules()` rather than reusing the router `require()`'s cache would otherwise hand back.
-- `docs/server.md`: documented the `(db, scheduler)` factory pattern, why `projects.js`/`parts.js` are mounted inside `app.listen()`, and the module-scoped-router testing gotcha.
-- `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`.
+- `server/tests/parts-reactivate-sweep.test.js` (new, extended): covers `sweepIdlePrinters()` for both `POST /` and `PUT /:id` in `parts.js`.
+- `server/tests/gcodes-upload-sweep.test.js` (new): covers `sweepIdlePrinters()` for `POST /api/gcodes/upload`.
+- `docs/server.md`: documented the `(db, scheduler)` factory pattern (now covering `gcodes.js` too), why these routers are mounted inside `app.listen()`, and the module-scoped-router testing gotcha.
+- `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`.
 
 ---
 

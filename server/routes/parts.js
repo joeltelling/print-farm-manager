@@ -211,6 +211,7 @@ module.exports = (db, scheduler = null) => {
       if (project && project.status === 'completed') {
         db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
         console.log(`[parts] Project ${project.id} reopened — part ${part.id} target_qty raised above completed_qty`);
+        if (scheduler) scheduler.sweepIdlePrinters();
       }
     }
 
