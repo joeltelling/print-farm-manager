@@ -400,6 +400,8 @@ Upload a G-code file and create a DB record. `Content-Type: multipart/form-data`
 
 Returns `201` with created G-code record. Returns `409` if a G-code for this `(part_id, printer_model)` combination already exists.
 
+The uploaded filename is reduced to its basename before it is stored, so any path components in the client-supplied name are discarded. Maximum upload size is 500 MB, one file per request.
+
 ### `PUT /api/gcodes/:id`
 
 Update `est_print_secs` and/or `material_grams` for a G-code. Omitting a field leaves it unchanged; sending `null` or `""` clears it.

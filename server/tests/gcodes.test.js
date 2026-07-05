@@ -189,6 +189,31 @@ describe('POST /api/gcodes/upload', () => {
     uploadedPath = res.body.filepath;
   });
 
+  test('sanitises a traversal filename so the upload stays inside GCODE_DIR', async () => {
+    // Dedicated model so the (part_id, printer_model) pair is unique among these tests.
+    db.prepare(`INSERT OR IGNORE INTO printer_models VALUES ('trav', 'Traversal', 'prusa')`).run();
+    const tmpFile = makeTempGcode('traversal_src.bgcode');
+
+    const res = await request(app)
+      .post('/api/gcodes/upload')
+      .attach('file', tmpFile, { filename: '../../../pwned.bgcode' })
+      .field('part_id', '1')
+      .field('parts_per_plate', '4')
+      .field('printer_model', 'trav');
+
+    fs.unlinkSync(tmpFile);
+
+    expect(res.status).toBe(201);
+    expect(res.body.filepath).not.toMatch(/[\\/]/);
+    expect(res.body.filepath).toMatch(/pwned\.bgcode$/);
+
+    const stored = path.join(GCODE_DIR, res.body.filepath);
+    expect(fs.existsSync(stored)).toBe(true);
+    expect(fs.existsSync(path.resolve(GCODE_DIR, '..', '..', '..', 'pwned.bgcode'))).toBe(false);
+
+    uploadedPath = stored;
+  });
+
   test('returns 400 when no file is attached', async () => {
     const res = await request(app)
       .post('/api/gcodes/upload')

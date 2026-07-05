@@ -47,6 +47,15 @@ With the repo now public, printer manufacturers and community members may want t
 Covers: the four-function driver interface with exact return shapes and error contracts (`UPLOAD_CONFLICT`, never-throw `getStatus`, resolve-only-when-started `uploadAndPrint`), the `printer` row fields drivers may use, the canonical status table with what the poller/scheduler do on each transition, the no-double-credit rules for `FINISHED` (reconnect flapping, cold start, STOPPED vs ERROR disambiguation, synthesized FINISHED), the stateless vs persistent-connection patterns with named reference drivers, a six-step registration checklist (including every `Settings.jsx` touch point), a real-hardware test matrix, and dev-without-a-fleet tips.
 
 No code changes. `docs/README.md` gained an index row; `CONTRIBUTING.md`'s Printer Drivers section now links to the guide.
+## 2026-07-05 - G-code upload: strip path components from the stored filename
+
+The upload handler named the on-disk file `Date.now() + '_' + file.originalname`, where `file.originalname` comes from the client and multer does not strip path separators. A filename such as `../../../x.bgcode` therefore wrote outside `GCODE_DIR`. The timestamp prefix only cancelled one `..` segment, so an extra `../` still escaped.
+
+The filename callback now runs `file.originalname` through `path.basename` before use, so the write always stays inside `GCODE_DIR`. Added a multer `limits` of 500 MB and a single file per request.
+
+### Changes
+- `server/routes/gcodes.js`: `path.basename(file.originalname)` in the multer filename callback; added `limits: { fileSize, files }`.
+- `server/tests/gcodes.test.js`: added a test that a traversal filename is stored inside `GCODE_DIR` and does not escape it.
 
 ---
 
