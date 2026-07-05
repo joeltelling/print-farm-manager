@@ -80,9 +80,18 @@ module.exports = (db) => {
         return res.status(400).json({ error: 'Unrecognised backup format' });
       }
 
-      // Write gcode files to disk before the DB transaction
-      for (const [basename, b64] of Object.entries(backup.gcode_files || {})) {
-        fs.writeFileSync(path.join(GCODE_DIR, basename), Buffer.from(b64, 'base64'));
+      // Write gcode files to disk before the DB transaction. Keys come from the uploaded
+      // backup; a genuine one only ever holds bare filenames, so reject anything that
+      // isn't one (path separators, "..") before writing rather than after.
+      const gcodeFileEntries = Object.entries(backup.gcode_files || {});
+      const gcodeRoot = path.resolve(GCODE_DIR);
+      for (const [name] of gcodeFileEntries) {
+        if (path.basename(name) !== name || path.dirname(path.resolve(gcodeRoot, name)) !== gcodeRoot) {
+          return res.status(400).json({ error: `Invalid gcode filename in backup: ${name}` });
+        }
+      }
+      for (const [name, b64] of gcodeFileEntries) {
+        fs.writeFileSync(path.join(gcodeRoot, name), Buffer.from(b64, 'base64'));
       }
 
       const restore = db.transaction(() => {

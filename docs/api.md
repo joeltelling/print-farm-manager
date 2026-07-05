@@ -586,6 +586,8 @@ Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes all 5 
 
 Replaces all farm data from a previously exported backup file. Clears the DB and rewrites all tables; gcode files are written to `server/gcode/`. Since `filepath` stores only the filename, no path rewriting is needed — the restored DB works correctly on any machine.
 
+Each `gcode_files` key must be a bare filename. A key containing a path separator or resolving outside `server/gcode/` is rejected with `400` before any data is written.
+
 **Request:** `multipart/form-data` with field `file` — the `.json` backup file. Max 500 MB.
 
 ```json

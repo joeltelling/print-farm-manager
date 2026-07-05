@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-07-05 - Backup restore: reject path traversal in gcode_files
+
+`POST /api/backup/restore` wrote each `gcode_files` entry with `fs.writeFileSync(path.join(GCODE_DIR, key))`, where `key` is taken straight from the uploaded JSON. A key such as `../../server/scheduler.js` resolved outside `GCODE_DIR`, letting an uploaded backup overwrite arbitrary files with attacker-chosen contents. The DB insert side already reduced `filepath` to its basename, but the file write did not.
+
+Restore now validates every `gcode_files` key before writing anything and returns `400` if a key is not a bare filename (contains a path separator or resolves outside `GCODE_DIR`). A genuine export only ever uses bare filenames, so this rejects tampered bundles without affecting real ones.
+
+### Changes
+- `server/routes/backup.js`: validate `gcode_files` keys against `GCODE_DIR` before the write loop; reject traversal with `400`.
+- `server/tests/backup-restore.test.js` (new): traversal key rejected, `..` rejected, normal filename written inside `GCODE_DIR`.
+- `docs/api.md`: noted the restore filename constraint.
+
+---
+
 ## 2026-07-04 — CI: gate Docker publishing on the test suite
 
 `.github/workflows/docker-publish.yml` could previously publish an image even if `server/tests/` was failing — nothing ran the suite. Added a `test` job (`npm ci` + `npm test` on `ubuntu-24.04`) that both `build` and the PR-only `pr_test_build` job now declare as a dependency (`needs: test`), so a red test suite blocks any image build, published or not. `merge` remains gated transitively via `needs: build`.
