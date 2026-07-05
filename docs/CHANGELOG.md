@@ -18,16 +18,26 @@ Fixed both ends: `POST /api/parts` now reactivates a `completed` parent project 
 
 Verified live against a running instance for all three trigger points: adding a part, uploading its first G-code, and reopening an existing closed part via raised `target_qty` — each produces a fresh `[scheduler] Sweeping N eligible printer(s)...` log line immediately, distinct from the periodic 15s poll-driven sweep.
 
+**Follow-up (PR review, round 3):**
+- The Add Part flow in the client (`addPart()` in `Projects.jsx`) only called `fetchDetail(selectedId)` after `POST /api/parts`, not `fetchProjects()` — unlike every other status-changing action in this file, which refreshes both. Since adding a part can now flip the parent project from `completed` back to `active` server-side, the cached projects list kept showing "Completed" (with the Re-activate action still available) until some unrelated refresh happened. Fixed to refresh both, matching the existing pattern.
+- The `POST /api/parts` wording in `docs/api.md` and the route comment in `parts.js` said the new part gets "picked up" / is "schedulable immediately" — true of the *project* reactivation, not the *part*, since (per round 2) the scheduler can't dispatch a part with no G-code yet. Reworded both to say the project reactivates immediately, but the part itself only becomes dispatchable once G-code is uploaded for it. The `PUT /api/parts/:id` reopen-existing-part wording was left as-is — that part necessarily already has G-code from before it was closed, so an immediate sweep genuinely can dispatch it.
+
+**Follow-up (re-audit of the whole flow):** re-traced the client end to end and found the identical list-staleness bug on a second, sibling code path: `saveQtys()` (the Details panel's Have/Need editor, used to raise `target_qty` and reopen a closed part) shares the same `onRefresh` prop as `addPart()`, and that prop only ever called `fetchDetail`, never `fetchProjects` — same gap, just reached via a different UI action. Fixed the shared `onRefresh` to refresh both. Also found `docs/web-app.md`'s Projects page section was stale independent of this PR — it described the header status control as a single "context-sensitive action button" and claimed `completed` has "no button", when it's actually a dropdown (`STATUS_MENU` in `Projects.jsx`) with a `Re-activate` option for `completed`, plus `Delete project`/`Mark complete` options the doc didn't mention at all for the other statuses. Corrected, and expanded the Quantities/Upload G-code/Add Part descriptions to reflect the reactivation and sweep behavior from all three rounds above.
+
+Verified all three trigger points again, this time driven through the actual browser UI rather than the API directly: adding a part, uploading its first G-code, and raising `target_qty` via the Details panel's Save button on a `completed` project. Each correctly reactivated the project, produced a fresh sweep log line, and updated the projects list immediately without a manual reload.
+
 ### Changes
-- `server/routes/parts.js`: `POST /` reactivates the parent project if it's `completed` and sweeps; `PUT /:id` now also sweeps when its existing reactivation branch fires.
+- `server/routes/parts.js`: `POST /` reactivates the parent project if it's `completed` and sweeps; `PUT /:id` now also sweeps when its existing reactivation branch fires; reworded the `POST /` comment for accuracy.
 - `server/routes/gcodes.js`: `POST /upload` sweeps for idle printers after a successful upload, via an optional `scheduler` argument.
 - `server/index.js`: `partsRouter` and `gcodesRouter` moved from module-load-time instantiation to inside the `app.listen()` callback, passed `scheduler` like `projectsRouter` already was.
 - `server/routes/projects.js`: `POST /:id/reactivate` also checks for open parts with `completed_qty < target_qty`.
+- `client/src/pages/Projects.jsx`: `addPart()` refreshes `fetchProjects()` alongside `fetchDetail()`; `PartDetailsPanel`'s shared `onRefresh` prop (used by `saveQtys()`, `saveName()`, `deleteGcode()`) does too.
 - `server/tests/parts-sort.test.js`, `server/tests/projects-status.test.js`: added coverage for the reactivation logic.
 - `server/tests/parts-reactivate-sweep.test.js` (new, extended): covers `sweepIdlePrinters()` for both `POST /` and `PUT /:id` in `parts.js`.
 - `server/tests/gcodes-upload-sweep.test.js` (new): covers `sweepIdlePrinters()` for `POST /api/gcodes/upload`.
 - `docs/server.md`: documented the `(db, scheduler)` factory pattern (now covering `gcodes.js` too), why these routers are mounted inside `app.listen()`, and the module-scoped-router testing gotcha.
-- `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`.
+- `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
+- `docs/web-app.md`: corrected the Projects page header/status-dropdown description (was stale independent of this PR) and expanded the Quantities/Upload G-code/Add Part descriptions to match the reactivation and sweep behavior.
 
 ---
 

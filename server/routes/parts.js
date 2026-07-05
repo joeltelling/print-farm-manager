@@ -137,11 +137,14 @@ module.exports = (db, scheduler = null) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(project_id, name, parseInt(target_qty, 10), sortOrder, now, now);
 
-    // A new part always starts open and unmet — reopen a completed project so it's
-    // schedulable immediately, same as reopening an existing closed part does (see PUT /:id).
-    // Also sweep for idle printers right away, matching POST /:id/reactivate — without
-    // this, a printer that's already idle when the part is added has no trigger to pick
-    // up the new work until some later manual dispatch or unrelated status change.
+    // A new part always starts open and unmet — reopen a completed project immediately
+    // so it's active by the time the operator uploads G-code for the part, rather than
+    // requiring a separate manual reactivate step. This new part itself is NOT yet
+    // dispatchable — the scheduler's candidate query joins on gcodes, and a brand-new
+    // part has none — so the sweep here can't pick it up. It's still worth doing: other
+    // parts already in this project (or elsewhere) may become dispatchable now that the
+    // project is active again. The part becomes dispatchable, and gets its own sweep,
+    // once G-code is uploaded for it (see POST /api/gcodes/upload).
     const project = db.prepare('SELECT id, status FROM projects WHERE id = ?').get(project_id);
     if (project && project.status === 'completed') {
       db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);

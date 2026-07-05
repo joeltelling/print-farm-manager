@@ -231,21 +231,21 @@ Primary operator screen for setting up and launching print runs.
 - "New Project" inline form: name + optional description → `POST /api/projects`
 
 **Detail view:**
-- Header with project name (click ✎ to rename inline → `PUT /api/projects/:id { name }`), status badge, and context-sensitive action button:
-  - `draft` → "Activate" → `PUT /api/projects/:id { status: 'active' }` + `POST /api/scheduler/dispatch`
-  - `active` → "Pause" → `PUT /api/projects/:id { status: 'paused' }`
-  - `paused` → "Resume" → same as Activate
-  - `completed` → no button
+- Header with project name (click ✎ to rename inline → `PUT /api/projects/:id { name }`), status badge, and a status dropdown with context-sensitive options:
+  - `draft` → "Activate" (`PUT /api/projects/:id { status: 'active' }` + `POST /api/scheduler/dispatch`) or "Delete project" (`DELETE /api/projects/:id`)
+  - `active` → "Pause project" (`PUT /api/projects/:id { status: 'paused' }`) or "Mark complete" (`POST /api/projects/:id/complete`)
+  - `paused` → "Resume project" (same as Activate) or "Mark complete"
+  - `completed` → "Re-activate" (`POST /api/projects/:id/reactivate`) — reopens any closed parts that still have remaining qty and sweeps for idle printers immediately. Shows a warning toast instead of transitioning if every part is already at target qty (`nothing_to_reopen` in the response).
 - **Parts list:** each row shows name (with ▲/▼ priority buttons), a 3-segment progress bar, a fixed-width status badge (Open/Closed), and a Details toggle. A red `×` delete button appears at the far right — clicking it confirms then calls `DELETE /api/parts/:id`, which cascades to all jobs and G-code files for that part. Deletion is blocked (with an alert) if the part has an active uploading or printing job. All other editing is behind the Details button.
 
   **Progress bar segments:** green = `completed_qty` (confirmed done); blue = `active_qty` (parts currently printing across all active jobs); dark background = not yet started. When active jobs push the total past `target_qty`, the bar rescales against `max(target, completed + active)` and an amber tick marks the target. The count label shows `976 +24 printing / 1000` when jobs are active.
 - **▲/▼ ordering buttons:** move a part up or down in dispatch priority. Updates `sort_order` via `PUT /api/parts/reorder`. Optimistic — local state reorders immediately.
 - **Details panel** (per part, toggle with "Details" button): four sections:
   - *Part Name* — current name displayed with a ✎ pencil button. Click to edit inline; Enter or blur saves, Escape cancels → `PUT /api/parts/:id { name }`
-  - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status.
+  - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status. If raising Need above Have reopens a part that was `closed` and the parent project had already `completed`, the project is reactivated to `active` server-side and swept for idle printers immediately — the same behavior as the Add Part form below and the header's Re-activate action. Since this part necessarily already has G-code from before it was closed, the sweep can genuinely dispatch it right away.
   - *G-code Files* — lists each uploaded file with filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
-  - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline.
-- **Add Part form:** name + target quantity → `POST /api/parts`
+  - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline. A successful upload also triggers a scheduler sweep — this is what actually makes a brand-new part (added via the form below) dispatchable, since the scheduler requires a matching G-code.
+- **Add Part form:** name + target quantity → `POST /api/parts`. If the parent project had `completed`, it's reactivated to `active` immediately — no separate manual reactivate step needed. The new part itself isn't dispatchable yet, though: it has no G-code, so uploading one (above) is what actually triggers dispatch.
 
 ## Jobs Page
 

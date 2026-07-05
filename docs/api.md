@@ -316,7 +316,7 @@ Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirro
 
 Required: `project_id`, `name`, `target_qty`.
 
-A new part always starts `open` with `completed_qty: 0`. If the parent project's status is `completed`, it's reactivated to `active` immediately (same as `POST /api/projects/:id/reactivate`) and the scheduler sweeps for idle printers right away, so the new part is picked up without a separate manual reactivate step.
+A new part always starts `open` with `completed_qty: 0`. If the parent project's status is `completed`, it's reactivated to `active` immediately (same as `POST /api/projects/:id/reactivate`) without a separate manual reactivate step. A scheduler sweep also runs at this point, but it can't dispatch the new part itself yet — the scheduler's candidate query requires a matching G-code, and a brand-new part has none. The part becomes an actual dispatch candidate once G-code is uploaded for it (see `POST /api/gcodes/upload`, which triggers its own sweep).
 
 ### `PUT /api/parts/:id`
 
