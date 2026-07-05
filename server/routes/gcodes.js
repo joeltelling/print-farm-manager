@@ -8,8 +8,8 @@ const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
 const storage = multer.diskStorage({
   destination: GCODE_DIR,
-  // path.basename strips any directory components from the client-supplied name so a
-  // filename like "../../x" cannot write outside GCODE_DIR.
+  // Busboy already reduces multipart filenames to their basename (preservePath off), so
+  // this path.basename is defense-in-depth rather than relying on that transitive default.
   filename: (_req, file, cb) => cb(null, Date.now() + '_' + path.basename(file.originalname)),
 });
 const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
