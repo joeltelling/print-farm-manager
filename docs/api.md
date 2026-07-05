@@ -30,7 +30,7 @@ Returns all active printers (`is_active = 1`) ordered by name.
     "id": 1,
     "name": "MK4S_01",
     "ip": "192.168.1.100",
-    "api_key": "aK3jR7xQ2pLm9vN",
+    "has_api_key": true,
     "group_name": "MK4S Farm",
     "type": "prusa",
     "model": "mk4s",
@@ -44,6 +44,8 @@ Returns all active printers (`is_active = 1`) ordered by name.
   }
 ]
 ```
+
+The stored `api_key` is never returned by any endpoint. Responses include `has_api_key` (a boolean) instead. `api_key` is accepted on write only.
 
 `job_name`, `job_progress`, and `job_time_remaining` are non-null only while `status = "PRINTING"`, and are cleared to `null` when the printer leaves that state.
 
@@ -101,6 +103,8 @@ Returns `201` with the created printer object. Returns `409` if `name` already e
 ### `PUT /api/printers/:id`
 
 Partial update — only fields provided are changed (uses `COALESCE`). All fields from POST are accepted, plus `is_held` (`0` or `1`).
+
+`api_key` is write-only: send it to set a new key; omit it or send an empty string to keep the stored key unchanged.
 
 Returns `404` if not found, `409` on name conflict.
 

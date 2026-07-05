@@ -19,6 +19,7 @@ const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
 const events         = require('./events');
 const backup         = require('./backup');
+const { publicPrinter } = require('./printer-public');
 
 const printersRouter     = require('./routes/printers')(db);
 const partsRouter        = require('./routes/parts')(db);
@@ -147,7 +148,7 @@ const server = app.listen(PORT, () => {
     const updated = db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id);
     console.log(`[server] ${printer.name} recommissioned — dispatching...`);
     scheduler.scheduleForPrinter(updated);
-    res.json(updated);
+    res.json(publicPrinter(updated));
   });
 
   // Set a held printer ready — releases hold and dispatches next job to it.
@@ -338,7 +339,7 @@ const server = app.listen(PORT, () => {
     const updated = db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id);
     console.log(`[server] ${printer.name} set ready by operator — dispatching...`);
     scheduler.scheduleForPrinter(updated);
-    res.json(updated);
+    res.json(publicPrinter(updated));
   });
 });
 

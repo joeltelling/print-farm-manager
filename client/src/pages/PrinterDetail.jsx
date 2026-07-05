@@ -185,7 +185,7 @@ export default function PrinterDetail() {
   function startEditDetails() {
     setDetailsDraft({
       ip: printer.ip || '',
-      api_key: printer.api_key || '',
+      api_key: '', // write-only: blank keeps the stored key, which the API never returns
       serial_number: printer.serial_number || '',
       group_name: printer.group_name || '',
       model: printer.model || '',
@@ -208,22 +208,25 @@ export default function PrinterDetail() {
     setSavingDetails(true);
     setDetailsError(null);
     try {
+      const body = {
+        ip,
+        serial_number: detailsDraft.serial_number.trim(),
+        group_name: detailsDraft.group_name.trim() || null,
+        model: detailsDraft.model,
+        loaded_material: detailsDraft.loaded_material.trim() || null,
+        loaded_color: detailsDraft.loaded_color.trim() || null,
+      };
+      // Only send the key when the operator typed a new one; blank leaves it unchanged.
+      const newKey = detailsDraft.api_key.trim();
+      if (newKey) body.api_key = newKey;
       const res = await fetch(`/api/printers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ip,
-          api_key: detailsDraft.api_key.trim(),
-          serial_number: detailsDraft.serial_number.trim(),
-          group_name: detailsDraft.group_name.trim() || null,
-          model: detailsDraft.model,
-          loaded_material: detailsDraft.loaded_material.trim() || null,
-          loaded_color: detailsDraft.loaded_color.trim() || null,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setDetailsError(body.error || `Save failed (${res.status})`);
+        const errBody = await res.json().catch(() => ({}));
+        setDetailsError(errBody.error || `Save failed (${res.status})`);
         return;
       }
       setPrinter(await res.json());
@@ -356,6 +359,9 @@ export default function PrinterDetail() {
                 <label style={detailLabelStyle}>
                   API Key
                   <input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={printer.has_api_key ? 'Leave blank to keep current key' : ''}
                     value={detailsDraft.api_key}
                     onChange={e => setDetailsDraft(d => ({ ...d, api_key: e.target.value }))}
                     disabled={savingDetails}
