@@ -9,6 +9,11 @@ echo ============================================================
 echo.
 
 echo [1/4] Pulling latest code from GitHub...
+rem npm install rewrites package-lock.json when the local npm version differs
+rem from the one that generated it. That drift blocks git pull the next time
+rem the lockfile changes upstream. This machine never has intentional local
+rem changes, so discard lockfile drift before pulling.
+git checkout -- package-lock.json client/package-lock.json 2>nul
 git pull
 if %errorlevel% neq 0 (
     echo.

@@ -38,6 +38,16 @@ Verified all three trigger points again, this time driven through the actual bro
 - `docs/server.md`: documented the `(db, scheduler)` factory pattern (now covering `gcodes.js` too), why these routers are mounted inside `app.listen()`, and the module-scoped-router testing gotcha.
 - `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
 - `docs/web-app.md`: corrected the Projects page header/status-dropdown description (was stale independent of this PR) and expanded the Quantities/Upload G-code/Add Part descriptions to match the reactivation and sweep behavior.
+## 2026-07-06 - update.bat: discard package-lock.json drift before pulling
+
+`update.bat` runs `npm install`, which rewrites `package-lock.json` when the farm machine's npm version differs from the one that generated the lockfile. That local drift blocked `git pull` ("Your local changes ... would be overwritten by merge") the first time the lockfile changed upstream (the 2026-07-03 js-yaml bump). Hit on a real farm machine 2026-07-06.
+
+### Changes
+- `update.bat`: step 1 now runs `git checkout -- package-lock.json client/package-lock.json` before `git pull`. The farm checkout is a deploy target with no intentional local changes, so discarding lockfile drift is always safe there.
+- `docs/installation.md`: documented the discard step and the manual `git restore package-lock.json` recovery for older copies of the script.
+
+---
+
 ## 2026-07-04 — Farm Backup: fix missing printer models, filament library, and settings
 
 `GET /api/backup` never included `printer_models`, `filament_types`, `filament_colors`, or `settings` — only `printers`, `projects`, `parts`, `gcodes`, `jobs`, and `printer_events`. Restoring a backup brought printers back with a `model` referencing a `printer_models` row that no longer existed, so those printers couldn't be edited or matched by new Add Printer submissions until the operator manually re-added every model (and re-entered the farm's filament library and farm name/dispatch batch size) by hand.
