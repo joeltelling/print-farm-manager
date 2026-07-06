@@ -45,7 +45,7 @@ Returns all active printers (`is_active = 1`) ordered by name.
 ]
 ```
 
-The stored `api_key` is never returned by any endpoint. Responses include `has_api_key` (a boolean) instead. `api_key` is accepted on write only.
+The stored `api_key` is not returned by the printer or dashboard endpoints. Responses include `has_api_key` (a boolean) instead, and `api_key` is accepted on write only. The one exception is the farm backup export (`GET /api/backup`), which includes full printer rows so a restore can recreate working credentials — see that endpoint for the caveat.
 
 `job_name`, `job_progress`, and `job_time_remaining` are non-null only while `status = "PRINTING"`, and are cleared to `null` when the printer leaves that state.
 
@@ -629,6 +629,8 @@ All error responses use this shape:
 ### `GET /api/backup`
 
 Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
+
+The exported printer rows include the stored `api_key` for each printer, so a restore can bring the fleet back with working credentials. Unlike the printer and dashboard endpoints, this file contains those keys in plaintext — treat a downloaded backup as secret and store it accordingly.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
