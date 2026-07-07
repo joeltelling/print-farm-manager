@@ -18,6 +18,7 @@ npm run dev
 | File | What it covers |
 |---|---|
 | [docs/installation.md](installation.md) | Windows install guide — prerequisites, setup, auto-start with PM2, updating, troubleshooting |
+| [docs/packaging.md](packaging.md) | Windows portable `.exe` bundle — one-folder, double-click distribution; how to build it and what it contains |
 | [docs/server.md](server.md) | Express entry point, scheduler wiring, port config, route mounting, startup sequence |
 | [docs/database.md](database.md) | SQLite schema — all tables, column types, conventions, migrations |
 | [docs/poller.md](poller.md) | Printer polling loop, concurrency model, event emissions |

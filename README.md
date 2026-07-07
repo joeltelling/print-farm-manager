@@ -181,6 +181,16 @@ npm start
 
 Open `http://localhost:3000` in a browser, or replace `localhost` with the machine's LAN IP to access it from any device on the network.
 
+### Option C — Windows portable (.exe)
+
+For a Windows farm machine with nothing installed, build a one-folder portable bundle and hand it over: the operator unzips it and double-clicks **Print Farm Manager.exe** — no Node.js, no `npm install`, no build tools, no Docker.
+
+```bash
+npm run build:portable   # run on a Windows Node 22 machine → dist/portable/PrintFarmManager/
+```
+
+Zip that folder to distribute. See **[docs/packaging.md](docs/packaging.md)** for what it contains, how it works, and its limitations (foreground console window, unsigned exe).
+
 ---
 
 ## CSV Import Format

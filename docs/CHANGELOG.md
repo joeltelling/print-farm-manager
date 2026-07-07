@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-07-07 — Windows portable `.exe` bundle + better-sqlite3 12.x
+
+Added a one-folder, double-click Windows distribution so an operator can run Print Farm Manager without installing Node.js, cloning the repo, running `npm install`, installing Visual Studio Build Tools, or using Docker. `npm run build:portable` produces `dist/portable/PrintFarmManager/` containing a pinned portable Node runtime, the production `node_modules` (patched, with the prebuilt native binary), the built client, and a **Print Farm Manager.exe** launcher. The launcher is a Node Single Executable Application (SEA) that spawns the bundled Node against `server/index.js` and opens the browser to `http://localhost:3000`. This is an additional distribution target — the `npm run dev` and Docker paths are unchanged.
+
+**Dependency bump — `better-sqlite3` 9.6.0 → 12.11.1.** The pinned 9.6.0 predates Node 22 and had no Node 22 Windows prebuilt binary, so `npm install` fell back to compiling from source and failed on any machine without a C++ toolchain — which also blocked building the bundle. 12.x ships a prebuilt Node 22 win-x64 binary (ABI 127), so installs no longer require Visual Studio Build Tools on the documented stack. The full 387-test suite passes unchanged on 12.x. Docker still compiles from source (its build stage is unaffected), but the build tools are now optional for a normal bare-metal install.
+
+### Changes
+- `package.json`: `better-sqlite3` → `^12.11.1`; added `build:portable` script and `postject` devDependency.
+- `scripts/build-portable.js` (new): downloads the matching Node runtime, does a staged production install (mirrors the Dockerfile's install-then-prune so the sdcp patch applies), assembles `app/`, and builds the SEA launcher exe.
+- `scripts/launcher.js`, `scripts/sea-config.json` (new): the embedded launcher and its SEA config.
+- `docs/packaging.md` (new): what the bundle contains, how to build it, known limitations (foreground console, unsigned exe, no auto-start, Windows x64 only).
+- `docs/installation.md`: native-dependency section now notes prebuilt binaries are used on Node 22 (build tools are a source-compile fallback) and points to the portable bundle.
+- `docs/README.md`: added the packaging doc to the index.
+
+### Verified
+- Full test suite: 24 suites, 387 tests pass on `better-sqlite3@12.11.1`.
+- Built bundle boots via both the bundled `node.exe` and the SEA `.exe`: `/api/health` responds, the React client is served, DB-backed routes (`/api/printers`, `/api/dashboard`) return valid JSON, and the poller/scheduler/backup start. The prebuilt `better_sqlite3.node` loads and queries with no compiler present.
+
 ## 2026-07-06 - update.bat: discard package-lock.json drift before pulling
 
 `update.bat` runs `npm install`, which rewrites `package-lock.json` when the farm machine's npm version differs from the one that generated the lockfile. That local drift blocked `git pull` ("Your local changes ... would be overwritten by merge") the first time the lockfile changed upstream (the 2026-07-03 js-yaml bump). Hit on a real farm machine 2026-07-06.

@@ -8,3 +8,4 @@ dist/
 .claude/
 *.docx
 server/data/backups/
+scripts/sea-prep.blob
