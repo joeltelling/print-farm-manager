@@ -177,6 +177,12 @@ function mapStatus(s, conn) {
     return 'PRINTING';
   }
 
+  // Neither field was recognized — e.g. a stray partial frame merged into the cache
+  // before deviceState/state were ever populated. Don't fall through to IDLE (that
+  // would clear a hold and offer the printer up for dispatch on garbled telemetry);
+  // report UNKNOWN so the printer is held until real state arrives.
+  if (state == null && device == null) return 'UNKNOWN';
+
   // Device is idle. Surface the just-ended print's outcome once, then IDLE.
   if (!conn.finishReported) {
     if (state === 2) { conn.finishReported = true; return 'FINISHED'; }

@@ -180,7 +180,10 @@ export default function PrinterDetail() {
     }
   }
 
-  const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper', 'creality']);
+  // Types that do not use an API key at all (field hidden). Creality is deliberately
+  // excluded — its local API accepts an optional Authorization: Bearer <api_key>, so the
+  // field is shown here but never required (this edit form has no `required` inputs).
+  const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper']);
 
   function startEditDetails() {
     setDetailsDraft({
@@ -354,7 +357,7 @@ export default function PrinterDetail() {
               </label>
               {!NO_API_KEY_TYPES.has(printer.type) && (
                 <label style={detailLabelStyle}>
-                  API Key
+                  {printer.type === 'creality' ? 'API Key (optional)' : 'API Key'}
                   <input
                     value={detailsDraft.api_key}
                     onChange={e => setDetailsDraft(d => ({ ...d, api_key: e.target.value }))}

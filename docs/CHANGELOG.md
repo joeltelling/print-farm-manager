@@ -141,6 +141,18 @@ Rewrote `mapStatus` to key on `deviceState` and emit the terminal outcome exactl
 - `server/drivers/creality.js`: `mapStatus` rewritten around `deviceState` with a one-shot terminal-outcome latch; `path.basename` for `currentFile`; `DEBUG_CREALITY` raw logging.
 - `server/tests/creality-driver.test.js`: rewritten to the `deviceState` model with regressions for both latching bugs.
 
+### Update (2026-07-07) — PR review: optional API key, safer UNKNOWN fallback
+Two issues raised in review, plus a hardware confirmation on a K1 Max fleet (firmware 1.3.x):
+
+- **[P2] No way to configure a Creality API key.** `creality` was in the client's `NO_API_KEY_TYPES` in both `Settings.jsx` (Add Printer) and `PrinterDetail.jsx` (edit), which hid the API key input entirely — but `server/drivers/creality.js` sends it as `Authorization: Bearer` when set (matching `CrealityPrint::set_auth()` in OrcaSlicer's reference implementation), and some Creality Print / Nebula setups require one. Fixed by removing `creality` from the client-side set in both forms so the field is shown, and making it optional there (`required={type !== 'creality'}`, labelled "API Key (optional)") rather than required. The server route's `NO_API_KEY_TYPES` already treated it as optional — only the client was blocking entry.
+- **[P3] `mapStatus` fell through to `IDLE` instead of `UNKNOWN` on unrecognized telemetry.** `getStatus` returns `OFFLINE` before calling `mapStatus` whenever the cache is empty, so the documented `!s → UNKNOWN` guard at the top of `mapStatus` was dead code — the real gap was a partial frame merging into the cache with neither `deviceState` nor `state` populated (e.g. a stray frame arriving before the connect-time `reqPrintObjects` response), which fell through every branch to the `IDLE` default. Fixed with an explicit `state == null && device == null → UNKNOWN` check before the idle/outcome branch, so garbled telemetry holds the printer instead of silently offering it up for dispatch.
+
+### Changes (review fixes)
+- `server/drivers/creality.js`: explicit `UNKNOWN` fallback in `mapStatus` for missing `deviceState`/`state`.
+- `client/src/pages/Settings.jsx`, `client/src/pages/PrinterDetail.jsx`: `creality` removed from the client `NO_API_KEY_TYPES` set; API key field shown and optional (not required) for Creality; credential hint updated.
+- `docs/installation.md`: credentials table updated to reflect the optional API key.
+- `server/tests/creality-driver.test.js`: added a regression for the `UNKNOWN` fallback (the `Authorization: Bearer` driver behavior was already covered).
+
 ---
 
 ## 2026-07-06 - update.bat: discard package-lock.json drift before pulling

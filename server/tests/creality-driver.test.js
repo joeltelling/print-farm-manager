@@ -167,6 +167,17 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('ERROR');
   });
 
+  // Regression (PR review): a stray partial frame that merges into the cache before
+  // deviceState/state are ever populated (e.g. arrives before the connect-time
+  // reqPrintObjects response) must not fall through to IDLE — that would clear a hold
+  // and offer a printer with no known status up for dispatch. It must report UNKNOWN so
+  // the printer is held until real telemetry arrives.
+  test('UNKNOWN when neither state nor deviceState is present in the cache', async () => {
+    const printer = makePrinter();
+    await drive(printer, { fan: 50 }); // unrelated field only — no state/deviceState yet
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
+  });
+
   test('merges partial telemetry frames across pushes', async () => {
     const printer = makePrinter();
     const ws = await drive(printer, { deviceState: 1, state: 0, printFileName: 'part.gcode' });
