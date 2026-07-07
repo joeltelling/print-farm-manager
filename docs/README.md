@@ -1,6 +1,6 @@
 # Print Farm Manager — Documentation
 
-A locally-hosted web app for managing a multi-brand 3D printer farm. Replaces manual USB job distribution with centralized status monitoring and automated job dispatch. Supports Prusa (PrusaLink), Elegoo Centauri (SDCP), Bambu (MQTT), Klipper (Moonraker), and OctoPrint printers.
+A locally-hosted web app for managing a multi-brand 3D printer farm. Replaces manual USB job distribution with centralized status monitoring and automated job dispatch. Supports Prusa (PrusaLink), Elegoo Centauri (SDCP), Bambu (MQTT), Klipper (Moonraker), OctoPrint, and Creality (K/Ender series) printers.
 
 ## Quick Start
 
@@ -86,5 +86,6 @@ print-farm-manager/
 | 6B | Complete | Elegoo Centauri Carbon SDCP driver via `sdcp` package; UI and route changes for non-Prusa brands |
 | 6C | Complete | Klipper (Moonraker) driver — Voron and all Klipper-firmware printers via plain HTTP on port 7125 |
 | 6D | Complete | OctoPrint driver — any OctoPrint/OctoPi-managed printer via OctoPrint's own REST API |
+| 6E | Complete | Creality driver — K1/K2/Ender-3 V3/Hi series via Creality's local WebSocket (:9999) + HTTP upload API |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for full product spec.

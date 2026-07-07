@@ -33,6 +33,7 @@ No cloud. No subscriptions. No vendor lock-in.
 | **Bambu Lab** | MQTT + FTPS | X1C, P1S, and other Bambu models (with AMS slot selection) |
 | **Klipper** | Moonraker REST API | Voron and any Klipper-firmware printer |
 | **OctoPrint** | OctoPrint REST API | Any printer running OctoPrint / OctoPi |
+| **Creality** | Creality local API (WebSocket :9999 + HTTP upload) | K1, K1C, K1 Max, K2, Ender-3 V3, Hi series (stock firmware) |
 
 ---
 
@@ -47,6 +48,7 @@ No cloud. No subscriptions. No vendor lock-in.
 | [mqtt](https://github.com/mqttjs/MQTT.js) | MQTT over TLS for Bambu printer communication |
 | [basic-ftp](https://github.com/patrickjuchli/basic-ftp) | FTPS file transfer to Bambu printers |
 | [sdcp](https://github.com/blakejrobinson/sdcp) | WebSocket protocol driver for Elegoo SDCP printers |
+| [ws](https://github.com/websockets/ws) | WebSocket client for the Creality local API (port 9999) |
 | [multer](https://github.com/expressjs/multer) | G-code file upload handling |
 | [papaparse](https://www.papaparse.com) | CSV fleet import |
 | [form-data](https://github.com/form-data/form-data) | Multipart upload for Klipper/Moonraker |
@@ -204,7 +206,7 @@ The fastest way to add a large fleet is via CSV import on the Settings page.
 |---|---|---|
 | `name` | Yes | `MK4S_01` |
 | `ip` | Yes | `192.168.1.100` |
-| `type` | Yes | `prusa` / `elegoo-centauri` / `elegoo-centauri2` / `bambu` / `klipper` / `octoprint` |
+| `type` | Yes | `prusa` / `elegoo-centauri` / `elegoo-centauri2` / `bambu` / `klipper` / `octoprint` / `creality` |
 | `api_key` | Prusa and OctoPrint (API key), Bambu and Centauri Carbon 2 (LAN access code) | `aK3jR7xQ2pLm9vN` |
 | `serial_number` | Bambu and Centauri Carbon 2 | `01S00C123456789` |
 | `group` | No | `MK4S Farm` |

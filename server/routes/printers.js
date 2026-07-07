@@ -7,7 +7,7 @@ const events = require('../events');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper']); // types that store no api_key
+const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper', 'creality']); // types that store no api_key
 
 // Normalize a raw model string to a canonical ID (lowercase, trimmed).
 // Validation against the registered model list is done via DB query at each call site.

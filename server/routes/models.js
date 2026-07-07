@@ -2,7 +2,7 @@ const express = require('express');
 
 // Connectors are code-level — each requires a driver implementation.
 // This list is the authoritative set of valid connector values.
-const VALID_CONNECTORS = ['prusa', 'elegoo-centauri', 'elegoo-centauri2', 'bambu', 'klipper', 'octoprint'];
+const VALID_CONNECTORS = ['prusa', 'elegoo-centauri', 'elegoo-centauri2', 'bambu', 'klipper', 'octoprint', 'creality'];
 
 module.exports = (db) => {
   const router = express.Router();

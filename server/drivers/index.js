@@ -13,6 +13,7 @@ const LOADERS = {
   'bambu':            () => require('./bambu'),
   'klipper':          () => require('./klipper'),
   'octoprint':        () => require('./octoprint'),
+  'creality':         () => require('./creality'),
 };
 
 function getDriver(type) {

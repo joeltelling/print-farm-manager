@@ -105,6 +105,29 @@ CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not i
 ### Changes
 - `update.bat`: step 1 now runs `git checkout -- package-lock.json client/package-lock.json` before `git pull`. The farm checkout is a deploy target with no intentional local changes, so discarding lockfile drift is always safe there.
 - `docs/installation.md`: documented the discard step and the manual `git restore package-lock.json` recovery for older copies of the script.
+## 2026-07-06 — Creality connector (K1 / K2 / Ender-3 V3 / Hi series)
+
+Added a driver for Creality's local API — the same one Creality Print and OrcaSlicer's "Creality Print" host speak on the LAN, used by the K1, K1C, K1 Max, K2, Ender-3 V3, and Hi series. This is a distinct connector from Klipper (Moonraker): although these printers run Klipper internally, their stock firmware exposes Creality's own WebSocket + HTTP API rather than an open Moonraker port.
+
+Connection model mirrors Bambu (persistent push, not request/response polling): the printer streams partial telemetry frames over a WebSocket on **port 9999**, which the driver merges into a per-printer cached state and answers `getStatus()` from instantly. `OFFLINE` is reported until the first frame after (re)connect, and the cache is dropped on socket close so stale state is never replayed.
+
+- **Status** — native `state` codes map as `1 → PRINTING`, `5 → PAUSED`, `4 → STOPPED` (Stop pressed at the printer), `0 → IDLE` (or `PRINTING` when a file is loaded and heating/preparing). A nonzero `err.errcode` maps to `ERROR`; `withSelfTest` 1–99 (self-test/calibration) counts as `PRINTING`. Creality has no dedicated "finished" state, so `FINISHED` is synthesized when the machine returns to idle with a file still loaded at 100% progress (the OctoPrint pattern) — this stays true until the next print starts, so the poller fires it exactly once.
+- **Upload & print** — HTTP multipart `POST /upload/<name>` (field `file`; raw-body posts make some firmware prepend HTTP headers into the saved G-code, so multipart is required), then a WebSocket `{"method":"set","params":{"opGcodeFile":"printprt:/usr/data/printer_data/gcodes/<name>"}}` trigger. `uploadAndPrint` resolves only after the printer confirms it is printing; a 409 on upload raises `UPLOAD_CONFLICT`. The LAN API is unauthenticated by default; an optional `api_key`, if set, is sent as `Authorization: Bearer`.
+- **Cancel** — WebSocket `{"method":"set","params":{"stop":1}}`.
+
+### Changes
+- `server/drivers/creality.js` (new): the driver.
+- `server/drivers/index.js`: registered the `creality` loader.
+- `server/routes/printers.js`: `creality` added to `NO_API_KEY_TYPES`.
+- `client/src/pages/Settings.jsx`: Add Printer form — connector option, label, no-API-key handling, credential hint, name placeholder.
+- `server/tests/creality-driver.test.js` (new): state-mapping, upload (incl. `UPLOAD_CONFLICT`), cancel, and registry coverage with `ws`/`axios` mocked.
+- `package.json`: added `ws` dependency (WebSocket client — run `npm install`).
+- Docs: `multi-brand.md` connector table + Creality notes; `README.md` supported-printers/tech-stack/CSV rows; `installation.md` credentials table.
+
+### New dependency
+```bash
+npm install ws
+```
 
 ---
 

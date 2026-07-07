@@ -71,8 +71,11 @@ Each connector family covers all printer models that share the same protocol:
 | **Elegoo SDCP** | SDCP WebSocket V3.0.0 (port 3030) | Centauri Carbon, Centauri Carbon 2 |
 | **Klipper (Moonraker)** | Moonraker REST API (HTTP polling, port 7125) | Voron and any Klipper-firmware printer |
 | **OctoPrint** | OctoPrint REST API (HTTP polling, operator-supplied port) | Any printer running OctoPrint/OctoPi |
+| **Creality** | Creality local API (WebSocket push, port 9999) + HTTP multipart upload | K1, K1C, K1 Max, K2, Ender-3 V3, Hi series (stock firmware) |
 
-The `printer.type` DB column stores the connector identifier (`prusa`, `elegoo-centauri`, `bambu`, `klipper`, or `octoprint`). The model column (`centauri-carbon`, etc.) is used only for display grouping in the UI.
+The `printer.type` DB column stores the connector identifier (`prusa`, `elegoo-centauri`, `bambu`, `klipper`, `octoprint`, or `creality`). The model column (`centauri-carbon`, etc.) is used only for display grouping in the UI.
+
+> **Creality vs Klipper.** The K-series run Klipper internally, but their stock firmware exposes Creality's own WebSocket + HTTP API, not an open Moonraker port. Use the `creality` connector for stock printers; the `klipper` connector only fits a K-series that has been rooted to expose Moonraker on 7125.
 
 ---
 
@@ -165,6 +168,22 @@ OctoPrint is a plain HTTP REST API (no persistent connection, `X-Api-Key` auth),
 ### FINISHED detection
 
 Unlike PrusaLink (`FINISHED` state) or Moonraker (`complete` state), OctoPrint has no persistent "just completed" flag — after a print finishes it reports the same `operational` flags as a printer that never printed. The driver detects completion by combining flags with the job endpoint: not printing/paused, a job file is still loaded, and `progress.completion === 100`. This condition clears itself once the next print starts (completion resets), and `poller.js` only reacts to it once since it only fires `statusChange` on a DB status transition — so no additional per-printer state needs to live in the driver.
+
+## Creality Notes
+
+Creality's local API is a hybrid, so `server/drivers/creality.js` follows the Bambu persistent-connection pattern for status and a stateless HTTP call for upload.
+
+- **Status (WebSocket push, port 9999).** The printer streams *partial* JSON telemetry frames — each frame carries only what changed — over `ws://<ip>:9999/`. The driver holds one socket per printer in a module-level Map, merges every frame into a cached state object, and answers `getStatus()` from cache. A `reqPrintObjects` request is sent on connect (to prime the cache) and every 10s (as a keepalive). `OFFLINE` is returned until the first frame arrives after (re)connect, and the cache is cleared on socket close so stale pre-disconnect state is never replayed as a false `FINISHED`.
+- **State mapping.** Native `state` codes: `1 → PRINTING`, `5 → PAUSED`, `4 → STOPPED` (Stop pressed at the printer — distinct from a fault), `0 → IDLE` when no file is loaded, or `PRINTING` when a file is loaded below 100% (heating/preparing). `err.errcode ≠ 0 → ERROR`; `withSelfTest` in 1–99 (self-test/calibration) → `PRINTING`. Progress is `printProgress` (`dProgress` fallback), remaining time is `printLeftTime` (seconds), current file is `printFileName` (timestamp prefix stripped).
+- **Synthesized FINISHED.** Creality reports no dedicated "just finished" state — after a print it returns to idle with `printFileName` still loaded and `printProgress` at 100. `FINISHED` is synthesized from that condition (`state ≠ 1`), which stays true until the next print resets progress/filename, so `poller.js` fires it exactly once (same approach as OctoPrint).
+- **Upload + print.** `POST http://<ip>/upload/<url-encoded-name>` as multipart (`file` field). Raw-body uploads make some firmware prepend the HTTP headers into the saved G-code (OrcaSlicer issue #8128), so multipart is required. The print is then triggered over the WebSocket with `{"method":"set","params":{"opGcodeFile":"printprt:/usr/data/printer_data/gcodes/<name>"}}`. `uploadAndPrint` resolves only after the printer confirms it is printing (polls the cache for up to 20s); a 409 raises `UPLOAD_CONFLICT`. The LAN API is unauthenticated by default — an optional `api_key`, if set, is sent as `Authorization: Bearer`.
+- **Cancel.** `{"method":"set","params":{"stop":1}}` over the WebSocket.
+
+### External references
+
+- [OrcaSlicer `CrealityPrint.cpp`](https://github.com/OrcaSlicer/OrcaSlicer/blob/main/src/slic3r/Utils/CrealityPrint.cpp) — upload endpoint + `opGcodeFile` trigger (authoritative)
+- [OrcaSlicer issue #2103](https://github.com/OrcaSlicer/OrcaSlicer/issues/2103) — upload/print flow and curl example
+- [3dg1luk43/ha_creality_ws](https://github.com/3dg1luk43/ha_creality_ws) — state codes and telemetry field names
 
 ## G-Code Filename Parsing
 
