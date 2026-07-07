@@ -2,6 +2,42 @@
 
 ---
 
+## 2026-07-07 — Reliability hardening (Tier 1): crash resilience, graceful shutdown, persisted alerts
+
+A pass over the server's failure modes. The theme: one bad thing should not take the whole farm down, a restart should not lose operator context, and a wedged process should be detectable.
+
+**1. Global handlers no longer crash-amplify.** `unhandledRejection` previously called `process.exit(1)` — so a single rejected promise (a flaky printer request, a driver hiccup) killed polling for all 50+ printers. It now logs and continues. `uncaughtException` still exits non-zero (the process is in an unknown state) but first runs a clean shutdown.
+
+**2. Graceful shutdown.** `SIGINT`/`SIGTERM` (and `uncaughtException`) now stop the poller, tear down all persistent printer connections, close the DB, and stop accepting HTTP connections before exiting — instead of dying mid-operation on every PM2 restart / `docker stop` / `update.bat`. A 5s failsafe forces exit if a connection lingers.
+
+**3. Operator notifications persist across restart.** Recoverable alerts (held printer with a missing G-code, stale-job auto-cancel, upload-failed-after-retries) were an in-memory array lost on restart — so after a crash the operator saw held printers with no explanation of why. They're now stored in a new `notifications` table. `notifications.init(db)` is called at startup; the store falls back to in-memory when no DB is wired (unit tests). The API response shape (`{ id, message, timestamp }`) is unchanged.
+
+**4. Persistent printer connections are torn down on removal.** Bambu/Elegoo drivers hold a per-printer MQTT/WebSocket client with a reconnect loop. `dropConnection` existed but was never called and never exported, so decommissioning or deleting a printer leaked its socket + reconnect timer forever. The driver registry now exposes `dropConnection(printer)` (called on delete and every decommission path) and `closeAllConnections()` (called on shutdown); each stateful driver exports `dropConnection` + a new `closeAll`.
+
+**5. Deeper health check.** `GET /api/health` now runs `SELECT 1` and reports the age of the last completed poll — returning `503` when the DB is unreachable or the poll loop has been stale for >60s, so PM2/Docker can restart a soft failure. New fields: `db`, `last_poll_at`, `poll_age_ms`.
+
+**6. Global JSON error handler.** An uncaught throw in any route now returns a clean `{ error }` response (matching the API error shape) instead of Express's default HTML 500. Covers the DB-heavy inline handlers (`set-ready`, `set-ready-batch`, `recommission`), which are synchronous, so Express routes their throws here.
+
+### Changes
+- `server/index.js`: resilient `unhandledRejection`/`uncaughtException` handlers; `SIGINT`/`SIGTERM` graceful shutdown (`shutdown()`); `notifications.init(db)`; deepened `/api/health`; global Express error handler; poller/scheduler/server hoisted so shutdown can reach them.
+- `server/notifications.js`: DB-backed via `init(db)`, in-memory fallback retained; `list()` aliases `created_at`→`timestamp` to preserve the API shape.
+- `server/db.js`: new additive `notifications` table (`CREATE TABLE IF NOT EXISTS`).
+- `server/poller.js`: tracks `lastPollAt` (epoch ms of last completed tick) for the health check.
+- `server/drivers/index.js`: memoizes loaded drivers; adds `dropConnection(printer)` and `closeAllConnections()`.
+- `server/drivers/bambu.js`, `elegoo-centauri.js`, `elegoo-centauri2.js`: export `dropConnection`; add `closeAll()`.
+- `server/routes/printers.js`: call `drivers.dropConnection(printer)` on delete and every decommission path.
+- `server/tests/notifications.test.js` (new): DB persistence incl. survives-restart round trip + in-memory fallback.
+- `server/tests/drivers-registry.test.js` (new): `getDriver` memoization/unknown-type; `dropConnection`/`closeAllConnections` dispatch.
+
+### Verified
+- Full suite: 26 suites, 397 tests pass (was 24/387).
+- Live: booted the server and confirmed `/api/health` reports `db: ok` + `last_poll_at` + `poll_age_ms`; wrote a notification from a separate process and read it back through `GET /api/notifications` (cross-process persistence). Graceful shutdown verified by code path — fires on real console Ctrl+C, PM2 `SIGINT`/`SIGTERM`, and `docker stop` (Git Bash can't inject a console Ctrl+C to a background process on Windows).
+
+### Follow-ups (not in this change)
+- `set-ready`'s multi-write credit sequence is not wrapped in a transaction, so a mid-sequence throw could leave a partial credit. Throws there are very unlikely (simple synchronous SQLite on validated ints), but wrapping the DB work in `db.transaction()` would make it atomic. Left out to avoid restructuring the delicate credit logic in a reliability-only pass.
+
+---
+
 ## 2026-07-06 - update.bat: discard package-lock.json drift before pulling
 
 `update.bat` runs `npm install`, which rewrites `package-lock.json` when the farm machine's npm version differs from the one that generated the lockfile. That local drift blocked `git pull` ("Your local changes ... would be overwritten by merge") the first time the lockfile changed upstream (the 2026-07-03 js-yaml bump). Hit on a real farm machine 2026-07-06.

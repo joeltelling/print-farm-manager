@@ -8,6 +8,7 @@ class PrinterPoller extends EventEmitter {
     super();
     this.db = db;
     this.timer = null;
+    this.lastPollAt = null; // epoch ms of the last completed tick — surfaced by /api/health
   }
 
   start() {
@@ -25,6 +26,7 @@ class PrinterPoller extends EventEmitter {
 
   async _tick() {
     if (process.env.DEMO_MODE === 'true') {
+      this.lastPollAt = Date.now();
       this.emit('pollComplete');
       return;
     }
@@ -33,7 +35,10 @@ class PrinterPoller extends EventEmitter {
       .prepare('SELECT * FROM printers WHERE is_active = 1')
       .all();
 
-    if (printers.length === 0) return;
+    if (printers.length === 0) {
+      this.lastPollAt = Date.now();
+      return;
+    }
 
     const results = await Promise.allSettled(
       printers.map((printer) => this._pollPrinter(printer))
@@ -45,6 +50,7 @@ class PrinterPoller extends EventEmitter {
       }
     });
 
+    this.lastPollAt = Date.now();
     this.emit('pollComplete');
   }
 

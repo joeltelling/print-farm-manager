@@ -227,4 +227,9 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// Tear down every live SDCP WebSocket connection — called on graceful shutdown.
+function closeAll() {
+  for (const id of [...connections.keys()]) dropConnection(id);
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, dropConnection, closeAll };

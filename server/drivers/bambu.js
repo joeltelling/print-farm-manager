@@ -382,4 +382,10 @@ async function checkIfPrinting(printer) {
   return status === 'PRINTING' || status === 'PAUSED';
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile };
+// Tear down every live MQTT connection — called on graceful shutdown so the
+// process exits cleanly instead of being held open by reconnect timers.
+function closeAll() {
+  for (const id of [...connections.keys()]) dropConnection(id);
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile, dropConnection, closeAll };

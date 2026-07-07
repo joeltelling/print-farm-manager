@@ -111,6 +111,10 @@ poller.start();   // begins polling immediately
 poller.stop();    // clears the interval (for clean shutdown / tests)
 ```
 
+## Liveness
+
+`poller.lastPollAt` holds the epoch-ms timestamp of the last completed tick (set on every path, including the no-printers and demo-mode early returns). `GET /api/health` reads it to detect a wedged poll loop — if the last tick is more than 60s old, health returns `503` so PM2/Docker can restart the process. `poller.stop()` is called by the server's graceful-shutdown handler (`SIGINT`/`SIGTERM`).
+
 ## Dependencies
 
 | Package | Purpose |
