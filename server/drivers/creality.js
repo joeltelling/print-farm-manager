@@ -26,6 +26,7 @@
 const WebSocket = require('ws');
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 const FormData = require('form-data');
 
 const WS_PORT = 9999;
@@ -64,7 +65,7 @@ function safeSend(ws, obj) {
 function getOrCreateConnection(printer) {
   if (connections.has(printer.id)) return connections.get(printer.id);
 
-  const conn = { ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false };
+  const conn = { ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, finishReported: false };
   connections.set(printer.id, conn);
   connect(printer, conn);
   return conn;
@@ -141,35 +142,46 @@ async function waitForData(conn, timeoutMs) {
 
 // Maps the printer's cached telemetry to a canonical status string.
 //
-// Native `state` codes (github.com/3dg1luk43/ha_creality_ws):
-//   0 = standby / processing (idle when no file loaded; heating/preparing when one is)
-//   1 = printing
-//   4 = stopped (user pressed Stop on the printer)
-//   5 = paused
-// Other signals: err.errcode (nonzero = fault), withSelfTest (1–99 = self-test/calibration),
-// printProgress (percent), printFileName (loaded file).
+// Field semantics, confirmed by capturing a full print lifecycle on real K1 firmware:
+//   deviceState — the LIVE device status: 0 = idle, non-zero = busy (printing, heating,
+//                 leveling, self-test). This is the reliable "is it running" signal.
+//   state       — a print phase / last-outcome code, NOT the live status. It reads 0 or 1
+//                 while a print runs, then LATCHES at 2 (completed) or 4 (stopped) and
+//                 stays there while the device sits idle, until the next print. 5 = paused.
+//   printProgress / printFileName / printJobTime — LAST-PRINT RESIDUALS: the K1 leaves them
+//                 populated (progress=100, filename set) after a print ends. Never infer
+//                 completion from them, or the driver latches FINISHED forever.
+//   printId     — observed empty ("") even mid-print on this firmware; not a usable signal.
 //
-// Creality has no dedicated "just finished" state — after a successful print the machine
-// returns to state 0 while leaving printFileName loaded and printProgress at 100. We
-// synthesize FINISHED from that (the OctoPrint-style pattern): the condition stays true
-// until the next print starts (which resets progress and filename), so poller.js reacts to
-// it exactly once. state 4 (Stop) maps to STOPPED, distinct from a firmware fault (ERROR).
-function mapStatus(s) {
+// Because `state` latches its terminal outcome while idle, reporting FINISHED/STOPPED
+// straight from it would never return the printer to IDLE. Instead we emit the terminal
+// outcome exactly ONCE, on the busy→idle edge, then report IDLE — crediting fires on the
+// single transition (poller reacts to transitions) and the printer returns to service.
+// `conn.finishReported` carries that one-shot latch and is reset whenever the device is
+// busy again (a new or continuing print).
+function mapStatus(s, conn) {
   if (!s) return 'UNKNOWN';
 
   const errcode = (s.err && typeof s.err === 'object') ? num(s.err.errcode) : 0;
-  const state = num(s.state);
-  const selfTest = num(s.withSelfTest) || 0;
-  const progress = num(s.printProgress ?? s.dProgress);
-  const hasFile = !!s.printFileName;
-
   if (errcode) return 'ERROR';
+
+  const state  = num(s.state);
+  const device = num(s.deviceState);
+
+  // Paused is reported by `state` regardless of deviceState.
   if (state === 5) return 'PAUSED';
-  if (state === 4) return 'STOPPED';                       // Stop pressed at the printer
-  if (hasFile && progress != null && progress >= 100 && state !== 1) return 'FINISHED';
-  if (selfTest >= 1 && selfTest <= 99) return 'PRINTING';  // self-test / calibration — occupied
-  if (state === 1) return 'PRINTING';
-  if (hasFile) return 'PRINTING';                          // state 0 + file loaded → heating/preparing
+
+  // Busy: actively printing / heating / leveling / self-testing.
+  if (device != null && device !== 0) {
+    conn.finishReported = false;
+    return 'PRINTING';
+  }
+
+  // Device is idle. Surface the just-ended print's outcome once, then IDLE.
+  if (!conn.finishReported) {
+    if (state === 2) { conn.finishReported = true; return 'FINISHED'; }
+    if (state === 4) { conn.finishReported = true; return 'STOPPED'; }
+  }
   return 'IDLE';
 }
 
@@ -187,19 +199,23 @@ async function getStatus(printer) {
     }
 
     const s = conn.latest;
-    const status = mapStatus(s);
+    const status = mapStatus(s, conn);
 
-    if (status === 'UNKNOWN' && process.env.DEBUG_CREALITY) {
-      console.log(`[creality] ${printer.name} unmapped telemetry: ${JSON.stringify(s)}`);
+    if (process.env.DEBUG_CREALITY) {
+      console.log(`[creality] ${printer.name} raw: state=${s.state} deviceState=${s.deviceState} ` +
+        `printId="${s.printId ?? ''}" progress=${s.printProgress} leftTime=${s.printLeftTime} ` +
+        `selfTest=${s.withSelfTest} errcode=${s.err?.errcode} → ${status}`);
     }
 
     const active = status === 'PRINTING' || status === 'PAUSED';
     const progress = active ? num(s.printProgress ?? s.dProgress) : null;
     const timeRemaining = active ? num(s.printLeftTime) : null;
 
-    // Strip the multer-prepended timestamp prefix (e.g. "1712345678901_benchy.gcode").
+    // printFileName is reported as a full on-printer path on the K-series
+    // (e.g. "/usr/data/printer_data/gcodes/benchy.gcode") and may carry the
+    // multer-prepended timestamp prefix — reduce to a clean display name.
     const rawFile = active ? (s.printFileName || null) : null;
-    const currentFile = rawFile ? rawFile.replace(/^\d+_/, '') : null;
+    const currentFile = rawFile ? path.basename(rawFile).replace(/^\d+_/, '') : null;
 
     return { status, progress, timeRemaining, currentFile };
   } catch (_) {
