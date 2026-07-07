@@ -111,7 +111,7 @@ Added a driver for Creality's local API — the same one Creality Print and Orca
 
 Connection model mirrors Bambu (persistent push, not request/response polling): the printer streams partial telemetry frames over a WebSocket on **port 9999**, which the driver merges into a per-printer cached state and answers `getStatus()` from instantly. `OFFLINE` is reported until the first frame after (re)connect, and the cache is dropped on socket close so stale state is never replayed.
 
-- **Status** — native `state` codes map as `1 → PRINTING`, `5 → PAUSED`, `4 → STOPPED` (Stop pressed at the printer), `0 → IDLE` (or `PRINTING` when a file is loaded and heating/preparing). A nonzero `err.errcode` maps to `ERROR`; `withSelfTest` 1–99 (self-test/calibration) counts as `PRINTING`. Creality has no dedicated "finished" state, so `FINISHED` is synthesized when the machine returns to idle with a file still loaded at 100% progress (the OctoPrint pattern) — this stays true until the next print starts, so the poller fires it exactly once.
+- **Status** *(mapping corrected after real-K1 validation — see the update note below)* — live status comes from `deviceState` (`0` = idle, non-zero = busy: printing / heating / self-test); `state === 5` → `PAUSED`; a nonzero `err.errcode` → `ERROR`. The terminal outcome (`FINISHED` / `STOPPED`, read from `state` `2`/`4`) is emitted **exactly once** on the busy→idle edge, then the driver reports `IDLE` — so the part is credited on that single transition and the printer returns to service.
 - **Upload & print** — HTTP multipart `POST /upload/<name>` (field `file`; raw-body posts make some firmware prepend HTTP headers into the saved G-code, so multipart is required), then a WebSocket `{"method":"set","params":{"opGcodeFile":"printprt:/usr/data/printer_data/gcodes/<name>"}}` trigger. `uploadAndPrint` resolves only after the printer confirms it is printing; a 409 on upload raises `UPLOAD_CONFLICT`. The LAN API is unauthenticated by default; an optional `api_key`, if set, is sent as `Authorization: Bearer`.
 - **Cancel** — WebSocket `{"method":"set","params":{"stop":1}}`.
 
@@ -128,6 +128,28 @@ Connection model mirrors Bambu (persistent push, not request/response polling): 
 ```bash
 npm install ws
 ```
+
+### Update (2026-07-07) — validated on a real Creality K1, status mapping corrected
+Ran the connector against a real K1 and the initial state mapping was wrong. Captured telemetry disproved the reverse-engineered field assumptions:
+- `printProgress` / `printFileName` are **last-print residuals** — the K1 leaves them at `100` / the previous filename after a print ends. Synthesizing `FINISHED` from `progress >= 100` latched the printer on `FINISHED` forever, so it never returned to `IDLE` (the reported bug).
+- `state` is a **phase/outcome latch, not live status**: it reads `0`/`1` while running, then latches `2` (completed) / `4` (stopped) while the device sits idle. Keying status off it latched the same way. `printId` was empty even mid-print, so it is unusable.
+- The reliable live signal is **`deviceState`** (`0` = idle, non-zero = busy).
+
+Rewrote `mapStatus` to key on `deviceState` and emit the terminal outcome exactly once on the busy→idle edge (then `IDLE`), so crediting still fires on the single transition and the printer returns to service. Confirmed in `Fleet.jsx` that a held printer reporting `IDLE` still shows the operator confirmation buttons. Also: `currentFile` now uses `path.basename` (the K1 reports a full on-printer path), plus a `DEBUG_CREALITY` raw-telemetry log line for future firmware work. Hardware result: holds `PRINTING` through the self-test/heating window (where the old mapping falsely flipped to `IDLE`), and stale terminal residuals resolve to `IDLE`.
+
+### Changes (update)
+- `server/drivers/creality.js`: `mapStatus` rewritten around `deviceState` with a one-shot terminal-outcome latch; `path.basename` for `currentFile`; `DEBUG_CREALITY` raw logging.
+- `server/tests/creality-driver.test.js`: rewritten to the `deviceState` model with regressions for both latching bugs.
+
+---
+
+## 2026-07-06 - update.bat: discard package-lock.json drift before pulling
+
+`update.bat` runs `npm install`, which rewrites `package-lock.json` when the farm machine's npm version differs from the one that generated the lockfile. That local drift blocked `git pull` ("Your local changes ... would be overwritten by merge") the first time the lockfile changed upstream (the 2026-07-03 js-yaml bump). Hit on a real farm machine 2026-07-06.
+
+### Changes
+- `update.bat`: step 1 now runs `git checkout -- package-lock.json client/package-lock.json` before `git pull`. The farm checkout is a deploy target with no intentional local changes, so discarding lockfile drift is always safe there.
+- `docs/installation.md`: documented the discard step and the manual `git restore package-lock.json` recovery for older copies of the script.
 
 ---
 

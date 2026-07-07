@@ -206,4 +206,4 @@ Automated tests with mocked networks catch mapping bugs; they cannot catch a pro
 | `bambu.js` | Persistent (MQTT) | Connection Map, cached push state, partial-update merging, STOPPED/ERROR disambiguation, optional `deleteFile` |
 | `elegoo-centauri.js` | Persistent (WebSocket) | Request/response correlation over a socket |
 | `elegoo-centauri2.js` | Persistent (MQTT) + chunked HTTP upload | Mixed-transport protocols |
-| `creality.js` | Persistent (WebSocket push) + HTTP upload | Merging partial push frames; synthesized FINISHED; mixed transport (WS control, HTTP upload) |
+| `creality.js` | Persistent (WebSocket push) + HTTP upload | Merging partial push frames; distinguishing live status from residual/latched fields; emitting a terminal outcome once on a busy→idle edge; mixed transport (WS control, HTTP upload) |
