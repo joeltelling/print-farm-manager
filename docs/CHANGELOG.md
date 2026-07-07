@@ -2,6 +2,19 @@
 
 ---
 
+## 2026-07-06: rewrite CLAUDE.md as an operating manual; add Claude Code project skills
+
+CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not implement Phase 2+ features"), which stopped being true over a year of shipped phases ago. Rewritten as a full operating manual so agent-assisted work (Joel's or a contributor's) follows the house process without rediscovering it: server, driver, and client conventions as exact idioms, a sync-pairs table of code that must change together, named failure modes with the rule that prevents each, per-deliverable quality checklists, and escalation rules for ambiguous cases. Also adds three project skills under `.claude/skills/`, which is now tracked (personal `.claude` settings remain ignored).
+
+### Changes
+- `CLAUDE.md`: full rewrite.
+- `.claude/skills/ship/SKILL.md`: finishing pass for any change (tests, sync pairs, docs, changelog entry, dash check, commit style).
+- `.claude/skills/add-connector/SKILL.md`: end-to-end printer driver scaffold: contract, six registration touchpoints, mocked test minimums, honest hardware-validation reporting.
+- `.claude/skills/pr-review/SKILL.md`: community PR review process (adjacent-code audit, part-count scrutiny, driver contract checks, severity-tagged findings).
+- `.gitignore`: `.claude/` narrowed to `.claude/*` with `!.claude/skills/` so skills ship with the repo.
+
+---
+
 ## 2026-07-06 - update.bat: discard package-lock.json drift before pulling
 
 `update.bat` runs `npm install`, which rewrites `package-lock.json` when the farm machine's npm version differs from the one that generated the lockfile. That local drift blocked `git pull` ("Your local changes ... would be overwritten by merge") the first time the lockfile changed upstream (the 2026-07-03 js-yaml bump). Hit on a real farm machine 2026-07-06.
