@@ -75,6 +75,7 @@ git clone https://github.com/joeltelling/print-farm-manager.git
 cd print-farm-manager
 npm install
 cd client && npm install && cd ..
+npm run build
 npm run dev
 ```
 

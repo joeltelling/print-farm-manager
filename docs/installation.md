@@ -362,10 +362,12 @@ Alternatively, copy the entire `print-farm-manager` folder to the new machine �
 ### Windows — using update.bat
 
 Double-click `update.bat` in the repo root (or run it from a Command Prompt). It will:
-1. `git pull` the latest code
+1. Discard any local `package-lock.json` drift, then `git pull` the latest code
 2. `npm install` server dependencies
 3. Build the React client (`client/npm install` + `npm run build`)
 4. Kill the process on port 3000 and start the server in the foreground
+
+The lockfile discard in step 1 exists because `npm install` rewrites `package-lock.json` whenever the machine's npm version differs from the one that generated it. Without the discard, `git pull` fails with "Your local changes to the following files would be overwritten by merge: package-lock.json" the next time the lockfile changes upstream. If you hit that error on an older copy of `update.bat`, run `git restore package-lock.json` in the repo folder and update again.
 
 The server runs in the bat's window — closing the window stops the server.
 

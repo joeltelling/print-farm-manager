@@ -328,6 +328,18 @@ export default function Settings() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Restore failed');
       setRestoreResult(data);
+
+      // Restore replaces printer_models/filament library/settings wholesale — refresh
+      // this page's state (and the sidebar's farm name) instead of requiring a reload.
+      fetchModels();
+      fetch('/api/settings')
+        .then(r => r.json())
+        .then(settingsData => {
+          if (settingsData.dispatch_batch_size) setBatchSize(settingsData.dispatch_batch_size);
+          setFarmName(settingsData.farm_name || '');
+          window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: settingsData.farm_name || 'Print Farm' }));
+        })
+        .catch(() => {});
     } catch (err) {
       setRestoreError(err.message);
     } finally {
@@ -1124,6 +1136,9 @@ export default function Settings() {
               <Chip color="#4ade80" label={`${restoreResult.parts} parts`} />
               <Chip color="#4ade80" label={`${restoreResult.gcodes} G-codes`} />
               <Chip color="#4ade80" label={`${restoreResult.jobs} jobs`} />
+              <Chip color="#4ade80" label={`${restoreResult.printer_models ?? 0} printer models`} />
+              <Chip color="#4ade80" label={`${restoreResult.filament_types ?? 0} filament types`} />
+              <Chip color="#4ade80" label={`${restoreResult.filament_colors ?? 0} filament colors`} />
             </div>
           </div>
         )}

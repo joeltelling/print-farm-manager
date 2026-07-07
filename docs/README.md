@@ -25,6 +25,7 @@ npm run dev
 | [docs/web-app.md](web-app.md) | React client — pages, routing, layout, live-update pattern |
 | [docs/CHANGELOG.md](CHANGELOG.md) | Dated log of all implemented features and changes |
 | [docs/multi-brand.md](multi-brand.md) | Phase 6 design — driver abstraction for non-Prusa brands (Elegoo Centauri Carbon) |
+| [docs/driver-authoring.md](driver-authoring.md) | Connector authoring guide for manufacturers and contributors: driver contract, canonical statuses, registration checklist, hardware test matrix |
 | [docs/filaments.md](filaments.md) | Filament Library — admin-managed type and color lists, API endpoints, client usage |
 | [docs/docker-publish.md](docker-publish.md) | CI workflow that builds and publishes multi-arch Docker images to GHCR |
 

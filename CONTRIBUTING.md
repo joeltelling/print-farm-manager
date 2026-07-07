@@ -55,6 +55,8 @@ Look at recent `docs/CHANGELOG.md` entries for the expected style.
 
 Driver PRs get extra scrutiny because most reviewers cannot test them: nobody owns every printer.
 
+Start with the full authoring guide at [docs/driver-authoring.md](docs/driver-authoring.md). It documents the driver contract, the canonical status semantics, the registration checklist, and the hardware test matrix expected in a driver PR. The points below are the summary.
+
 - **State your test hardware in the PR description.** "Validated on a P1S with AMS, firmware 01.07.02" is ideal. "Untested, written from protocol docs" is also acceptable, just say so. What we cannot work with is silence.
 - **Work from official protocol documentation**, not guesses. Link the docs or the reverse engineering source you used. Field formats in printer protocols are full of traps (form fields vs. query params, array shapes, unit mismatches), and guessed formats have burned this project before.
 - **Implement the shared driver interface**: `getStatus`, `uploadAndPrint`, `cancelJob`, `checkIfPrinting`. See `server/drivers/octoprint.js` for a clean, recent example and `docs/multi-brand.md` for how the pieces fit.
