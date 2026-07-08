@@ -13,6 +13,8 @@ npm run dev
 - API: `http://localhost:3000`
 - UI: `http://localhost:5173`
 
+Prefer Docker over a local Node.js install? `docker compose up --build print-farm-manager-dev` runs the same workflow in a container — see the [README](../README.md#quick-start-development).
+
 ## Documentation Index
 
 | File | What it covers |
@@ -67,8 +69,8 @@ print-farm-manager/
 ├── docs/                 # This folder
 ├── .github/workflows/    # CI — see docs/docker-publish.md
 ├── ARCHITECTURE.md       # Full product spec and phase planning
-├── Dockerfile            # Multi-stage production image
-└── docker-compose.yml    # Production container + persistent volumes
+├── Dockerfile            # Multi-stage: server-deps/client-build/runtime (production) + dev
+└── docker-compose.yml    # Production container + persistent volumes, plus an opt-in `dev` profile
 ```
 
 ## Development Phases
