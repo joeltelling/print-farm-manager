@@ -46,6 +46,15 @@ if (process.platform !== 'win32') {
   console.error('build:portable produces a Windows bundle and must run on Windows.');
   process.exit(1);
 }
+if (process.arch !== 'x64') {
+  console.error(
+    `\nThis build produces a win-x64 bundle and must run on an x64 host (found arch "${process.arch}").\n` +
+    'The staged `npm ci` builds native modules (better-sqlite3) for the build host\'s architecture,\n' +
+    'while the bundle always ships an x64 node.exe — so on ARM64 the native binary and the runtime\n' +
+    'would diverge and crash at first DB call. Build on an x64 machine.\n'
+  );
+  process.exit(1);
+}
 if (!NODE_VERSION.startsWith('v22.')) {
   console.error(
     `\nThis build must run on Node 22.x (found ${NODE_VERSION}).\n` +
@@ -54,6 +63,30 @@ if (!NODE_VERSION.startsWith('v22.')) {
   );
   process.exit(1);
 }
+
+// Build-time prerequisites the bundle doesn't stage for itself:
+//  - postject (root devDependency) injects the SEA blob into the launcher exe.
+//  - Vite (client devDependency) runs `npm run build`. A root `npm install` does
+//    NOT populate client/node_modules, so install it here if it's missing — this
+//    keeps the advertised one-command build reproducible from a fresh checkout.
+function ensureBuildDeps() {
+  const postjectCli = path.join(ROOT, 'node_modules', 'postject', 'dist', 'cli.js');
+  if (!fs.existsSync(postjectCli)) {
+    console.error(
+      '\npostject (the SEA injector) is not in the root node_modules.\n' +
+      'Run `npm install` in the project root first, then re-run `npm run build:portable`.\n'
+    );
+    process.exit(1);
+  }
+  const viteDir = path.join(ROOT, 'client', 'node_modules', 'vite');
+  if (!fs.existsSync(viteDir)) {
+    log('Client dependencies missing — installing (npm ci in client/)');
+    // `npm ci` never rewrites the lockfile, so this can't introduce the
+    // cross-platform lockfile drift a plain `npm install` on Windows would.
+    npm(['ci', '--legacy-peer-deps'], { cwd: path.join(ROOT, 'client') });
+  }
+}
+ensureBuildDeps();
 
 console.log(`Building Print Farm Manager portable bundle`);
 console.log(`  bundled Node runtime: ${NODE_VERSION} (win-x64)`);

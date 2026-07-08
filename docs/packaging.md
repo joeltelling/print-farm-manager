@@ -45,22 +45,37 @@ those two folders into the new bundle). See the update note in `README.txt`.
 
 ## Building the bundle
 
+From a fresh checkout:
+
 ```bash
-npm run build:portable
+npm install            # root deps — provides postject (the SEA injector)
+npm run build:portable # installs client deps if missing, then builds the bundle
 ```
 
 Output: `dist/portable/PrintFarmManager/` (and the folder is what you zip and
 ship). Re-runnable; it cleans the output folder each time.
 
+The `build:portable` script self-checks its build-time prerequisites: it installs
+the client dependencies (Vite, for `npm run build`) if `client/node_modules` is
+missing, and it aborts with a clear message if `postject` isn't in the root
+`node_modules` (run `npm install` at the root first). So on a checkout where you
+have already run the root `npm install`, `npm run build:portable` alone is enough.
+
 ### Build requirements
 
-- **Windows x64** — the script downloads the Windows Node runtime and builds a
-  Windows `.exe`.
+- **Windows on x64** — the script downloads the Windows **x64** Node runtime and
+  builds a Windows `.exe`. Both the platform and the architecture are enforced:
+  the staged `npm ci` builds native modules for the build host's architecture,
+  while the bundle always ships an x64 `node.exe`, so building on Windows **ARM64**
+  is rejected (the native `better-sqlite3` binary would target ARM64 and crash
+  under the x64 runtime).
 - **Node.js 22.x** on the build machine. This is enforced: the bundled runtime
   is pinned to the build machine's exact Node version (`process.version`) so the
   native `better-sqlite3` binary — resolved by `npm ci` against that same
   version — is ABI-compatible with it. Building on Node 24+ or a non-22 line is
   rejected with a clear error.
+- **Root `npm install` completed** (provides `postject`). Client dependencies are
+  installed automatically by the script if `client/node_modules` is absent.
 - **Internet access** at build time, to download the Node runtime zip (cached
   under `dist/.cache/` for subsequent builds).
 - **No C++ compiler required.** `better-sqlite3` (>= 12) ships a prebuilt
@@ -70,7 +85,10 @@ ship). Re-runnable; it cleans the output folder each time.
 
 ### What the build script does (`scripts/build-portable.js`)
 
-1. **Guards** that the build host is Node 22.x.
+1. **Guards** that the build host is Windows on x64 and Node 22.x, then checks
+   its own build-time prerequisites: aborts if `postject` isn't in the root
+   `node_modules`, and installs client dependencies (`npm ci` in `client/`) if
+   they're missing.
 2. **Downloads** the matching `node-vX.Y.Z-win-x64.zip` from nodejs.org (cached)
    and extracts `node.exe` into `node/`.
 3. **Builds the client** (`npm run build` → `client/dist`).
