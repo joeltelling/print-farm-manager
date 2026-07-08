@@ -17,11 +17,15 @@ npm run dev
 - API server: `http://localhost:3000`
 - Web UI with hot reload: `http://localhost:5173`
 
+Prefer not to install Node.js locally? `docker compose up --build print-farm-manager-dev` runs the same hot-reload workflow in a container — see the [README](README.md#quick-start-development) for details.
+
 Run the test suite before opening a PR. All tests must pass:
 
 ```bash
 npm test
 ```
+
+Using Docker instead? `docker compose exec print-farm-manager-dev npm test`.
 
 ## Before You Build Something Big
 
