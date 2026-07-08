@@ -257,6 +257,45 @@ describe('checkIfPrinting', () => {
   });
 });
 
+// ─── dropConnection / closeAll (SDCP teardown) ────────────────────────────────
+
+describe('dropConnection / closeAll', () => {
+  test('turns OFF autoreconnect before disconnecting, then removes the client from the pool', async () => {
+    const printer = nextPrinter();
+    // Establish a pooled connection (getConnection sets AutoReconnect = 5000).
+    mockClient.GetStatus.mockResolvedValueOnce({ Status: { PrintInfo: { Status: 1 } } });
+    await elegoo.getStatus(printer);
+    expect(mockClient.AutoReconnect).toBe(5000);
+
+    elegoo.dropConnection(printer.id);
+
+    // AutoReconnect must be exactly `false` (a number would set a retry interval and
+    // the SDCPPrinterWS close handler would revive the socket we just dropped).
+    expect(mockClient.AutoReconnect).toBe(false);
+    expect(mockClient.Disconnect).toHaveBeenCalledTimes(1);
+
+    // Proof the pool entry was removed: the next poll reconstructs a fresh client.
+    SDCPPrinterWS.mockClear();
+    mockClient.GetStatus.mockResolvedValueOnce({ Status: { PrintInfo: { Status: 0 } } });
+    await elegoo.getStatus(printer);
+    expect(SDCPPrinterWS).toHaveBeenCalledTimes(1);
+  });
+
+  test('is a safe no-op for an unknown / never-connected printer id', () => {
+    expect(() => elegoo.dropConnection(987654)).not.toThrow();
+  });
+
+  test('closeAll disables autoreconnect and disconnects a pooled client', async () => {
+    const printer = nextPrinter();
+    mockClient.GetStatus.mockResolvedValueOnce({ Status: { PrintInfo: { Status: 1 } } });
+    await elegoo.getStatus(printer);
+
+    elegoo.closeAll();
+    expect(mockClient.AutoReconnect).toBe(false);
+    expect(mockClient.Disconnect).toHaveBeenCalled();
+  });
+});
+
 // ─── Driver registry ──────────────────────────────────────────────────────────
 
 describe('driver registry (drivers/index.js)', () => {

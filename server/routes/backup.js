@@ -3,6 +3,8 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 
+const drivers  = require('../drivers');
+
 const router   = express.Router();
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
@@ -205,6 +207,11 @@ module.exports = (db) => {
       });
 
       restore();
+
+      // The printers table was wiped and reinserted (possibly with changed IPs or
+      // dropped ids). Stateful drivers cache a client per printer id, so drop them
+      // all — the next poll rebuilds each connection from the restored config.
+      try { drivers.closeAllConnections(); } catch (_) {}
 
       console.log(`[backup] Farm restored — ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
 

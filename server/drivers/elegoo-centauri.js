@@ -42,16 +42,34 @@ async function getConnection(printer) {
     if (process.env.DEBUG_ELEGOO) console.warn(`[elegoo] ${printer.name} error:`, err?.message || err);
   });
 
-  await client.Connect(printer.ip);
+  // Register BEFORE awaiting Connect. If a concurrent dropConnection (printer
+  // deleted/decommissioned mid-connect) ran while we awaited, it would find
+  // nothing in the map and no-op, leaving this client — with AutoReconnect — to
+  // reconnect forever to a printer that no longer exists. Registering first also
+  // prevents a concurrent getConnection from opening a second client. On connect
+  // failure, remove it so a later poll re-creates it.
   connections.set(printer.id, client);
+  try {
+    await client.Connect(printer.ip);
+  } catch (err) {
+    dropConnection(printer.id);
+    throw err;
+  }
   console.log(`[elegoo] Connected to ${printer.name} (${printer.ip})`);
   return client;
 }
 
-// Remove a connection from the pool (called when a printer is unreachable)
+// Remove a connection from the pool (called when a printer is unreachable, or is
+// deleted/decommissioned, or on graceful shutdown).
 function dropConnection(printerId) {
   const client = connections.get(printerId);
   if (client) {
+    // Turn OFF autoreconnect before disconnecting. SDCPPrinterWS's close handler
+    // re-Connects whenever AutoReconnect !== false, so without this the socket we're
+    // dropping revives itself and the reconnect loop outlives the printer. Only the
+    // exact value `false` disables it — a number sets a retry interval (see
+    // sdcp/SDCPPrinterWS.js set AutoReconnect / the close handler).
+    try { client.AutoReconnect = false; } catch (_) {}
     try { client.Disconnect?.(); } catch (_) {}
     connections.delete(printerId);
   }
@@ -227,4 +245,9 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// Tear down every live SDCP WebSocket connection — called on graceful shutdown.
+function closeAll() {
+  for (const id of [...connections.keys()]) dropConnection(id);
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, dropConnection, closeAll };

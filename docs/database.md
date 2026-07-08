@@ -167,6 +167,22 @@ CREATE TABLE IF NOT EXISTS printer_events (
 
 **Backfill migration:** on first server start after this table was introduced, any printer with `is_active = 0` and `decommissioned_at` set automatically receives a synthetic `decommission` event using the stored timestamp and note — idempotent across restarts.
 
+### notifications
+
+Recoverable operator alerts raised by the scheduler (held printer with a missing G-code, stale-job auto-cancel, upload-failed-after-retries). Persisted so a crash/restart doesn't leave held printers with no explanation of why.
+
+```sql
+CREATE TABLE IF NOT EXISTS notifications (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  message    TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+```
+
+Written by `server/notifications.js` (`add()`), which is DB-backed once `notifications.init(db)` runs at startup and falls back to an in-memory list otherwise (e.g. unit tests). The API (`GET /api/notifications`) aliases `created_at` to `timestamp` in its response for backward compatibility. Rows are removed on operator dismiss (`DELETE /api/notifications/:id`).
+
+**Intentionally excluded from farm backup/restore.** Notifications are live operational state — each one points at a specific held printer and G-code and is only actionable while that condition persists. `GET /api/backup` does not export the table and restore does not touch it, so importing a backup neither ships stale alerts nor clears the ones on the running instance. If the underlying condition is still unresolved after a restart, the scheduler re-raises the alert on the next dispatch attempt.
+
 ## Conventions
 
 - All IDs: `INTEGER PRIMARY KEY AUTOINCREMENT`

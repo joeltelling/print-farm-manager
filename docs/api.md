@@ -12,9 +12,16 @@ All request bodies are JSON (`Content-Type: application/json`) unless noted othe
 
 ### `GET /api/health`
 
+Deep health check — probes the DB and the poll loop so a process that is up but wedged reports unhealthy (letting PM2/Docker restart it).
+
 ```json
-{ "status": "ok", "timestamp": 1774903214349 }
+{ "status": "ok", "db": "ok", "last_poll_at": 1774903200000, "poll_age_ms": 4200, "timestamp": 1774903214349 }
 ```
+
+- `200` with `status: "ok"` when the DB responds and the last completed poll is recent.
+- `503` with `status: "error"` and `db: "unreachable"` if the DB query fails.
+- `503` with `status: "degraded"` if the poll loop has been stale for more than 60s (`poll_age_ms > 60000`).
+- `last_poll_at` / `poll_age_ms` are `null` before the first poll completes (just after startup), which is not treated as unhealthy.
 
 ---
 
@@ -461,7 +468,7 @@ Called by the Projects UI when a project is activated or resumed.
 
 ## Notifications
 
-In-memory store of server-side alerts that require operator attention. Lost on server restart (errors will recur naturally on the next dispatch attempt if unresolved).
+Store of server-side alerts that require operator attention. **Persisted** in the `notifications` table, so a held printer's reason survives a crash/restart (previously an in-memory store lost on restart). Each alert is `{ id, message, timestamp }`.
 
 ### `GET /api/notifications`
 

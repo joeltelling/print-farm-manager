@@ -47,7 +47,20 @@ deleteFile(printer, filename)
   → if exported, the scheduler calls it after a job finishes to clean the
     file off the printer's storage (see bambu.js). Fire-and-forget: errors
     are swallowed by the caller.
+
+dropConnection(printerId)   ← stateful drivers only
+  → close and forget this printer's persistent connection. The driver
+    registry calls it (via drivers.dropConnection(printer)) when a printer
+    is deleted or decommissioned, so a dead socket + reconnect loop doesn't
+    leak. Must be a safe no-op if no connection exists.
+
+closeAll()                  ← stateful drivers only
+  → close every live connection. Called by drivers.closeAllConnections()
+    on graceful shutdown so reconnect timers don't keep the process alive.
+    Typically: for (const id of [...connections.keys()]) dropConnection(id).
 ```
+
+If your driver holds persistent connections (the `bambu.js` / `elegoo-*.js` pattern), export both. Stateless HTTP drivers (`prusa.js` / `klipper.js` / `octoprint.js`) omit them — the registry treats their absence as a no-op.
 
 ### The `printer` row
 

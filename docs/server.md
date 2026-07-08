@@ -12,7 +12,7 @@
 | `server/db.js` | SQLite connection, schema creation, directory setup |
 | `server/poller.js` | Printer status polling loop |
 | `server/scheduler.js` | Job dispatch engine — listens to poller events, dispatches prints |
-| `server/notifications.js` | In-memory alert store for recoverable server errors |
+| `server/notifications.js` | Operator alert store for recoverable server errors — DB-backed (persists across restart) via `init(db)`, with an in-memory fallback |
 | `server/routes/` | One file per resource (printers, projects, parts, gcodes, jobs, backup) |
 | `server/data/farm.db` | SQLite database file (auto-created, gitignored) |
 | `server/gcode/` | G-code file storage directory (auto-created, gitignored) |
@@ -26,6 +26,17 @@
 5. Inside the listen callback, `PrinterPoller` and `JobScheduler` are instantiated. `scheduler.start()` is called first (subscribes to poller events), then `poller.start()` fires the first poll tick and starts the 15-second interval.
 6. The startup sweep (`sweepIdlePrinters`) is deferred until the poller emits `pollComplete` after its first tick. This ensures dispatch works from live printer state rather than stale DB values from before the last shutdown — preventing accidental dispatch to a printer that started printing while the server was down.
 
+## Process Resilience & Shutdown
+
+`index.js` installs process-level handlers so a single failure doesn't take the whole farm down and a restart is clean:
+
+- **`unhandledRejection` → log and continue.** A rejected promise from a flaky printer request or driver hiccup is logged (`[WARN] unhandledRejection (continuing)`) and the process keeps running. (It used to `process.exit(1)`, which meant one rejection killed polling for all printers.)
+- **`uncaughtException` → clean shutdown, then exit 1.** The process is in an unknown state, so it runs `shutdown()` and exits non-zero for PM2/Docker to restart.
+- **`SIGINT` / `SIGTERM` → graceful shutdown.** `shutdown()` stops the poller, tears down every persistent printer connection (`drivers.closeAllConnections()`), closes the SQLite DB, and stops accepting new HTTP connections (`server.close()`), then exits 0. A 5-second failsafe forces exit if a connection lingers. This runs on every PM2 restart, `docker stop`, and console Ctrl+C.
+- **Global Express error handler.** Registered last (after the inline routes), it returns a clean `{ error }` JSON response for any uncaught route throw instead of Express's default HTML 500.
+
+`poller`, `scheduler`, and `server` are hoisted to module scope so `shutdown()` can reach them.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -37,7 +48,7 @@ No `.env` file is required. The only runtime configuration is `PORT`.
 ## Route Mounting
 
 ```
-GET    /api/health                  → health check (inline handler)
+GET    /api/health                  → deep health check: DB + poll liveness (inline handler)
 POST   /api/scheduler/dispatch      → scheduler.sweepIdlePrinters() (inline handler)
 GET    /api/notifications           → notifications.list() (inline handler)
 DELETE /api/notifications/:id       → notifications.dismiss() (inline handler)

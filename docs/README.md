@@ -41,7 +41,7 @@ print-farm-manager/
 │   ├── poller.js         # Printer polling loop (EventEmitter)
 │   ├── scheduler.js      # Job dispatch engine (EventEmitter)
 │   ├── events.js         # Printer event log helper — insert(printerId, type, note)
-│   ├── notifications.js  # In-memory operator alert store
+│   ├── notifications.js  # Operator alert store — persisted in the notifications table (survives restart)
 │   └── routes/
 │       ├── printers.js   # CRUD + CSV import + decommission/recommission
 │       ├── events.js     # GET/POST /api/printers/:id/events

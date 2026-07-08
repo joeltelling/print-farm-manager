@@ -25,6 +25,71 @@ Also verified: hot reload actually round-trips through the bind mount (`docker c
 - `README.md`: added a "Prefer Docker instead of a local Node.js install?" subsection under Quick Start (Development), alongside (not replacing) the native steps; documented running the test suite via `docker compose exec print-farm-manager-dev npm test`.
 - `CONTRIBUTING.md`: same Docker cross-reference and test-running note added to "Getting Set Up", which had its own independent copy of the native setup steps this PR hadn't touched yet.
 - `docs/installation.md`, `docs/README.md`: cross-referenced the new `dev` service from the existing dev-mode note, the top-level Quick Start, and the file-structure index.
+## 2026-07-07 — Reliability hardening (Tier 1): crash resilience, graceful shutdown, persisted alerts
+
+A pass over the server's failure modes. The theme: one bad thing should not take the whole farm down, a restart should not lose operator context, and a wedged process should be detectable.
+
+**1. Global handlers no longer crash-amplify.** `unhandledRejection` previously called `process.exit(1)` — so a single rejected promise (a flaky printer request, a driver hiccup) killed polling for all 50+ printers. It now logs and continues. `uncaughtException` still exits non-zero (the process is in an unknown state) but first runs a clean shutdown.
+
+**2. Graceful shutdown.** `SIGINT`/`SIGTERM` (and `uncaughtException`) now stop the poller, tear down all persistent printer connections, close the DB, and stop accepting HTTP connections before exiting — instead of dying mid-operation on every PM2 restart / `docker stop` / `update.bat`. A 5s failsafe forces exit if a connection lingers.
+
+**3. Operator notifications persist across restart.** Recoverable alerts (held printer with a missing G-code, stale-job auto-cancel, upload-failed-after-retries) were an in-memory array lost on restart — so after a crash the operator saw held printers with no explanation of why. They're now stored in a new `notifications` table. `notifications.init(db)` is called at startup; the store falls back to in-memory when no DB is wired (unit tests). The API response shape (`{ id, message, timestamp }`) is unchanged.
+
+**4. Persistent printer connections are torn down on removal.** Bambu/Elegoo drivers hold a per-printer MQTT/WebSocket client with a reconnect loop. `dropConnection` existed but was never called and never exported, so decommissioning or deleting a printer leaked its socket + reconnect timer forever. The driver registry now exposes `dropConnection(printer)` (called on delete and every decommission path) and `closeAllConnections()` (called on shutdown); each stateful driver exports `dropConnection` + a new `closeAll`.
+
+**5. Deeper health check.** `GET /api/health` now runs `SELECT 1` and reports the age of the last completed poll — returning `503` when the DB is unreachable or the poll loop has been stale for >60s, so PM2/Docker can restart a soft failure. New fields: `db`, `last_poll_at`, `poll_age_ms`.
+
+**6. Global JSON error handler.** An uncaught throw in any route now returns a clean `{ error }` response (matching the API error shape) instead of Express's default HTML 500. Covers the DB-heavy inline handlers (`set-ready`, `set-ready-batch`, `recommission`), which are synchronous, so Express routes their throws here.
+
+### Changes
+- `server/index.js`: resilient `unhandledRejection`/`uncaughtException` handlers; `SIGINT`/`SIGTERM` graceful shutdown (`shutdown()`); `notifications.init(db)`; deepened `/api/health`; global Express error handler; poller/scheduler/server hoisted so shutdown can reach them.
+- `server/notifications.js`: DB-backed via `init(db)`, in-memory fallback retained; `list()` aliases `created_at`→`timestamp` to preserve the API shape.
+- `server/db.js`: new additive `notifications` table (`CREATE TABLE IF NOT EXISTS`).
+- `server/poller.js`: tracks `lastPollAt` (epoch ms of last completed tick) for the health check.
+- `server/drivers/index.js`: memoizes loaded drivers; adds `dropConnection(printer)` and `closeAllConnections()`.
+- `server/drivers/bambu.js`, `elegoo-centauri.js`, `elegoo-centauri2.js`: export `dropConnection`; add `closeAll()`.
+- `server/routes/printers.js`: call `drivers.dropConnection(printer)` on delete and every decommission path.
+- `server/tests/notifications.test.js` (new): DB persistence incl. survives-restart round trip + in-memory fallback.
+- `server/tests/drivers-registry.test.js` (new): `getDriver` memoization/unknown-type; `dropConnection`/`closeAllConnections` dispatch.
+
+### Verified
+- Full suite: 26 suites, 397 tests pass (was 24/387).
+- Live: booted the server and confirmed `/api/health` reports `db: ok` + `last_poll_at` + `poll_age_ms`; wrote a notification from a separate process and read it back through `GET /api/notifications` (cross-process persistence). Graceful shutdown verified by code path — fires on real console Ctrl+C, PM2 `SIGINT`/`SIGTERM`, and `docker stop` (Git Bash can't inject a console Ctrl+C to a background process on Windows).
+
+### Follow-ups (not in this change)
+- `set-ready`'s multi-write credit sequence is not wrapped in a transaction, so a mid-sequence throw could leave a partial credit. Throws there are very unlikely (simple synchronous SQLite on validated ints), but wrapping the DB work in `db.transaction()` would make it atomic. Left out to avoid restructuring the delicate credit logic in a reliability-only pass.
+
+### Follow-up (adversarial review) — 2026-07-07
+
+A multi-agent adversarial review of the above diff (9 reviewers + per-finding refutation) confirmed **no part-count risk and no crash bugs** — the credit path is untouched. It surfaced several P3 issues, now fixed:
+
+- **[C1] elegoo-centauri connect-window leak.** `getConnection` registered the client into the `connections` map *after* `await client.Connect()`. A `DELETE`/decommission during that await found nothing to drop, so the resolved client (with `AutoReconnect`) reconnected forever to a printer that no longer existed — the exact leak this change set out to kill. Also a latent double-connect race. Fixed by registering before the await and removing the client on connect failure (matching the bambu/CC2 pattern).
+- **[C3] crash handlers lost the `[FATAL]` path for load-time throws.** Moving `uncaughtException`/`unhandledRejection` below the `require`/`init` block meant a throw during module load bypassed the guaranteed synchronous `stderr` logging. Moved both back above the requires; runtime state (`poller`/`server`/`shuttingDown`) is declared first and `shutdown()` guards every step, so an early crash still exits cleanly.
+- **[C2] stale driver connections after restore.** `POST /api/backup/restore` wipes and reinserts `printers` but never dropped cached MQTT/WS clients, so a restore that changed a printer's IP left the poller using the stale client until restart. Now calls `drivers.closeAllConnections()` after the restore commits; the next poll rebuilds from restored config.
+- **[M1] hourly backup vs `db.close()` on shutdown.** The new graceful `db.close()` could close the connection mid-`db.backup()`. Added `backup.stop()` (clears the interval), called first in `shutdown()`.
+- **[M2] notifications and backup.** Documented that the now-persistent `notifications` table is intentionally excluded from farm backup/restore (live operational state; re-raised by the scheduler if still unresolved).
+- **Tests.** Added `printers-dropconnection.test.js` — spies `drivers.dropConnection` and asserts every fleet-exit route (delete + all four decommission paths) calls it with the printer row (the headline fix was previously executed but unasserted). Fixed a tautological memoization assertion in `drivers-registry.test.js` and wrapped the notifications survives-restart temp file in `try/finally` (incl. WAL sidecars).
+
+Verified clean via the full suite (**27 suites, 402 tests**) and a live boot (`/api/health` green on the restructured `index.js`).
+
+Remaining coverage gaps the review flagged (no live defect; regression-protection only): direct tests for `shutdown()` ordering, the `/api/health` branches, and the global error handler would each need `index.js` to export those units (or an `if (require.main === module)` listen guard for full-server integration tests) — deferred.
+
+### Follow-up (PR review, round 2) — 2026-07-08
+
+- **[P2] Wait for an in-flight backup before closing the DB.** `backup.stop()` only cleared the future interval — a `SIGTERM` landing during the startup or hourly `db.backup()` still let `shutdown()` reach `db.close()`/`process.exit()` mid-copy, risking a corrupt snapshot. `server/backup.js` now tracks the active backup promise and exposes `whenIdle()`; `shutdown()` awaits it before `db.close()`, with an absolute 5s force-exit failsafe so a hung backup or connection can't wedge shutdown.
+- **[P2] Drop the cached driver connection when a printer's connection settings change.** `PUT /api/printers/:id` can change `ip`/`type`/`api_key`/`serial_number`, but Bambu/Elegoo drivers cache a client per `printer.id` and `getConnection()` returned the stale one — so after an operator fixed an IP/access-code/serial/connector the poller kept talking to the old host until restart. The PUT handler now calls `drivers.dropConnection(oldRow)` whenever a connection-defining field changes (using the pre-update row so a type change tears the connection down under its previous driver); the next poll reconnects with the new settings.
+- **[P3] Docs index.** `docs/README.md` still called `notifications.js` an "In-memory operator alert store" — updated to reflect the persisted `notifications` table.
+
+Tests: `server/tests/backup.test.js` (new) covers `whenIdle()` waiting for an in-flight backup; `server/tests/printers-dropconnection.test.js` gains cases for PUT changing `ip`/`api_key`/`serial_number` (drops) vs a non-connection field (no drop). Full suite: **28 suites, 408 tests**.
+
+### Follow-up (PR review, round 3) — 2026-07-08
+
+Rebased the branch onto the latest `main` (Docker dev-workflow, PR #24) to clear a merge conflict, then two more review fixes:
+
+- **[P2] Track the in-flight backup correctly across overlapping runs.** The round-2 fix kept a single `_active` promise that each `runBackup` overwrote — so if a slow run overlapped the next hourly tick and the newer run finished first, `whenIdle()` could report idle while the older `db.backup()` was still copying, reintroducing the mid-copy-close race. `runBackup` now **skips** if a backup is already in flight (backups take seconds; this also avoids two concurrent `db.backup()` on one connection), so `_active` always refers to the single running backup.
+- **[P2] Disable Centauri autoreconnect before dropping the socket.** `elegoo-centauri.js` `dropConnection()` closed the WebSocket but left `AutoReconnect` set, and `SDCPPrinterWS`'s close handler re-`Connect`s whenever `AutoReconnect !== false` — so a dropped Centauri connection (delete/decommission/restore/shutdown) revived itself and the reconnect loop outlived the printer. Now sets `client.AutoReconnect = false` (the exact value the lib treats as off — a number sets a retry interval) before `Disconnect()`.
+
+Tests: `backup.test.js` gains a no-overlap case; `elegoo-driver.test.js` gains `dropConnection`/`closeAll` cases asserting `AutoReconnect` is set to `false`, `Disconnect` is called, and the pool entry is removed (next poll reconstructs the client). Full suite: **28 suites, 412 tests**.
 
 ---
 

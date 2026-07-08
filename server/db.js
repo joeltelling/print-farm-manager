@@ -220,6 +220,18 @@ if (gcodeIdCol && gcodeIdCol.notnull === 1) {
   `);
 }
 
+// Persisted operator notifications — recoverable server alerts (held printer with
+// a missing G-code, stale-job auto-cancel, upload failed after retries). Persisting
+// these means a crash/restart no longer leaves the operator with held printers and
+// no explanation of why. Additive table — no migration framework (see CONTRIBUTING).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    message    TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+`);
+
 // Backfill decommission events for printers that were decommissioned before the
 // printer_events table existed. Runs once per printer (checked via event absence).
 // Uses decommissioned_at as the event timestamp so the timeline is accurate.

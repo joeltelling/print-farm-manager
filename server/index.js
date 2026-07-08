@@ -1,12 +1,23 @@
-// Catch unhandled errors before anything else so they're always logged,
-// even if Node exits before stdout is flushed (common on Windows).
-process.on('uncaughtException', (err) => {
-  process.stderr.write(`[FATAL] uncaughtException: ${err.stack || err}\n`);
-  process.exit(1);
-});
+// Runtime state — declared before the crash handlers below so shutdown() is safe
+// to run even if a fault fires during module load (these stay null until startup).
+let poller       = null;
+let scheduler    = null;
+let server       = null;
+let shuttingDown = false;
+
+// Install the crash handlers FIRST — before any require() — so a synchronous throw
+// during module load or DB init is still logged via the guaranteed synchronous
+// stderr write, even if Node exits before stdout flushes (common on Windows).
 process.on('unhandledRejection', (reason) => {
-  process.stderr.write(`[FATAL] unhandledRejection: ${reason?.stack || reason}\n`);
-  process.exit(1);
+  // A single rejected promise (a flaky printer request, a driver hiccup) must not
+  // take the whole farm down. Log and keep running. (Previously: process.exit(1),
+  // which meant one unhandled rejection killed polling for all 50+ printers.)
+  process.stderr.write(`[WARN] unhandledRejection (continuing): ${reason?.stack || reason}\n`);
+});
+process.on('uncaughtException', (err) => {
+  // Unknown state: log, shut down cleanly, exit non-zero so PM2/Docker restarts us.
+  process.stderr.write(`[FATAL] uncaughtException: ${err.stack || err}\n`);
+  shutdown('uncaughtException', 1);
 });
 
 const express = require('express');
@@ -14,6 +25,7 @@ const path    = require('path');
 const fs      = require('fs');
 
 const db             = require('./db');
+const drivers        = require('./drivers');
 const PrinterPoller  = require('./poller');
 const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
@@ -30,6 +42,48 @@ const settingsRouter     = require('./routes/settings')(db);
 const modelsRouter       = require('./routes/models')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
+
+// Persist operator notifications to the DB so a crash/restart doesn't leave held
+// printers with no explanation of why.
+notifications.init(db);
+
+// Graceful shutdown on process-manager signals.
+process.on('SIGINT',  () => shutdown('SIGINT', 0));
+process.on('SIGTERM', () => shutdown('SIGTERM', 0));
+
+// Stop the poller and the hourly backup, tear down persistent printer connections,
+// close the DB, drain in-flight HTTP, then exit. Every step is guarded so an early
+// crash (before requires finished) still exits cleanly. `function` (hoisted) so the
+// crash handlers registered above can call it.
+function shutdown(reason, exitCode) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[server] Shutting down (${reason})...`);
+  try { poller?.stop(); } catch (_) {}
+  try { backup.stop(); } catch (_) {}   // stop SCHEDULING new backups
+  try { drivers.closeAllConnections(); } catch (_) {}
+
+  // Absolute failsafe: force-exit after 5s no matter what — a lingering HTTP
+  // connection or an unexpectedly slow backup must never wedge shutdown.
+  setTimeout(() => process.exit(exitCode), 5000).unref();
+
+  const finish = () => {
+    // Wait for any in-flight online backup to finish before closing the DB, so we
+    // never terminate mid-`db.backup()` and leave a corrupt snapshot. `whenIdle`
+    // resolves immediately when no backup is running.
+    let idle;
+    try { idle = backup.whenIdle(); } catch (_) { idle = undefined; }
+    Promise.resolve(idle).catch(() => {}).then(() => {
+      try { db.close(); } catch (_) {}
+      process.exit(exitCode);
+    });
+  };
+  if (server) {
+    server.close(finish);
+  } else {
+    finish();
+  }
+}
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -48,9 +102,30 @@ app.use('/api/settings',        settingsRouter);
 app.use('/api/models',          modelsRouter);
 app.use('/api/filaments',       filamentsRouter);
 
-// Health check
+// Health check — actually probes the DB and the poller so a process that is up
+// but wedged (DB locked, poll loop dead) reports unhealthy and PM2/Docker can
+// restart it. Returns 503 when a real dependency is down.
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  const now = Date.now();
+  try {
+    db.prepare('SELECT 1').get();
+  } catch (err) {
+    return res.status(503).json({ status: 'error', db: 'unreachable', error: err.message, timestamp: now });
+  }
+  const lastPollAt = poller?.lastPollAt ?? null;
+  const pollAgeMs  = lastPollAt == null ? null : now - lastPollAt;
+  // The poller ticks every 15s; treat >60s since the last completed tick as stale.
+  // Before the first tick completes (lastPollAt null) we don't fail — the server
+  // has only just started.
+  const pollStale = lastPollAt != null && pollAgeMs > 60000;
+  const status    = pollStale ? 'degraded' : 'ok';
+  res.status(pollStale ? 503 : 200).json({
+    status,
+    db: 'ok',
+    last_poll_at: lastPollAt,
+    poll_age_ms: pollAgeMs,
+    timestamp: now,
+  });
 });
 
 // Server notifications — surfaced in the Settings UI
@@ -82,11 +157,11 @@ app.get(/^(?!\/api).*/, (_req, res) => {
 });
 
 // Start server
-const server = app.listen(PORT, () => {
+server = app.listen(PORT, () => {
   console.log(`[server] Express running on http://localhost:${PORT}`);
 
-  const poller    = new PrinterPoller(db);
-  const scheduler = new JobScheduler(db, poller);
+  poller    = new PrinterPoller(db);
+  scheduler = new JobScheduler(db, poller);
 
   // Mount projects router here so it has access to the scheduler for complete/reactivate
   app.use('/api/projects', require('./routes/projects')(db, scheduler));
@@ -336,6 +411,17 @@ const server = app.listen(PORT, () => {
     scheduler.scheduleForPrinter(updated);
     res.json(updated);
   });
+
+  // Global JSON error handler — registered last (after the inline routes above)
+  // so any uncaught throw in any route returns a clean {error} response matching
+  // the API error shape instead of Express's default HTML page. The DB-heavy
+  // inline handlers (set-ready, set-ready-batch, recommission) are synchronous,
+  // so Express routes their throws here rather than crashing the process.
+  app.use((err, _req, res, _next) => {
+    console.error('[server] Unhandled route error:', err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: 'Internal server error' });
+  });
 });
 
-module.exports = { app, server };
+module.exports = { app, get server() { return server; } };

@@ -4,6 +4,7 @@ const Papa = require('papaparse');
 const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
+const drivers = require('../drivers');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -211,6 +212,21 @@ module.exports = (db) => {
         }
       }
 
+      // If a connection-defining field changed, drop the stale cached driver
+      // connection (Bambu/Elegoo cache a client per printer.id and won't notice a
+      // new ip/access-code/serial/type on their own). Drop using the OLD printer row
+      // so a type change tears the connection down under its previous driver; the
+      // next poll rebuilds it from the updated settings.
+      const newApiKey = api_key !== undefined ? api_key : printer.api_key;
+      const connectionChanged =
+        after.ip !== printer.ip ||
+        after.type !== printer.type ||
+        after.serial_number !== printer.serial_number ||
+        newApiKey !== printer.api_key;
+      if (connectionChanged) {
+        drivers.dropConnection(printer);
+      }
+
       res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id));
     } catch (err) {
       if (err.message.includes('UNIQUE')) {
@@ -224,6 +240,7 @@ module.exports = (db) => {
   router.delete('/:id', (req, res) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
+    drivers.dropConnection(printer); // tear down any persistent MQTT/WS connection
     db.prepare('DELETE FROM printers WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   });
@@ -234,6 +251,7 @@ module.exports = (db) => {
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     const now = Date.now();
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ? WHERE id = ?').run(now, printer.id);
+    drivers.dropConnection(printer); // tear down any persistent MQTT/WS connection
     events.insert(printer.id, 'decommission', req.body?.note ?? null);
     console.log(`[printers] ${printer.name} decommissioned`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
@@ -315,6 +333,7 @@ module.exports = (db) => {
 
     const decommNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, is_held = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, decommNote, printer.id);
+    drivers.dropConnection(printer); // tear down any persistent MQTT/WS connection
     events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print — taken offline for maintenance');
     console.log(`[printers] ${printer.name} decommissioned after confirmed good print`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
@@ -370,6 +389,7 @@ module.exports = (db) => {
       const now = Date.now();
       const noJobNote = req.body?.note ?? null;
       db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, noJobNote, printer.id);
+      drivers.dropConnection(printer); // tear down any persistent MQTT/WS connection
       events.insert(printer.id, 'job_failed', noJobNote ?? 'No tracked job — printer decommissioned for investigation');
       console.log(`[printers] ${printer.name} decommissioned (no tracked job to mark failed)`);
       return res.json({ success: true, job_id: null });
@@ -405,6 +425,7 @@ module.exports = (db) => {
     // The operator must explicitly recommission it when the machine is confirmed safe.
     const failNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, failNote, printer.id);
+    drivers.dropConnection(printer); // tear down any persistent MQTT/WS connection
 
     const failedPart = db.prepare('SELECT name FROM parts WHERE id = ?').get(job.part_id);
     const eventNote = failNote
