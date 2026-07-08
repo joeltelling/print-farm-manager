@@ -161,9 +161,19 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
 
-  test('ERROR when err.errcode is nonzero (takes priority)', async () => {
+  // Regression: a non-fatal hardware warning (e.g. mainboard fan) during an active print
+  // must NOT override PRINTING — the error code is a warning, the print is still running.
+  test('PRINTING when deviceState is busy and err.errcode is nonzero (non-fatal warning)', async () => {
     const printer = makePrinter();
-    await drive(printer, { deviceState: 1, state: 0, err: { errcode: 521 } });
+    await drive(printer, { deviceState: 1, state: 0, printProgress: 42, printFileName: 'part.gcode', err: { errcode: 521 } });
+    const r = await creality.getStatus(printer);
+    expect(r.status).toBe('PRINTING');
+    expect(r.progress).toBe(42);
+  });
+
+  test('ERROR when deviceState is idle and err.errcode is nonzero (fatal fault)', async () => {
+    const printer = makePrinter();
+    await drive(printer, { deviceState: 0, state: 0, err: { errcode: 521 } });
     expect((await creality.getStatus(printer)).status).toBe('ERROR');
   });
 

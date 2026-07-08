@@ -105,6 +105,18 @@ CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not i
 ### Changes
 - `update.bat`: step 1 now runs `git checkout -- package-lock.json client/package-lock.json` before `git pull`. The farm checkout is a deploy target with no intentional local changes, so discarding lockfile drift is always safe there.
 - `docs/installation.md`: documented the discard step and the manual `git restore package-lock.json` recovery for older copies of the script.
+## 2026-07-08 — Creality: non-fatal hardware warnings no longer fail active jobs
+
+When a Creality printer (K1 Max, confirmed) reports a hardware warning mid-print (e.g. mainboard fan error) via `err.errcode`, the driver previously returned `ERROR` unconditionally — even though `deviceState` confirmed the printer was still busy printing. The poller then transitioned `PRINTING → ERROR`, the scheduler's `_handlePrinterUnavailable` marked the job `failed`, and the part count reset — while the print continued fine on the hardware.
+
+**Fix:** Reordered `mapStatus()` so the `deviceState` busy check runs before the `errcode` check. A non-fatal error code while the printer is busy logs a warning and stays `PRINTING`; the scheduler never sees an `ERROR` transition. An error code while the printer is idle (a fault that actually stopped the print) still maps to `ERROR`. This is the same disambiguation pattern used in `bambu.js` for `STOPPED` vs `ERROR` (user-cancel vs genuine fault).
+
+### Changes
+- `server/drivers/creality.js`: reordered `mapStatus()` — `deviceState` busy check now runs before `errcode` check; `errcode` only maps to `ERROR` when idle; logs non-fatal error codes as warnings with the printer name; `mapStatus` now takes a `printerName` parameter for log context.
+- `server/tests/creality-driver.test.js`: added regression test for non-fatal `errcode` while busy → `PRINTING`; updated existing `ERROR` test to assert it only fires when `deviceState=0` (fatal fault).
+
+---
+
 ## 2026-07-06 — Creality connector (K1 / K2 / Ender-3 V3 / Hi series)
 
 Added a driver for Creality's local API — the same one Creality Print and OrcaSlicer's "Creality Print" host speak on the LAN, used by the K1, K1C, K1 Max, K2, Ender-3 V3, and Hi series. This is a distinct connector from Klipper (Moonraker): although these printers run Klipper internally, their stock firmware exposes Creality's own WebSocket + HTTP API rather than an open Moonraker port.

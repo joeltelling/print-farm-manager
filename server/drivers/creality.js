@@ -159,23 +159,28 @@ async function waitForData(conn, timeoutMs) {
 // single transition (poller reacts to transitions) and the printer returns to service.
 // `conn.finishReported` carries that one-shot latch and is reset whenever the device is
 // busy again (a new or continuing print).
-function mapStatus(s, conn) {
+function mapStatus(s, conn, printerName) {
   if (!s) return 'UNKNOWN';
-
-  const errcode = (s.err && typeof s.err === 'object') ? num(s.err.errcode) : 0;
-  if (errcode) return 'ERROR';
 
   const state  = num(s.state);
   const device = num(s.deviceState);
+  const errcode = (s.err && typeof s.err === 'object') ? num(s.err.errcode) : 0;
 
   // Paused is reported by `state` regardless of deviceState.
   if (state === 5) return 'PAUSED';
 
   // Busy: actively printing / heating / leveling / self-testing.
+  // Checked BEFORE the errcode so a non-fatal hardware warning (e.g. mainboard fan)
+  // during a running print does not override PRINTING. The error code is logged
+  // for diagnostics; the scheduler only sees ERROR when the printer is idle.
   if (device != null && device !== 0) {
+    if (errcode) console.warn(`[creality] ${printerName} non-fatal error code ${errcode} while busy — staying PRINTING`);
     conn.finishReported = false;
     return 'PRINTING';
   }
+
+  // Device is idle. If an error code is present, it stopped the print — report ERROR.
+  if (errcode) return 'ERROR';
 
   // Neither field was recognized — e.g. a stray partial frame merged into the cache
   // before deviceState/state were ever populated. Don't fall through to IDLE (that
@@ -205,7 +210,7 @@ async function getStatus(printer) {
     }
 
     const s = conn.latest;
-    const status = mapStatus(s, conn);
+    const status = mapStatus(s, conn, printer.name);
 
     if (process.env.DEBUG_CREALITY) {
       console.log(`[creality] ${printer.name} raw: state=${s.state} deviceState=${s.deviceState} ` +
