@@ -252,17 +252,27 @@ module.exports = (db) => {
   // Fields per-file can be overridden via 'overrides' JSON array keyed by original filename.
   router.post('/bulk-import', bulkUpload.array('files', 200), (req, res) => {
     const { project_id, overrides } = req.body;
+    const files = req.files;
+
+    // Clean up uploaded files on any early rejection — multer has already
+    // written them to disk before this handler runs.
+    const cleanupFiles = () => {
+      for (const f of files || []) {
+        try { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); } catch (_) {}
+      }
+    };
 
     if (!project_id) {
+      cleanupFiles();
       return res.status(400).json({ error: 'project_id is required' });
     }
 
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(project_id);
     if (!project) {
+      cleanupFiles();
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    const files = req.files;
     if (!files || files.length === 0) {
       return res.status(400).json({ error: 'At least one gcode file is required' });
     }
@@ -275,6 +285,7 @@ module.exports = (db) => {
         overrideMap[o.fn] = o;
       }
     } catch (_) {
+      cleanupFiles();
       return res.status(400).json({ error: 'Invalid overrides JSON' });
     }
 
@@ -307,9 +318,16 @@ module.exports = (db) => {
           }
 
           // Validate printer model exists
-          const modelExists = db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(printerModel);
-          if (!modelExists) {
+          const modelRow = db.prepare('SELECT connector FROM printer_models WHERE model_id = ?').get(printerModel);
+          if (!modelRow) {
             throw new Error(`Unknown printer model "${printerModel}" for "${file.originalname}" — add it in Settings first`);
+          }
+
+          // Bambu printers require .3mf files — reject non-.3mf at import time so
+          // the operator catches the problem now rather than at dispatch time when
+          // the scheduler holds the printer with a failed job.
+          if (modelRow.connector === 'bambu' && !file.originalname.toLowerCase().endsWith('.3mf')) {
+            throw new Error(`"${file.originalname}" is not a .3mf file — Bambu printers require .3mf files`);
           }
 
           const partsPerPlate = ov.parts_per_plate || 1;

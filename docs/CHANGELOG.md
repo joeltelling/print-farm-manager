@@ -2043,7 +2043,18 @@ Fleet summary showing six stat cards: Total, Printing, Idle, Error, Attention, O
 
 Streamlines adding multi-part projects to the print farm. Instead of creating each part individually and uploading gcode one-by-one, operators can select multiple gcode files at once, override per-file fields (name, quantity, parts per plate, printer model) in a staging table with bulk-edit controls, and import everything in a single click. Per-file overrides from the staging table take priority over gcode metadata.
 
-A new `server/gcode-parser.js` utility reads the last 50KB of gcode files — scanning only comment lines with early exit — and extracts slicer metadata (print time, filament usage, filament type, layer height, temperatures) from PrusaSlicer, OrcaSlicer, Bambu Studio, Cura, and others.
+A new `server/gcode-parser.js` utility reads both the file head (4KB, for Cura/Bambu header metadata) and tail (50KB, for PrusaSlicer/Orca footer metadata), scanning only comment lines with early exit. Extracted fields by slicer:
+
+| Field | PrusaSlicer | OrcaSlicer | Bambu Studio | Cura |
+|---|---|---|---|---|
+| Print time | ✓ | ✓ | ✓ | ✓ (`;TIME:`) |
+| Filament weight (g) | ✓ | ✓ | ✓ | Custom gcode only (`;weight: [g]`) |
+| Filament type | ✓ | ✓ | ✓ | — |
+| Layer height | ✓ | ✓ | ✓ | ✓ (`;Layer height:`) |
+| Nozzle/bed temp | ✓ | ✓ | ✓ | — |
+| Printer model | ✓ | ✓ | ✓ | ✓ (`;TARGET_MACHINE.NAME:`) |
+
+Cura outputs filament length in meters, not weight in grams, so `filament_used_g` is null unless the operator adds a `;weight: {filament_weight}` custom start gcode line.
 
 The gcode content parser is also exposed via `POST /api/gcodes/:id/parse` and surfaced in the part details "G-code Files" section as a "Parse G-code" button alongside the existing "Parse filename" button.
 
