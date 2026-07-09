@@ -225,7 +225,7 @@ You should see:
 
 To stop the server, press `Ctrl + C` in the terminal.
 
-> **Development mode:** If you are actively developing the app, `npm run dev` starts both the Express server and the Vite dev server with hot reload. This is not needed for normal farm operation.
+> **Development mode:** If you are actively developing the app, `npm run dev` starts both the Express server and the Vite dev server with hot reload. This is not needed for normal farm operation. Prefer Docker? `docker compose up --build print-farm-manager-dev` runs the same workflow in a container — see the **[README](../README.md#quick-start-development)**.
 
 ---
 

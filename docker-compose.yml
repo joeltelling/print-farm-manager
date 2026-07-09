@@ -1,6 +1,8 @@
 services:
   print-farm-manager:
-    build: .
+    build:
+      context: .
+      target: runtime
     image: print-farm-manager:latest
     container_name: print-farm-manager
     restart: unless-stopped
@@ -10,6 +12,44 @@ services:
       - farm-data:/app/server/data
       - farm-gcode:/app/server/gcode
 
+  # Development — hot reload for both server and client, no local Node.js
+  # install required. Behind the `dev` profile so a bare `docker compose up`
+  # (production) never starts this. Run it on its own — not alongside
+  # production, which would fight over host port 3000 — by naming the service
+  # explicitly: `docker compose up --build print-farm-manager-dev`. Naming a
+  # service starts only that service (and its dependencies), regardless of its
+  # profile, instead of "every service enabled for this invocation" the way a
+  # bare `up`/`--profile dev up` with no service name would.
+  print-farm-manager-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    container_name: print-farm-manager-dev
+    ports:
+      - "3000:3000"   # API server
+      - "5173:5173"   # Vite dev server (hot reload) — open this one in a browser
+    environment:
+      # Vite's file watcher can miss change events over Docker Desktop's
+      # bind-mount filesystem on macOS/Windows (virtiofs / gRPC-FUSE) — polling
+      # is slightly more CPU but reliable on every host OS.
+      - CHOKIDAR_USEPOLLING=true
+      # Makes Vite bind 0.0.0.0 instead of localhost-only, so :5173 is reachable
+      # through Docker's port publishing (see client/vite.config.js).
+      - VITE_DOCKER_HOST=1
+    volumes:
+      - .:/app
+      # Shadow the bind mount with the image's own node_modules (installed for
+      # linux/node22 in the `dev` stage) instead of the host's — a host
+      # node_modules here would either be missing or built for the wrong
+      # platform/ABI (e.g. better-sqlite3 compiled for macOS/Windows).
+      - /app/node_modules
+      - /app/client/node_modules
+      - farm-data-dev:/app/server/data
+      - farm-gcode-dev:/app/server/gcode
+
 volumes:
   farm-data:
   farm-gcode:
+  farm-data-dev:
+  farm-gcode-dev:

@@ -877,8 +877,8 @@ export default function Settings() {
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Import Printer Registry</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>name, ip, api_key, group, type</code>.<br />
-          Model is inferred from the printer name. Duplicate names are skipped.
+          Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>model, name, ip, api_key, group, type</code>.<br />
+          Model field value is the ID from the Printer Models list above. Missing mandatory fields and duplicate names are skipped.
         </p>
 
         <form onSubmit={handleImport} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
