@@ -37,6 +37,7 @@ services:
       # Makes Vite bind 0.0.0.0 instead of localhost-only, so :5173 is reachable
       # through Docker's port publishing (see client/vite.config.js).
       - VITE_DOCKER_HOST=1
+    env_file: .env
     volumes:
       - .:/app
       # Shadow the bind mount with the image's own node_modules (installed for
