@@ -92,9 +92,11 @@ Create a single printer.
 }
 ```
 
-Required: `name`, `ip`, `api_key`, `model`. Optional: `group_name`, `type` (defaults to `"prusa"`).
+Required: `name`, `ip`, `model`. Optional: `group_name`, `type` (defaults to `"prusa"`).
 
-`model` must be one of: `mk4`, `mk4s`, `c1`, `c1l`, `xl`.
+`api_key` is required unless `type` is one of the key-less connectors (`elegoo-centauri`, `klipper`, `creality`), which authenticate without one.
+
+`model` must match a `model_id` already registered in the `printer_models` table (managed in Settings, not a fixed list) — e.g. `mk4`, `mk4s`, `c1`, `c1l`, `xl` for Prusa, or a Creality model such as `k1` once added.
 
 Returns `201` with the created printer object. Returns `409` if `name` already exists.
 
@@ -234,14 +236,14 @@ MK4S_01,192.168.1.100,aK3jR7xQ2pLm9vN,MK4S Farm,prusa,MK4S
 C1 Rarity,192.168.1.101,bR5mQ8nZ4vKs2Pw,CORE One Farm,prusa,C1
 ```
 
-The `model` column is optional but strongly recommended. Valid values (case-insensitive): `MK4`, `MK4S`, `C1`, `C1L`, `XL`. When present it takes priority over name inference — any printer name is valid.
+The `model` column is optional but strongly recommended. Valid values (case-insensitive) are any `model_id` already registered in Settings — e.g. `MK4`, `MK4S`, `C1`, `C1L`, `XL` for Prusa, or a registered Creality model such as `K1`. When present it takes priority over name inference — any printer name is valid.
 
 **Import rules:**
 - If `model` column is present and valid, it is used directly (normalized to lowercase)
 - If `model` column is absent or blank, model is inferred from `name` — see [database.md](database.md)
 - If both fail, the row is **flagged** — not saved until operator resolves via the Settings UI or `POST /api/printers`
 - Rows whose `name` already exists in the DB are **skipped** (not overwritten)
-- Rows missing `name`, `ip`, or `api_key` are flagged
+- Rows missing `name` or `ip` are flagged; `api_key` is also required unless `type` is a key-less connector (`elegoo-centauri`, `klipper`, `creality`)
 
 **Response:**
 ```json

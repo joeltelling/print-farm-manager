@@ -105,6 +105,16 @@ CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not i
 ### Changes
 - `update.bat`: step 1 now runs `git checkout -- package-lock.json client/package-lock.json` before `git pull`. The farm checkout is a deploy target with no intentional local changes, so discarding lockfile drift is always safe there.
 - `docs/installation.md`: documented the discard step and the manual `git restore package-lock.json` recovery for older copies of the script.
+## 2026-07-08 — Docs: align Creality API/CSV docs with optional `api_key` and dynamic model list
+
+PR #20 review found two doc/code mismatches introduced by the Creality connector work: `docs/api.md` still said `api_key` was required for every `POST /api/printers` row and CSV row, and still described `model` as a fixed five-value Prusa enum — neither reflects `server/routes/printers.js`'s `NO_API_KEY_TYPES` (which already exempts `creality`, alongside `elegoo-centauri`/`klipper`) or the fact that `model` has been validated against the operator-managed `printer_models` table (not a hardcoded list) since that table was introduced. Also corrected `docs/multi-brand.md`'s Creality state-mapping note, which still said any nonzero `err.errcode` maps to `ERROR` — the driver (since the 2026-07-08 fix below) checks `deviceState` busy first, so a non-fatal warning code during an active print stays `PRINTING`.
+
+### Changes
+- `docs/api.md`: `POST /api/printers` and CSV-import sections now state `api_key` is required unless `type` is a key-less connector (`elegoo-centauri`, `klipper`, `creality`), and describe `model` as validated against the Settings-managed `printer_models` table rather than a fixed Prusa-only list.
+- `docs/multi-brand.md`: Creality state-mapping note now describes the `deviceState`-before-`errcode` check, matching `mapStatus()` in `server/drivers/creality.js`.
+
+---
+
 ## 2026-07-08 — Creality: non-fatal hardware warnings no longer fail active jobs
 
 When a Creality printer (K1 Max, confirmed) reports a hardware warning mid-print (e.g. mainboard fan error) via `err.errcode`, the driver previously returned `ERROR` unconditionally — even though `deviceState` confirmed the printer was still busy printing. The poller then transitioned `PRINTING → ERROR`, the scheduler's `_handlePrinterUnavailable` marked the job `failed`, and the part count reset — while the print continued fine on the hardware.
