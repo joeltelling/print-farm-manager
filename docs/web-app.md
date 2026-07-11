@@ -255,7 +255,7 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 
 **Columns:** ID, Part, Project, Printer, Model, Status, Started, Duration, Actions
 
-**Filters:** status dropdown (all / queued / uploading / printing / finished / failed / cancelled), project dropdown, printer dropdown — all passed as query params on each fetch.
+**Filters:** status dropdown (all / queued / uploading / printing / finished / failed / cancelled), project dropdown, printer dropdown, all passed as query params on each fetch. The dropdown filters on the real `jobs.status` column; "Awaiting Sign-off" below is a display-only badge, not a filterable value.
 
 **Actions:** "Cancel" button on `queued` rows → `DELETE /api/jobs/:id` with confirm dialog.
 
@@ -269,6 +269,8 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 | finished | muted dark green | light green |
 | failed | dark red | red |
 | cancelled | near-black | muted gray |
+
+**"Awaiting Sign-off" badge (display-only):** a row whose `jobs.status` is still `printing` can belong to a printer that is already held for operator confirmation (for example a printer that transitions `PRINTING` -> `IDLE` directly, with no observable `FINISHED`/`STOPPED` in between two polls). `GET /api/jobs` joins `printer_is_held` and `printer_status` for exactly this case; `displayJobStatus()` in Jobs.jsx renders such a row as "Awaiting Sign-off" (green) instead of "Printing" (blue) so the Jobs page agrees with Fleet/Dashboard, which already reflect the hold via `is_held`. The underlying job row is untouched: it still says `printing` until the operator resolves it via Set Ready or Bad Print, at which point it becomes `finished`/`failed` normally.
 
 ## Live Update Pattern
 

@@ -96,7 +96,13 @@ poller.on('printerIdle', ({ printer }) => { ... });
 | `is_held = 1` | Printer is polled but skipped by dispatcher — operator must call `set-ready` |
 | `is_held = 0` + `is_active = 1` | Fully available — polled and eligible for dispatch |
 
-`is_held` defaults to `1` for all printers. The poller automatically sets `is_held = 1` whenever a printer transitions to `FINISHED`, requiring operator confirmation before the next job.
+`is_held` defaults to `1` for all printers. On a status transition, the poller holds the printer (`is_held = 1`) only when there is a tracked active job (`jobs.status IN ('uploading', 'printing')`) to protect, and one of three things is true:
+
+1. `newStatus === 'FINISHED'`: job done, awaits operator confirmation.
+2. **Missed finish**: `previousStatus === 'PRINTING'` and `newStatus === 'IDLE'`. Some printers (and slow poll timing) skip an observable `FINISHED`/`STOPPED` tick entirely and land straight on `IDLE` between two polls. The poller still holds the printer, but the job row is *not* automatically resolved: it stays `printing` in the DB until the operator uses Set Ready or Bad Print. `GET /api/jobs` exposes `printer_is_held`/`printer_status` so the Jobs page can flag this as "Awaiting Sign-off" instead of showing a stale "Printing" badge (see [web-app.md](web-app.md#jobs-page)).
+3. Any other status not in `SAFE_STATES` (`IDLE`, `PRINTING`, `FINISHED`, `READY`), e.g. `ERROR`, `OFFLINE`, `PAUSED`, `STOPPED`.
+
+The gate on "only when there is a tracked active job" prevents an already-resolved printer from being re-held by a later transition (e.g. a network blip causing `FINISHED` → `OFFLINE` → `FINISHED` after the operator already confirmed and cleared the hold).
 
 ## Timeout
 

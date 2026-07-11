@@ -40,7 +40,8 @@ function statusBadge(status) {
 function summarize(group) {
   const counts = { PRINTING: 0, IDLE: 0, AWAITING: 0, ERROR: 0, PAUSED: 0, OFFLINE: 0 };
   for (const p of group) {
-    const awaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE');
+    // Keep this condition identical to Fleet.jsx and Dashboard.jsx (see CLAUDE.md sync pairs).
+    const awaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE' || p.status === 'STOPPED');
     if (awaiting) { counts.AWAITING++; continue; }
     if (counts[p.status] !== undefined) counts[p.status]++;
   }

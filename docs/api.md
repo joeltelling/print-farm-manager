@@ -431,13 +431,15 @@ Historical jobs (`finished`, `failed`, `cancelled`) are retained with their `gco
 
 Returns jobs with part/project/printer names joined. Supports query params: `?printer_id=N`, `?part_id=N`, `?project_id=N`, `?status=printing`.
 
-Each job includes: `part_name`, `project_id`, `project_name`, `printer_name`, `printer_model`.
+Each job includes: `part_name`, `project_id`, `project_name`, `printer_name`, `printer_model`, `printer_is_held`, `printer_status`.
 
 Job statuses: `uploading` | `printing` | `queued` | `finished` | `failed` | `cancelled`.
 
+`printer_is_held` and `printer_status` are the current state of the job's printer, not a property of the job row itself. A job can sit at `status: "printing"` after its printer has already been held for operator sign-off (for example a printer that goes `PRINTING` -> `IDLE` directly, with no observable `FINISHED`/`STOPPED` in between polls): the job stays `printing` until Set Ready or Bad Print resolves it. Clients should treat `status === 'printing' && printer_is_held === 1 && printer_status !== 'PRINTING'` as "awaiting operator confirmation," not as an active print.
+
 ### `GET /api/jobs/:id`
 
-Single job with same joins. `404` if not found.
+Single job with same joins, including `printer_is_held` and `printer_status`. `404` if not found.
 
 ### `DELETE /api/jobs/:id`
 
