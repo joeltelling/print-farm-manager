@@ -62,13 +62,35 @@ function safeSend(ws, obj) {
 
 // Returns (or lazily creates) the connection object for a printer. The socket is
 // established in the background — callers check conn.connected / conn.latest.
+// Keyed by printer.id, but a cached connection is only reused while its host still
+// matches the printer's current `ip` — editing a Creality printer's address (the
+// detail/edit form) must not leave polling and reconnect attempts pointed at the
+// old address until the server restarts.
 function getOrCreateConnection(printer) {
-  if (connections.has(printer.id)) return connections.get(printer.id);
+  const host = hostOf(printer);
+  const existing = connections.get(printer.id);
+  if (existing) {
+    if (existing.host === host) return existing;
+    teardownConnection(existing);
+    connections.delete(printer.id);
+  }
 
-  const conn = { ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, finishReported: false };
+  const conn = { host, ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, finishReported: false };
   connections.set(printer.id, conn);
   connect(printer, conn);
   return conn;
+}
+
+// Stops a connection's reconnect loop and closes its socket. Marking it `closed`
+// first ensures the socket's own `close` handler doesn't schedule a reconnect for
+// what is now a stale, discarded connection object.
+function teardownConnection(conn) {
+  conn.closed = true;
+  clearInterval(conn.heartbeat);
+  clearTimeout(conn.reconnectTimer);
+  if (conn.ws) {
+    try { conn.ws.removeAllListeners(); conn.ws.close(); } catch (_) {}
+  }
 }
 
 function connect(printer, conn) {
@@ -179,14 +201,18 @@ function mapStatus(s, conn, printerName) {
     return 'PRINTING';
   }
 
+  // deviceState hasn't arrived in the cache yet — e.g. the first frame after (re)connect
+  // carries only a latched `state` (2/4) before a later frame merges deviceState in, or a
+  // stray partial frame merged in before either field was ever populated. Do not infer idle
+  // from its mere absence: a busy printer whose deviceState frame just hasn't landed yet
+  // would otherwise be reported FINISHED/STOPPED (and credited) while still mid-print, and
+  // an unrecognized frame would clear a hold and offer the printer up for dispatch. Report
+  // UNKNOWN so the printer is held until deviceState is confirmed one way or the other.
+  if (device == null) return 'UNKNOWN';
+
+  // From here, deviceState === 0 is confirmed idle.
   // Device is idle. If an error code is present, it stopped the print — report ERROR.
   if (errcode) return 'ERROR';
-
-  // Neither field was recognized — e.g. a stray partial frame merged into the cache
-  // before deviceState/state were ever populated. Don't fall through to IDLE (that
-  // would clear a hold and offer the printer up for dispatch on garbled telemetry);
-  // report UNKNOWN so the printer is held until real state arrives.
-  if (state == null && device == null) return 'UNKNOWN';
 
   // Device is idle. Surface the just-ended print's outcome once, then IDLE.
   if (!conn.finishReported) {

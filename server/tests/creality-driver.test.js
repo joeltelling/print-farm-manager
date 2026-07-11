@@ -188,6 +188,28 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
   });
 
+  // Regression (PR review): a first frame carrying only a latched `state` (2/4), with
+  // deviceState not merged in yet, must not be reported FINISHED/STOPPED — that would
+  // credit the job before the driver has confirmed the device is actually idle (a
+  // genuinely-busy printer whose deviceState frame just hasn't landed yet would otherwise
+  // look complete mid-print). It must report UNKNOWN until deviceState is confirmed either
+  // way, then reflect the real outcome once it arrives.
+  test('UNKNOWN when a terminal state (2) arrives before deviceState is known', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { state: 2 }); // no deviceState in this frame yet
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0 }))); // now confirmed idle
+    expect((await creality.getStatus(printer)).status).toBe('FINISHED');
+  });
+
+  test('UNKNOWN (not FINISHED) when a terminal state (2) arrives before deviceState, while the printer is actually still busy', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { state: 2 }); // stale/latched state, deviceState unknown
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 }))); // actually still printing
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+  });
+
   test('merges partial telemetry frames across pushes', async () => {
     const printer = makePrinter();
     const ws = await drive(printer, { deviceState: 1, state: 0, printFileName: 'part.gcode' });
@@ -204,6 +226,38 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('PRINTING');
     ws.close();
     expect((await creality.getStatus(printer)).status).toBe('OFFLINE');
+  });
+});
+
+// ─── Connection lifecycle ──────────────────────────────────────────────────────
+// Regression (PR review): connections were cached solely by printer.id, so editing a
+// Creality printer's IP through the supported edit form left polling and reconnect
+// attempts pointed at the old address until the server restarted.
+
+describe('connection lifecycle', () => {
+  test("reconnects to the new address when a printer's IP changes (edit form)", async () => {
+    const printer = makePrinter({ ip: '192.168.1.77' });
+    const ws1 = await drive(printer, { deviceState: 1, state: 0, printProgress: 10, printFileName: 'a.gcode' });
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+
+    const updated = { ...printer, ip: '192.168.1.200' };
+    const ws2 = await drive(updated, { deviceState: 0, state: 0 });
+
+    expect(ws2).not.toBe(ws1);
+    expect(ws1.readyState).toBe(3); // stale socket for the old address was torn down
+    expect((await creality.getStatus(updated)).status).toBe('IDLE');
+
+    // Traffic on the discarded socket must not affect the printer's reported status.
+    ws1.emit('message', Buffer.from(JSON.stringify({ deviceState: 1, state: 0 })));
+    expect((await creality.getStatus(updated)).status).toBe('IDLE');
+  });
+
+  test('reuses the existing connection when the IP is unchanged', async () => {
+    const printer = makePrinter();
+    await drive(printer, { deviceState: 1, state: 0 });
+    const before = WebSocket.instances.length;
+    await creality.getStatus({ ...printer }); // same ip, different object reference (fresh DB row)
+    expect(WebSocket.instances.length).toBe(before); // no new socket created
   });
 });
 

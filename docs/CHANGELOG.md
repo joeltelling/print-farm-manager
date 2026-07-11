@@ -44,6 +44,24 @@ Neither change touches `completed_qty`, and neither implements multi-group print
 - `docs/database.md`, `docs/api.md`, `docs/web-app.md`: documented `printer_groups`, the new endpoints, and the targeting cascade (which also closed a pre-existing gap: `gcodes.allowed_groups`/`required_material`/`required_color` were live but undocumented before this).
 
 Server-side and display logic only, no driver code touched; nothing here requires hardware validation beyond the existing dispatch-eligibility test coverage.
+## 2026-07-10 — Creality: fix premature FINISHED on partial frames, fix stale connection on IP edit
+
+PR #20 review found two remaining correctness issues in the Creality driver:
+
+**[P1] Terminal status emitted before `deviceState` was confirmed.** `mapStatus()` only refused to guess when *both* `state` and `deviceState` were missing. A frame carrying only a latched `state` (`2`/`4`) — e.g. the first message after (re)connect, before a later frame merges `deviceState` in — fell through to the idle/outcome branch and was reported `FINISHED`/`STOPPED` even though the driver had never confirmed the device was actually idle. If the DB still had an active `printing` job, the poller would forward that as a real completion and credit the job while the printer was genuinely still mid-print.
+
+**Fix:** `mapStatus()` now returns `UNKNOWN` whenever `deviceState` hasn't merged into the cache yet, regardless of whether `state` is present. Terminal outcomes (`FINISHED`/`STOPPED`) and `ERROR` are only reachable once `deviceState` is confirmed `0`.
+
+**[P2] Editing a printer's IP didn't reconnect.** Connections were cached solely by `printer.id`. Since the WebSocket connect/reconnect closures captured the printer object from when the connection was first created, updating a Creality printer's `ip` via the edit form left polling and reconnect attempts pointed at the old address until the server was restarted.
+
+**Fix:** `getOrCreateConnection()` now tracks the connected host on the connection object and compares it against the printer's current `ip` on every call. A mismatch tears down the stale socket (`teardownConnection()`: marks it closed so its own `close` handler doesn't reschedule a reconnect, clears the heartbeat/reconnect timers, removes listeners, closes the socket) and opens a fresh connection to the new address.
+
+### Changes
+- `server/drivers/creality.js`: `mapStatus()` — return `UNKNOWN` on missing `deviceState` alone (was: only when `state` was also missing); `getOrCreateConnection()` — key connection reuse on host match, not just printer ID; added `teardownConnection()`.
+- `server/tests/creality-driver.test.js`: added regression tests for a terminal `state` arriving before `deviceState` (both the genuinely-idle and still-busy outcomes), and for reconnecting to a new address on IP change vs. reusing the connection when unchanged.
+- `docs/multi-brand.md`: updated the Creality connection and state-mapping notes to describe both fixes.
+
+---
 
 ## 2026-07-07 — Dockerized development workflow (`dev` profile)
 
