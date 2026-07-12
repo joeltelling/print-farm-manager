@@ -68,6 +68,7 @@ function makeDb(gcodeFilepath) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, status TEXT DEFAULT 'active',
       priority INTEGER DEFAULT 0, required_material TEXT, required_color TEXT,
+      allowed_groups TEXT,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE parts (

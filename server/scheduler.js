@@ -286,8 +286,8 @@ class JobScheduler extends EventEmitter {
         WHERE parts.status    = 'open'
           AND projects.status = 'active'
           AND gcodes.printer_model = ?
-          AND (gcodes.allowed_groups IS NULL OR EXISTS (
-            SELECT 1 FROM json_each(gcodes.allowed_groups) WHERE value = ?
+          AND (COALESCE(gcodes.allowed_groups, projects.allowed_groups) IS NULL OR EXISTS (
+            SELECT 1 FROM json_each(COALESCE(gcodes.allowed_groups, projects.allowed_groups)) WHERE value = ?
           ))
           AND (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR COALESCE(gcodes.required_material, projects.required_material) = ?)
           AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR COALESCE(gcodes.required_color, projects.required_color) = ?)

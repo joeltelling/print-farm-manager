@@ -28,6 +28,7 @@ const backupRouter       = require('./routes/backup')(db);
 const dashboardRouter    = require('./routes/dashboard')(db);
 const settingsRouter     = require('./routes/settings')(db);
 const modelsRouter       = require('./routes/models')(db);
+const groupsRouter       = require('./routes/groups')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
 
@@ -46,6 +47,7 @@ app.use('/api/backup',          backupRouter);
 app.use('/api/dashboard',       dashboardRouter);
 app.use('/api/settings',        settingsRouter);
 app.use('/api/models',          modelsRouter);
+app.use('/api/groups',          groupsRouter);
 app.use('/api/filaments',       filamentsRouter);
 
 // Health check

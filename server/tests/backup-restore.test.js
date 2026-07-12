@@ -60,7 +60,8 @@ beforeEach(() => {
       created_at        INTEGER NOT NULL,
       updated_at        INTEGER NOT NULL,
       required_material TEXT,
-      required_color    TEXT
+      required_color    TEXT,
+      allowed_groups    TEXT
     );
     CREATE TABLE parts (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +114,10 @@ beforeEach(() => {
       label      TEXT NOT NULL,
       connector  TEXT NOT NULL
     );
+    CREATE TABLE printer_groups (
+      name        TEXT PRIMARY KEY,
+      created_at  INTEGER NOT NULL
+    );
     CREATE TABLE filament_types (
       id    INTEGER PRIMARY KEY AUTOINCREMENT,
       name  TEXT NOT NULL UNIQUE
@@ -139,8 +144,8 @@ beforeEach(() => {
   `).run(now);
 
   db.prepare(`
-    INSERT INTO projects (name, description, status, priority, created_at, updated_at, required_material, required_color)
-    VALUES ('Targeted Project', 'test', 'active', 0, ?, ?, 'PETG', 'Red')
+    INSERT INTO projects (name, description, status, priority, created_at, updated_at, required_material, required_color, allowed_groups)
+    VALUES ('Targeted Project', 'test', 'active', 0, ?, ?, 'PETG', 'Red', '["Bambu Farm"]')
   `).run(now, now);
 
   db.prepare(`
@@ -160,6 +165,7 @@ beforeEach(() => {
   // Two types/colors (not one) so a restore that gets the filament_colors -> filament_types
   // FK order wrong, or maps a color to the wrong type, doesn't slip through by coincidence.
   db.prepare(`INSERT INTO printer_models (model_id, label, connector) VALUES ('x1c', 'Bambu X1 Carbon', 'bambu')`).run();
+  db.prepare(`INSERT INTO printer_groups (name, created_at) VALUES ('Bambu Farm', ?)`).run(now);
   db.prepare(`INSERT INTO filament_types (name) VALUES ('PLA')`).run();
   db.prepare(`INSERT INTO filament_types (name) VALUES ('PETG')`).run();
   db.prepare(`INSERT INTO filament_colors (type_id, name, hex_color) VALUES (1, 'Galaxy Black', '#1a1a1a')`).run();
@@ -196,6 +202,7 @@ describe('Backup export/restore — column round-trip regression', () => {
     expect(res.body.projects[0]).toMatchObject({
       required_material: 'PETG',
       required_color: 'Red',
+      allowed_groups: '["Bambu Farm"]',
     });
     expect(res.body.parts[0]).toMatchObject({
       print_time_seconds: 7350,
@@ -219,7 +226,7 @@ describe('Backup export/restore — column round-trip regression', () => {
       // Wipe the columns under test so a false-positive (restore is a no-op / DB untouched)
       // can't slip through — restore must be what puts these values back.
       db.prepare("UPDATE printers SET serial_number = '', loaded_material = NULL, loaded_color = NULL").run();
-      db.prepare("UPDATE projects SET required_material = NULL, required_color = NULL").run();
+      db.prepare("UPDATE projects SET required_material = NULL, required_color = NULL, allowed_groups = NULL").run();
       db.prepare("UPDATE parts SET print_time_seconds = NULL, material_grams = NULL").run();
       db.prepare("UPDATE gcodes SET ams_slot = NULL, material_grams = NULL, allowed_groups = NULL, required_material = NULL, required_color = NULL").run();
 
@@ -238,6 +245,7 @@ describe('Backup export/restore — column round-trip regression', () => {
       const project = db.prepare('SELECT * FROM projects WHERE id = 1').get();
       expect(project.required_material).toBe('PETG');
       expect(project.required_color).toBe('Red');
+      expect(project.allowed_groups).toBe('["Bambu Farm"]');
 
       const part = db.prepare('SELECT * FROM parts WHERE id = 1').get();
       expect(part.print_time_seconds).toBe(7350);
@@ -308,13 +316,16 @@ describe('Backup export/restore — column round-trip regression', () => {
 // settings — the four tables this PR originally added to backup/restore — leaving both the
 // round trip (including the filament_colors -> filament_types FK order) and the
 // older-backup compatibility guard (missing keys must leave existing config alone) untested.
-describe('Backup export/restore — config tables (printer models, filament library, settings)', () => {
-  test('export includes printer_models, filament_types, filament_colors, and settings', async () => {
+describe('Backup export/restore: config tables (printer models, printer groups, filament library, settings)', () => {
+  test('export includes printer_models, printer_groups, filament_types, filament_colors, and settings', async () => {
     const res = await request(app).get('/api/backup');
     expect(res.status).toBe(200);
 
     expect(res.body.printer_models).toEqual(
       expect.arrayContaining([expect.objectContaining({ model_id: 'x1c', label: 'Bambu X1 Carbon', connector: 'bambu' })])
+    );
+    expect(res.body.printer_groups).toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'Bambu Farm' })])
     );
     expect(res.body.filament_types).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: 'PLA' }), expect.objectContaining({ name: 'PETG' })])
@@ -352,17 +363,22 @@ describe('Backup export/restore — config tables (printer models, filament libr
       db.prepare("UPDATE filament_colors SET hex_color = '#000000'").run();
       db.prepare("UPDATE filament_types SET name = name || '-wiped'").run(); // keeps UNIQUE(name) satisfied
       db.prepare("UPDATE printer_models SET label = 'Wiped'").run();
+      db.prepare("UPDATE printer_groups SET created_at = 0").run();
       db.prepare("UPDATE settings SET value = 'Wiped Farm' WHERE key = 'farm_name'").run();
 
       const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
       expect(restoreRes.status).toBe(200);
       expect(restoreRes.body.ok).toBe(true);
       expect(restoreRes.body.printer_models).toBe(1);
+      expect(restoreRes.body.printer_groups).toBe(1);
       expect(restoreRes.body.filament_types).toBe(2);
       expect(restoreRes.body.filament_colors).toBe(2);
 
       const model = db.prepare('SELECT * FROM printer_models WHERE model_id = ?').get('x1c');
       expect(model).toMatchObject({ label: 'Bambu X1 Carbon', connector: 'bambu' });
+
+      const group = db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Bambu Farm');
+      expect(group.created_at).not.toBe(0);
 
       // Confirm each restored color's type_id resolves to the *correct* filament_types row
       // by name, not just to some row that happens to satisfy the FK.
@@ -389,12 +405,13 @@ describe('Backup export/restore — config tables (printer models, filament libr
     }
   });
 
-  test('restoring an older backup missing printer_models/filament/settings keys leaves current config untouched', async () => {
+  test('restoring an older backup missing printer_models/printer_groups/filament/settings keys leaves current config untouched', async () => {
     const exportRes = await request(app).get('/api/backup');
     const backup = exportRes.body;
-    // Simulate a pre-this-feature backup: strip the four keys entirely rather than leaving
+    // Simulate a pre-this-feature backup: strip the keys entirely rather than leaving
     // them as empty arrays, matching what an old export actually produced.
     delete backup.printer_models;
+    delete backup.printer_groups;
     delete backup.filament_types;
     delete backup.filament_colors;
     delete backup.settings;
@@ -407,6 +424,9 @@ describe('Backup export/restore — config tables (printer models, filament libr
 
       const model = db.prepare('SELECT * FROM printer_models WHERE model_id = ?').get('x1c');
       expect(model).toMatchObject({ label: 'Bambu X1 Carbon', connector: 'bambu' });
+
+      const group = db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Bambu Farm');
+      expect(group).toBeTruthy();
 
       const types = db.prepare('SELECT name FROM filament_types ORDER BY name').all().map(t => t.name);
       expect(types).toEqual(['PETG', 'PLA']);

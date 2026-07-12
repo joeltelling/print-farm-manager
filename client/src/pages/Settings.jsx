@@ -56,10 +56,12 @@ export default function Settings() {
   const [allModels, setAllModels] = useState([]);
   const [filamentTypes, setFilamentTypes] = useState([]);   // [{id, name}]
   const [filamentColors, setFilamentColors] = useState([]); // [{id, name, hex_color}]
+  const [allGroups, setAllGroups] = useState([]);           // [{name, created_at}]
   const fetchModels = useCallback(() => {
     fetch('/api/models').then(r => r.json()).then(setAllModels).catch(() => {});
     fetch('/api/filaments/types').then(r => r.json()).then(setFilamentTypes).catch(() => {});
     fetch('/api/filaments/colors').then(r => r.json()).then(setFilamentColors).catch(() => {});
+    fetch('/api/groups').then(r => r.json()).then(setAllGroups).catch(() => {});
   }, []);
   useEffect(() => { fetchModels(); }, [fetchModels]);
 
@@ -225,6 +227,44 @@ export default function Settings() {
     }
   }
 
+  // Groups management: the persisted registry a G-code's or project's
+  // allowed_groups restriction is picked from. Independent of which printers
+  // currently carry a given group_name (see printer_groups in db.js).
+  const [groupForm, setGroupForm] = useState({ name: '' });
+  const [groupFormError, setGroupFormError] = useState(null);
+  const [groupDeleteError, setGroupDeleteError] = useState({});
+
+  async function handleAddGroup(e) {
+    e.preventDefault();
+    setGroupFormError(null);
+    try {
+      const res = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(groupForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add group');
+      setGroupForm({ name: '' });
+      fetchModels();
+      showToast('Group added');
+    } catch (err) {
+      setGroupFormError(err.message);
+    }
+  }
+
+  async function handleDeleteGroup(name) {
+    setGroupDeleteError(prev => ({ ...prev, [name]: null }));
+    try {
+      const res = await fetch(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete group');
+      fetchModels();
+    } catch (err) {
+      setGroupDeleteError(prev => ({ ...prev, [name]: err.message }));
+    }
+  }
+
   // Dispatch batch size setting
   const [batchSize, setBatchSize] = useState('');
   const [batchSizeError, setBatchSizeError] = useState(null);
@@ -329,8 +369,8 @@ export default function Settings() {
       if (!res.ok) throw new Error(data.error || 'Restore failed');
       setRestoreResult(data);
 
-      // Restore replaces printer_models/filament library/settings wholesale — refresh
-      // this page's state (and the sidebar's farm name) instead of requiring a reload.
+      // Restore replaces printer_models/groups/filament library/settings wholesale:
+      // refresh this page's state (and the sidebar's farm name) instead of requiring a reload.
       fetchModels();
       fetch('/api/settings')
         .then(r => r.json())
@@ -548,6 +588,72 @@ export default function Settings() {
         </form>
         {modelFormError && (
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{modelFormError}</div>
+        )}
+      </section>
+
+      {/* Groups */}
+      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Groups</h2>
+        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+          Named groups (e.g. racks or rooms) that projects and G-codes can restrict dispatch to. A group
+          stays listed here even when no printer currently carries it (assigning a printer's Group field
+          on the Printers page auto-registers a new name here too). Deleting a group is blocked while any
+          active printer, G-code, or project still references it.
+        </p>
+
+        {allGroups.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>
+            <thead>
+              <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
+                <th style={{ padding: '4px 8px' }}>Name</th>
+                <th style={{ padding: '4px 8px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {allGroups.map(g => (
+                <tr key={g.name} style={{ borderBottom: '1px solid #1a2030' }}>
+                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>{g.name}</td>
+                  <td style={{ padding: '6px 8px' }}>
+                    <button
+                      onClick={() => handleDeleteGroup(g.name)}
+                      style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
+                    >
+                      Delete
+                    </button>
+                    {groupDeleteError[g.name] && (
+                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{groupDeleteError[g.name]}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {allGroups.length === 0 && (
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>No groups registered yet. Add one below, or it'll be created automatically the first time you type it on a printer.</p>
+        )}
+
+        <form onSubmit={handleAddGroup} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Name *</label>
+            <input
+              value={groupForm.name}
+              onChange={e => setGroupForm({ name: e.target.value })}
+              required
+              placeholder="Rack A"
+              style={inputStyle}
+            />
+          </div>
+          <button
+            type="submit"
+            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Add
+          </button>
+        </form>
+        {groupFormError && (
+          <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{groupFormError}</div>
         )}
       </section>
 
@@ -814,8 +920,12 @@ export default function Settings() {
                 value={addForm.group_name}
                 onChange={e => setAddForm(p => ({ ...p, group_name: e.target.value }))}
                 placeholder="Rack A"
+                list="add-printer-group-options"
                 style={inputStyle}
               />
+              <datalist id="add-printer-group-options">
+                {allGroups.map(g => <option key={g.name} value={g.name} />)}
+              </datalist>
             </div>
             <div>
               <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Loaded Material</label>
@@ -877,8 +987,8 @@ export default function Settings() {
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Import Printer Registry</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>name, ip, api_key, group, type</code>.<br />
-          Model is inferred from the printer name. Duplicate names are skipped.
+          Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>model, name, ip, api_key, group, type</code>.<br />
+          Model field value is the ID from the Printer Models list above. Missing mandatory fields and duplicate names are skipped.
         </p>
 
         <form onSubmit={handleImport} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1137,6 +1247,7 @@ export default function Settings() {
               <Chip color="#4ade80" label={`${restoreResult.gcodes} G-codes`} />
               <Chip color="#4ade80" label={`${restoreResult.jobs} jobs`} />
               <Chip color="#4ade80" label={`${restoreResult.printer_models ?? 0} printer models`} />
+              <Chip color="#4ade80" label={`${restoreResult.printer_groups ?? 0} groups`} />
               <Chip color="#4ade80" label={`${restoreResult.filament_types ?? 0} filament types`} />
               <Chip color="#4ade80" label={`${restoreResult.filament_colors ?? 0} filament colors`} />
             </div>

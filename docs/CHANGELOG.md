@@ -46,6 +46,31 @@ Printer model dropdowns in the staging table only show models the user actually 
 - `docs/web-app.md` — added Bulk Import Panel section
 
 ---
+## 2026-07-11: persisted group registry, plus project-level group targeting
+
+Joel found that printer groups could silently vanish: he set a G-code's `allowed_groups` to a group, then reassigned every printer in that group elsewhere. Every "list of known groups" in the app derived live from `SELECT DISTINCT group_name FROM printers`, so the group disappeared from the G-code editor's picker the moment no printer carried it anymore, showing nothing selected. The restriction wasn't actually gone though: the scheduler's `json_each(gcodes.allowed_groups)` check still enforced the old name, so the G-code silently became permanently undispatchable, not unrestricted as it appeared.
+
+Fixed by promoting groups to a persisted registry (`printer_groups`), independent of which printers currently carry a given name, mirroring the existing `printer_models` table. Groups auto-register the moment a name is typed on a printer (create, update, bulk-edit, or CSV import), so there's no added setup friction, and every picker now reads from the registry instead of deriving live from the printers table. A group can still be deleted for cleanup, but only once nothing (an active printer, a G-code, or a project) references it anymore.
+
+While in there, added the capability Joel wanted alongside the fix: a project-level `allowed_groups` default that cascades to every G-code in the project without its own override, mirroring the existing `required_material`/`required_color` project-to-gcode cascade exactly (`COALESCE(gcodes.X, projects.X)` in the scheduler's dispatch query and the `dispatch-status` diagnostic).
+
+Neither change touches `completed_qty`, and neither implements multi-group printers (still one `group_name` per printer, per the earlier decision against that feature).
+
+### Changes
+- `server/db.js`: new `printer_groups` table (`name TEXT PRIMARY KEY, created_at`); new `projects.allowed_groups` column; a startup seed migration that backfills the registry from every group name currently referenced anywhere (`printers.group_name`, and every name inside any `gcodes`/`projects` `allowed_groups` JSON array), so an existing install recovers an orphaned-but-referenced group on upgrade.
+- `server/routes/groups.js`: new file, `GET`/`POST`/`DELETE /api/groups`. Delete is blocked (`409`) while an active printer, a G-code's `allowed_groups`, or a project's `allowed_groups` still references the name.
+- `server/routes/printers.js`: removed `GET /groups` (replaced by `GET /api/groups`); `POST /`, `PUT /:id`, and CSV import now silently register a new `group_name` into `printer_groups`. Each auto-register call is wrapped in its own try/catch so a failure there can never turn an already-committed printer write into a reported error; verified by forcing the insert to fail (a `printer_groups` trigger raising `ABORT`) and confirming the printer create still returns `201` with the row actually persisted.
+- `server/scheduler.js`: dispatch-candidate group clause changed to `COALESCE(gcodes.allowed_groups, projects.allowed_groups)`, matching the material/color pattern.
+- `server/routes/parts.js`: `dispatch-status` diagnostic mirrors the same cascade (`gc.allowed_groups || project_allowed_groups`).
+- `server/routes/projects.js`: new `PUT /api/projects/:id/groups`, mirroring the existing `PUT /api/projects/:id/filament`.
+- `client/src/pages/Projects.jsx`: G-code and new project-level group pickers now read `GET /api/groups` (model-independent) instead of the removed per-model `GET /api/printers/groups`; added the project-level group defaults block and a "inherits project: X" empty-state hint on the per-gcode picker.
+- `client/src/pages/Settings.jsx`: new Groups management section (list, add, delete with in-use error); Add Printer form's Group field is now a registry-backed `<datalist>`.
+- `client/src/pages/Printers.jsx`, `client/src/pages/PrinterDetail.jsx`: Group fields' `<datalist>` autocomplete now sourced from the registry instead of derived from currently-loaded printers.
+- `server/routes/backup.js`: `printer_groups` added to export/restore, following the `printer_models` pattern exactly (no FK, absent from the `sqlite_sequence` resync list).
+- New `server/tests/groups.test.js`, `server/tests/dispatch-status.test.js`, `server/tests/projects-groups.test.js`; extended `server/tests/printers-filaments.test.js`, `server/tests/backup-restore.test.js`, `server/tests/scheduler-targeting.test.js` with the registry and cascade behavior.
+- `docs/database.md`, `docs/api.md`, `docs/web-app.md`: documented `printer_groups`, the new endpoints, and the targeting cascade (which also closed a pre-existing gap: `gcodes.allowed_groups`/`required_material`/`required_color` were live but undocumented before this).
+
+Server-side and display logic only, no driver code touched; nothing here requires hardware validation beyond the existing dispatch-eligibility test coverage.
 
 ## 2026-07-07 — Dockerized development workflow (`dev` profile)
 
@@ -70,6 +95,33 @@ Also verified: hot reload actually round-trips through the bind mount (`docker c
 - `README.md`: added a "Prefer Docker instead of a local Node.js install?" subsection under Quick Start (Development), alongside (not replacing) the native steps; documented running the test suite via `docker compose exec print-farm-manager-dev npm test`.
 - `CONTRIBUTING.md`: same Docker cross-reference and test-running note added to "Getting Set Up", which had its own independent copy of the native setup steps this PR hadn't touched yet.
 - `docs/installation.md`, `docs/README.md`: cross-referenced the new `dev` service from the existing dev-mode note, the top-level Quick Start, and the file-structure index.
+## 2026-07-11: fix cross-page status disagreement after a missed-finish hold
+
+Reported by Joel: after aborting a print, Fleet showed the printer as held/awaiting confirmation ("Idle" badge, green Set Ready/Bad Print box), Dashboard rendered it green as if FINISHED, and the Jobs page still said "Printing" for the same job. Root cause: when a printer goes `PRINTING` -> `IDLE` directly between two polls (no observable `FINISHED`/`STOPPED` tick), `poller.js` correctly holds the printer, but `scheduler.js`'s `statusChange` listener has no case for `newStatus === 'IDLE'` (unlike the `STOPPED` case, which cancels the job), so the job row is never resolved and stays at `status = 'printing'` until the operator uses Set Ready or Bad Print. The Jobs page reads `jobs.status` with no visibility into printer hold state, so it kept reporting the stale value as truth. This never affected `completed_qty`: Set Ready and Bad Print already resolve the job correctly once used.
+
+Separately found and fixed while investigating: the "awaiting sign-off" derived-status check (`is_held === 1` AND status `FINISHED`/`IDLE`) is a documented sync pair across Fleet.jsx, Dashboard.jsx, and Printers.jsx. Fleet.jsx already included `STOPPED` in that check (with a comment explaining why); Dashboard.jsx, Printers.jsx, and the server-side `/api/dashboard` stat had drifted and did not, so a held `STOPPED` printer would show the confirmation UI on Fleet but not be counted as "awaiting" on Dashboard or Printers.
+
+### Changes
+- `server/routes/jobs.js`: `GET /api/jobs` and `GET /api/jobs/:id` now join `printers.is_held AS printer_is_held` and `printers.status AS printer_status`. Display-only additions; `jobs.status` itself is unchanged.
+- `client/src/pages/Jobs.jsx`: added a `displayJobStatus()` helper: a `printing` job whose printer is already held and not actually `PRINTING` renders as "Awaiting Sign-off" (green) instead of "Printing" (blue). Never writes back to `jobs.status`.
+- `client/src/pages/Dashboard.jsx`, `client/src/pages/Printers.jsx`, `server/routes/dashboard.js`: added `STOPPED` to the "awaiting sign-off" condition, matching Fleet.jsx.
+- `server/tests/jobs-route.test.js`: new file; asserts `printer_is_held`/`printer_status` are present and correctly flip a `printing` job into the awaiting-confirmation shape after a missed-finish hold.
+- `docs/api.md`, `docs/web-app.md`, `docs/poller.md`: documented the missed-finish hold path, the new joined fields, and the display-only "Awaiting Sign-off" badge.
+
+Client-side change only touches display logic; not hardware-dependent, no validation-on-hardware claim applicable.
+
+---
+
+## 2026-07-06: rewrite CLAUDE.md as an operating manual; add Claude Code project skills
+
+CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not implement Phase 2+ features"), which stopped being true over a year of shipped phases ago. Rewritten as a full operating manual so agent-assisted work (Joel's or a contributor's) follows the house process without rediscovering it: server, driver, and client conventions as exact idioms, a sync-pairs table of code that must change together, named failure modes with the rule that prevents each, per-deliverable quality checklists, and escalation rules for ambiguous cases. Also adds three project skills under `.claude/skills/`, which is now tracked (personal `.claude` settings remain ignored).
+
+### Changes
+- `CLAUDE.md`: full rewrite.
+- `.claude/skills/ship/SKILL.md`: finishing pass for any change (tests, sync pairs, docs, changelog entry, dash check, commit style).
+- `.claude/skills/add-connector/SKILL.md`: end-to-end printer driver scaffold: contract, six registration touchpoints, mocked test minimums, honest hardware-validation reporting.
+- `.claude/skills/pr-review/SKILL.md`: community PR review process (adjacent-code audit, part-count scrutiny, driver contract checks, severity-tagged findings).
+- `.gitignore`: `.claude/` narrowed to `.claude/*` with `!.claude/skills/` so skills ship with the repo.
 
 ---
 
