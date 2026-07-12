@@ -75,7 +75,7 @@ function getOrCreateConnection(printer) {
     connections.delete(printer.id);
   }
 
-  const conn = { host, ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, finishReported: false };
+  const conn = { host, ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, finishReported: false, sawBusy: false };
   connections.set(printer.id, conn);
   connect(printer, conn);
   return conn;
@@ -91,6 +91,16 @@ function teardownConnection(conn) {
   if (conn.ws) {
     try { conn.ws.removeAllListeners(); conn.ws.close(); } catch (_) {}
   }
+}
+
+// Closes and forgets a printer's cached connection. Called from the printer lifecycle
+// routes when a printer is deleted, decommissioned, or moved to another connector type,
+// so its socket, heartbeat, and reconnect loop do not outlive the printer they served.
+function disposeConnection(printerId) {
+  const conn = connections.get(printerId);
+  if (!conn) return;
+  teardownConnection(conn);
+  connections.delete(printerId);
 }
 
 function connect(printer, conn) {
@@ -134,6 +144,9 @@ function connect(printer, conn) {
     // Drop cached state so a reconnect reports OFFLINE until fresh telemetry arrives,
     // rather than replaying stale pre-disconnect state (avoids false FINISHED flaps).
     conn.latest = null;
+    // The busy observation dies with the socket: after a reconnect, a latched terminal
+    // `state` is the previous print's outcome, not a fresh event (see mapStatus).
+    conn.sawBusy = false;
     if (!conn.closed) scheduleReconnect(printer, conn);
   });
 
@@ -181,6 +194,15 @@ async function waitForData(conn, timeoutMs) {
 // single transition (poller reacts to transitions) and the printer returns to service.
 // `conn.finishReported` carries that one-shot latch and is reset whenever the device is
 // busy again (a new or continuing print).
+//
+// A terminal outcome is also only trusted when THIS connection watched the print run:
+// `conn.sawBusy` records that a busy deviceState (or a pause) was observed since the
+// socket (re)connected, and is cleared when the socket closes. Without it, the first
+// idle snapshot after a (re)connect would replay the previous print's latched 2/4 as a
+// fresh FINISHED/STOPPED, and the scheduler would credit a job this driver never saw
+// print. With no observed busy state the driver reports IDLE and leaves the missed-
+// finish case to the poller's PRINTING-to-IDLE hold, which asks the operator instead
+// of inferring.
 function mapStatus(s, conn, printerName) {
   if (!s) return 'UNKNOWN';
 
@@ -188,8 +210,10 @@ function mapStatus(s, conn, printerName) {
   const device = num(s.deviceState);
   const errcode = (s.err && typeof s.err === 'object') ? num(s.err.errcode) : 0;
 
-  // Paused is reported by `state` regardless of deviceState.
-  if (state === 5) return 'PAUSED';
+  // Paused is reported by `state` regardless of deviceState. A pause also proves a
+  // print is in flight on this connection's watch, so its eventual terminal outcome
+  // is genuine (covers connecting while paused, then the operator stopping the print).
+  if (state === 5) { conn.sawBusy = true; return 'PAUSED'; }
 
   // Busy: actively printing / heating / leveling / self-testing.
   // Checked BEFORE the errcode so a non-fatal hardware warning (e.g. mainboard fan)
@@ -198,6 +222,7 @@ function mapStatus(s, conn, printerName) {
   if (device != null && device !== 0) {
     if (errcode) console.warn(`[creality] ${printerName} non-fatal error code ${errcode} while busy — staying PRINTING`);
     conn.finishReported = false;
+    conn.sawBusy = true;
     return 'PRINTING';
   }
 
@@ -214,8 +239,10 @@ function mapStatus(s, conn, printerName) {
   // Device is idle. If an error code is present, it stopped the print — report ERROR.
   if (errcode) return 'ERROR';
 
-  // Device is idle. Surface the just-ended print's outcome once, then IDLE.
-  if (!conn.finishReported) {
+  // Device is idle. Surface the just-ended print's outcome once, then IDLE, but only
+  // if this connection actually observed the print run (sawBusy): a latched terminal
+  // `state` seen by a fresh connection is the LAST print's outcome, not a new event.
+  if (conn.sawBusy && !conn.finishReported) {
     if (state === 2) { conn.finishReported = true; return 'FINISHED'; }
     if (state === 4) { conn.finishReported = true; return 'STOPPED'; }
   }
@@ -352,4 +379,4 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, disposeConnection };

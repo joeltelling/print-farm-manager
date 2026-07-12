@@ -31,6 +31,17 @@ function resolveModel(rawModel, name) {
   return normalizeModel(rawModel) || inferModel(name);
 }
 
+// Persistent-connection drivers keep one socket per printer in a module-level map with
+// a heartbeat and reconnect loop. When a printer leaves its connector (deleted,
+// decommissioned, or switched to another connector type), that connection must be
+// dropped here, or it keeps reconnecting and heartbeating until the server restarts.
+// Lazy require: the driver module only loads if such a printer was actually configured.
+function dropDriverConnection(printer) {
+  if (printer.type === 'creality') {
+    try { require('../drivers/creality').disposeConnection(printer.id); } catch (_) {}
+  }
+}
+
 module.exports = (db) => {
   // Silently keeps the printer_groups registry a superset of every group name
   // ever assigned to a printer, so a group can never again vanish from a
@@ -208,6 +219,12 @@ module.exports = (db) => {
         try { registerGroup.run(group_name.trim(), Date.now()); } catch (_) {}
       }
 
+      // Moving the printer off its previous connector orphans that connector's
+      // cached connection; drop it so it stops reconnecting to a printer the
+      // driver no longer serves. (An IP-only change is handled inside the
+      // driver, which re-keys its connection when the host stops matching.)
+      if (after.type !== printer.type) dropDriverConnection(printer);
+
       // Log one event per changed field
       for (const [field, label] of Object.entries(FIELD_LABELS)) {
         const oldVal = printer[field] ?? null;
@@ -232,6 +249,7 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     db.prepare('DELETE FROM printers WHERE id = ?').run(req.params.id);
+    dropDriverConnection(printer);
     res.json({ success: true });
   });
 
@@ -241,6 +259,7 @@ module.exports = (db) => {
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     const now = Date.now();
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ? WHERE id = ?').run(now, printer.id);
+    dropDriverConnection(printer);
     events.insert(printer.id, 'decommission', req.body?.note ?? null);
     console.log(`[printers] ${printer.name} decommissioned`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
@@ -322,6 +341,7 @@ module.exports = (db) => {
 
     const decommNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, is_held = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, decommNote, printer.id);
+    dropDriverConnection(printer);
     events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print — taken offline for maintenance');
     console.log(`[printers] ${printer.name} decommissioned after confirmed good print`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
@@ -377,6 +397,7 @@ module.exports = (db) => {
       const now = Date.now();
       const noJobNote = req.body?.note ?? null;
       db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, noJobNote, printer.id);
+      dropDriverConnection(printer);
       events.insert(printer.id, 'job_failed', noJobNote ?? 'No tracked job — printer decommissioned for investigation');
       console.log(`[printers] ${printer.name} decommissioned (no tracked job to mark failed)`);
       return res.json({ success: true, job_id: null });
@@ -412,6 +433,7 @@ module.exports = (db) => {
     // The operator must explicitly recommission it when the machine is confirmed safe.
     const failNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, failNote, printer.id);
+    dropDriverConnection(printer);
 
     const failedPart = db.prepare('SELECT name FROM parts WHERE id = ?').get(job.part_id);
     const eventNote = failNote

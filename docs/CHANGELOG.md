@@ -18,6 +18,28 @@ Server-side scheduling logic only; no driver code touched, no change to candidat
 - `docs/api.md`: reworded the `dispatch_batch_size` settings-table row to describe it as a concurrency target.
 - `client/src/pages/Settings.jsx`: reworded the Dispatch Settings help text and the batch-size field label to match.
 - `server/tests/scheduler-sweep.test.js`: migrated every test's mock seam from `_dispatchToPrinter` to `_reserveJob`/`_executeUpload`; added a fill-to-target concurrency harness (sparse/ample/dense candidate scenarios, proving peak concurrency actually reaches `dispatch_batch_size` when real work exists anywhere in the queue and never exceeds it) and one test exercising the ceiling check through the real wave loop against real dispatch SQL, reproducing Joel's exact scenario (a no-candidate printer ahead of two real candidates competing for a part with room for only two).
+## 2026-07-12: Creality: no terminal status without an observed print, drop connections when a printer leaves the connector
+
+PR #20 review (round 4) found two remaining issues in the Creality driver, both fixed here. The branch was also rebased onto current `main` to resolve the merge conflicts GitHub reported; the review's other two findings (scheduler group-routing and the Jobs page missed-finish fields) were artifacts of the stale base and are resolved by the rebase itself, with no code change in this branch.
+
+**[P1] A fresh connection synthesized FINISHED/STOPPED from a latched outcome.** `state` is a latched last-outcome code: it stays at `2` (completed) or `4` (stopped) while the device sits idle, until the next print. The one-shot `finishReported` flag started `false` on every new connection, so the first complete `{ deviceState: 0, state: 2/4 }` snapshot after a (re)connect was reported as a fresh `FINISHED`/`STOPPED` even though this connection never saw the print run. On a reconnect while a database job was still `printing`, the poller would forward that replayed latch as a real completion and credit the job (a phantom part credit).
+
+**Fix:** terminal outcomes are now additionally gated on a per-connection `sawBusy` flag, set when a busy `deviceState` (or a pause, `state 5`) is observed and cleared when the socket closes. A latched terminal code seen by a connection that never observed the print maps to `IDLE`; the print that ended while disconnected is handled by the poller's existing `PRINTING` to `IDLE` missed-finish hold, which asks the operator instead of inferring. The partial-frame guard from the previous round is unchanged: a terminal `state` with no confirmed `deviceState` still reports `UNKNOWN`.
+
+**[P2] Connections outlived their printer.** The driver's module-level connection map (socket, 10s heartbeat, 5s reconnect loop) was only ever cleaned up on an IP change. Deleting, decommissioning, or switching a printer to another connector type left its connection reconnecting and heartbeating until the server restarted; fleet churn accumulated sockets and timers.
+
+**Fix:** the driver now exports `disposeConnection(printerId)` (teardown plus map removal), and `server/routes/printers.js` calls it from every operation that takes a printer off the connector: `DELETE /:id`, `POST /:id/decommission`, `POST /:id/complete-and-decommission`, both decommission paths of `POST /:id/mark-job-failure`, and `PUT /:id` when the connector type changes. The lazy `require` in the route helper keeps the driver module unloaded unless a Creality printer is actually touched.
+
+### Changes
+- `server/drivers/creality.js`: `sawBusy` gate on the terminal-outcome branch of `mapStatus()` (set on busy/paused, cleared on socket close); new exported `disposeConnection(printerId)`.
+- `server/routes/printers.js`: new `dropDriverConnection()` helper invoked from delete, both decommission endpoints, mark-job-failure (both paths), and connector-type changes in the update route.
+- `server/tests/creality-driver.test.js`: regression tests for the latched-outcome-on-fresh-connection and reconnect-replay cases, plus `disposeConnection` behavior; existing terminal-outcome tests updated to drive a busy phase first (the realistic lifecycle).
+- `server/tests/printers-driver-teardown.test.js`: new route-level tests asserting each lifecycle operation calls `disposeConnection` (and that plain edits and non-Creality printers do not).
+- `docs/multi-brand.md`: Creality notes updated for both behaviors.
+
+Implemented from the captured K1 telemetry semantics already documented in the driver; this round's changes are not yet validated on hardware.
+
+---
 
 ## 2026-07-11: persisted group registry, plus project-level group targeting
 

@@ -126,7 +126,9 @@ describe('getStatus state mapping', () => {
 
   test('FINISHED once on the busy→idle edge (state 2), then IDLE', async () => {
     const printer = makePrinter();
-    await drive(printer, { deviceState: 0, state: 2, printProgress: 100, printFileName: 'part.gcode' });
+    const ws = await drive(printer, { deviceState: 1, state: 0, printProgress: 90, printFileName: 'part.gcode' });
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0, state: 2, printProgress: 100 })));
     const first = await creality.getStatus(printer);
     expect(first.status).toBe('FINISHED');
     expect(first.progress).toBeNull();
@@ -136,14 +138,18 @@ describe('getStatus state mapping', () => {
 
   test('STOPPED once (state 4), then IDLE', async () => {
     const printer = makePrinter();
-    await drive(printer, { deviceState: 0, state: 4, printProgress: 40, printFileName: 'part.gcode' });
+    const ws = await drive(printer, { deviceState: 1, state: 0, printProgress: 40, printFileName: 'part.gcode' });
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0, state: 4 })));
     expect((await creality.getStatus(printer)).status).toBe('STOPPED');
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
 
   test('re-reports FINISHED for a new print after returning to idle', async () => {
     const printer = makePrinter();
-    const ws = await drive(printer, { deviceState: 0, state: 2 });
+    const ws = await drive(printer, { deviceState: 1, state: 0 }); // first print runs
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0, state: 2 }))); // and completes
     expect((await creality.getStatus(printer)).status).toBe('FINISHED');
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1, state: 0 }))); // next print runs
@@ -193,13 +199,14 @@ describe('getStatus state mapping', () => {
   // credit the job before the driver has confirmed the device is actually idle (a
   // genuinely-busy printer whose deviceState frame just hasn't landed yet would otherwise
   // look complete mid-print). It must report UNKNOWN until deviceState is confirmed either
-  // way, then reflect the real outcome once it arrives.
-  test('UNKNOWN when a terminal state (2) arrives before deviceState is known', async () => {
+  // way. Once idle is confirmed, the latched code is the PREVIOUS print's outcome (this
+  // connection never observed the print run), so the driver reports IDLE, not FINISHED.
+  test('UNKNOWN when a terminal state (2) arrives before deviceState is known, then IDLE once idle is confirmed', async () => {
     const printer = makePrinter();
     const ws = await drive(printer, { state: 2 }); // no deviceState in this frame yet
     expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0 }))); // now confirmed idle
-    expect((await creality.getStatus(printer)).status).toBe('FINISHED');
+    expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
 
   test('UNKNOWN (not FINISHED) when a terminal state (2) arrives before deviceState, while the printer is actually still busy', async () => {
@@ -208,6 +215,37 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 }))); // actually still printing
     expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+  });
+
+  // Regression (PR review): `state` is a latched last-outcome code, so a fresh connection
+  // whose first complete snapshot is { deviceState: 0, state: 2/4 } is looking at the
+  // previous print's outcome, not a new event. Emitting FINISHED here lets a reconnect
+  // credit a database job the driver never watched print. The driver must report IDLE and
+  // leave the missed-finish case to the poller's PRINTING-to-IDLE hold (operator sign-off).
+  test('IDLE (not FINISHED) when a fresh connection first sees an idle device with a latched terminal state', async () => {
+    const printer = makePrinter();
+    await drive(printer, { deviceState: 0, state: 2, printProgress: 100, printFileName: 'old.gcode' });
+    expect((await creality.getStatus(printer)).status).toBe('IDLE');
+  });
+
+  test('does not replay a terminal outcome after a reconnect (busy observation resets with the socket)', async () => {
+    const printer = makePrinter();
+    const ws1 = await drive(printer, { deviceState: 1, state: 0, printProgress: 60, printFileName: 'part.gcode' });
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+
+    ws1.close(); // connection drops mid-print
+    expect((await creality.getStatus(printer)).status).toBe('OFFLINE');
+
+    jest.advanceTimersByTime(5000); // reconnect timer fires and opens a new socket
+    const ws2 = WebSocket.instances[WebSocket.instances.length - 1];
+    expect(ws2).not.toBe(ws1);
+    ws2.readyState = WebSocket.OPEN;
+    ws2.emit('open');
+    // The print ended while disconnected: the new socket's first snapshot carries the
+    // latched outcome. This connection never saw the print run, so no FINISHED; the
+    // poller's missed-finish hold owns crediting in this case.
+    ws2.emit('message', Buffer.from(JSON.stringify({ deviceState: 0, state: 2, printProgress: 100 })));
+    expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
 
   test('merges partial telemetry frames across pushes', async () => {
@@ -258,6 +296,31 @@ describe('connection lifecycle', () => {
     const before = WebSocket.instances.length;
     await creality.getStatus({ ...printer }); // same ip, different object reference (fresh DB row)
     expect(WebSocket.instances.length).toBe(before); // no new socket created
+  });
+
+  // Regression (PR review): connections were retained in the module-level map forever.
+  // Deleting, decommissioning, or re-typing a printer never closed its socket, so the
+  // heartbeat and reconnect loop kept running until the server restarted. The printer
+  // lifecycle routes now call disposeConnection() (see printers-driver-teardown.test.js).
+  test('disposeConnection closes the socket and stops the reconnect loop', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { deviceState: 0, state: 0 });
+    expect((await creality.getStatus(printer)).status).toBe('IDLE');
+
+    creality.disposeConnection(printer.id);
+    expect(ws.readyState).toBe(3); // socket closed
+
+    const before = WebSocket.instances.length;
+    jest.advanceTimersByTime(60000); // no reconnect attempt fires for the disposed connection
+    expect(WebSocket.instances.length).toBe(before);
+
+    // The map entry is gone: the next poll builds a brand-new connection.
+    await creality.getStatus(printer);
+    expect(WebSocket.instances.length).toBe(before + 1);
+  });
+
+  test('disposeConnection is a no-op for a printer with no cached connection', () => {
+    expect(() => creality.disposeConnection(999999)).not.toThrow();
   });
 });
 
