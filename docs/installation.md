@@ -101,7 +101,7 @@ Before adding printers to the app, gather the following credentials. The app wil
 | **Elegoo Centauri Carbon 2** | IP address + serial number + access code | Enable LAN mode on the printer. The access code and serial number are shown on the printer's network settings screen. |
 | **Klipper (Voron, etc.)** | IP address of the Klipper host | The IP of the machine running Moonraker (same machine as Klipper). Port 7125 is used automatically. No API key required. |
 | **OctoPrint** | IP address (with port) + API key | In OctoPrint: **Settings → API** shows the key. If OctoPrint is not on port 80, include the port in the IP field — e.g. `192.168.1.50:5000` (OctoPi commonly uses `:5000`). |
-| **Creality (K1 / K2 / Ender-3 V3 / Hi)** | IP address (API key optional) | Printer touchscreen: **Settings → Network** shows the IP. Most K-series printers on the LAN need no API key — leave it blank. Only fill it in if you've configured one (e.g. Creality Print / Nebula). Port 9999 is used automatically. |
+| **Creality (K1 / K2 / Ender-3 V3 / Hi)** | IP address (API key optional) | Printer touchscreen: **Settings → Network** shows the IP. Most K-series printers on the LAN need no API key, so leave it blank. Only fill it in if you've configured one (e.g. Creality Print / Nebula). Port 9999 is used automatically. |
 
 ---
 

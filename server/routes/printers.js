@@ -135,8 +135,15 @@ module.exports = (db) => {
       return res.status(400).json({ error: `name, ip${keyMsg}, and model are required` });
     }
     const normalized = normalizeModel(model);
-    if (!normalized || !db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(normalized)) {
+    const modelRow = normalized ? db.prepare('SELECT connector FROM printer_models WHERE model_id = ?').get(normalized) : null;
+    if (!modelRow) {
       return res.status(400).json({ error: `Unknown model "${model}". Add it in Settings → Printer Models first.` });
+    }
+    // A model belongs to exactly one connector (Settings filters pickers the same way).
+    // Without this check a direct API call could pair a model with the wrong driver,
+    // and the scheduler would dispatch that model's G-code to incompatible hardware.
+    if (modelRow.connector !== printerType) {
+      return res.status(400).json({ error: `Model "${normalized}" belongs to the "${modelRow.connector}" connector and cannot be used with a "${printerType}" printer` });
     }
     const { loaded_material, loaded_color } = req.body;
     try {
@@ -188,6 +195,16 @@ module.exports = (db) => {
       loaded_material: newMaterial,
       loaded_color:    newColor,
     };
+
+    // Keep model and connector consistent whenever either is being changed. The row
+    // lookup can miss for legacy unregistered models; only enforce when it resolves
+    // (changing the model itself is already blocked above if unregistered).
+    if (type !== undefined || model !== undefined) {
+      const effModelRow = db.prepare('SELECT connector FROM printer_models WHERE model_id = ?').get(after.model);
+      if (effModelRow && effModelRow.connector !== after.type) {
+        return res.status(400).json({ error: `Model "${after.model}" belongs to the "${effModelRow.connector}" connector and cannot be used with a "${after.type}" printer` });
+      }
+    }
 
     const FIELD_LABELS = {
       name: 'Name', ip: 'IP address', group_name: 'Group', type: 'Connector type',
@@ -513,10 +530,18 @@ module.exports = (db) => {
         });
         continue;
       }
-      if (!db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(model)) {
+      const csvModelRow = db.prepare('SELECT connector FROM printer_models WHERE model_id = ?').get(model);
+      if (!csvModelRow) {
         summary.flagged.push({
           row,
           reason: `Model "${model}" is not registered. Add it in Settings → Printer Models first.`,
+        });
+        continue;
+      }
+      if (csvModelRow.connector !== type) {
+        summary.flagged.push({
+          row,
+          reason: `Model "${model}" belongs to the "${csvModelRow.connector}" connector and cannot be used with a "${type}" printer`,
         });
         continue;
       }

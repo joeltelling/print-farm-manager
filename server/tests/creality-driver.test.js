@@ -1,11 +1,11 @@
 // Unit tests for server/drivers/creality.js
-// The WebSocket (`ws`) and HTTP (`axios`) layers are mocked — no real printers needed.
+// The WebSocket (`ws`) and HTTP (`axios`) layers are mocked - no real printers needed.
 //
 // Field semantics (confirmed against real K1 firmware telemetry):
-//   deviceState — live status: 0 = idle, non-zero = busy (printing/heating/self-test)
-//   state       — print phase / last-outcome latch: 2 = completed, 4 = stopped, 5 = paused
+//   deviceState - live status: 0 = idle, non-zero = busy (printing/heating/self-test)
+//   state       - print phase / last-outcome latch: 2 = completed, 4 = stopped, 5 = paused
 //                 (NOT the live status; it latches 2/4 while the device sits idle)
-//   printProgress / printFileName — last-print residuals; never used to infer completion
+//   printProgress / printFileName - last-print residuals; never used to infer completion
 
 jest.mock('ws', () => {
   const EventEmitter = require('events');
@@ -109,7 +109,7 @@ describe('getStatus state mapping', () => {
   });
 
   // Regression: this is the exact frame my earlier (state-based) mapping mis-read as IDLE
-  // mid-print — deviceState=1 means busy even though state=0 and selfTest=100.
+  // mid-print - deviceState=1 means busy even though state=0 and selfTest=100.
   test('PRINTING when deviceState=1 even if state=0 and self-test finished (heating window)', async () => {
     const printer = makePrinter();
     await drive(printer, { deviceState: 1, state: 0, printProgress: 0, withSelfTest: 100 });
@@ -160,7 +160,7 @@ describe('getStatus state mapping', () => {
 
   // Regression: after a print the K1 keeps printProgress=100 and printFileName as stale
   // residuals while deviceState returns to 0 and state is not a terminal code. That must
-  // read as IDLE — not a latched FINISHED — so the printer never gets stuck on "finished".
+  // read as IDLE - not a latched FINISHED - so the printer never gets stuck on "finished".
   test('IDLE when deviceState 0 with residual progress=100 but no terminal state', async () => {
     const printer = makePrinter();
     await drive(printer, { deviceState: 0, state: 0, printProgress: 100, printFileName: 'part.gcode' });
@@ -168,7 +168,7 @@ describe('getStatus state mapping', () => {
   });
 
   // Regression: a non-fatal hardware warning (e.g. mainboard fan) during an active print
-  // must NOT override PRINTING — the error code is a warning, the print is still running.
+  // must NOT override PRINTING - the error code is a warning, the print is still running.
   test('PRINTING when deviceState is busy and err.errcode is nonzero (non-fatal warning)', async () => {
     const printer = makePrinter();
     await drive(printer, { deviceState: 1, state: 0, printProgress: 42, printFileName: 'part.gcode', err: { errcode: 521 } });
@@ -185,17 +185,17 @@ describe('getStatus state mapping', () => {
 
   // Regression (PR review): a stray partial frame that merges into the cache before
   // deviceState/state are ever populated (e.g. arrives before the connect-time
-  // reqPrintObjects response) must not fall through to IDLE — that would clear a hold
+  // reqPrintObjects response) must not fall through to IDLE - that would clear a hold
   // and offer a printer with no known status up for dispatch. It must report UNKNOWN so
   // the printer is held until real telemetry arrives.
   test('UNKNOWN when neither state nor deviceState is present in the cache', async () => {
     const printer = makePrinter();
-    await drive(printer, { fan: 50 }); // unrelated field only — no state/deviceState yet
+    await drive(printer, { fan: 50 }); // unrelated field only - no state/deviceState yet
     expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
   });
 
   // Regression (PR review): a first frame carrying only a latched `state` (2/4), with
-  // deviceState not merged in yet, must not be reported FINISHED/STOPPED — that would
+  // deviceState not merged in yet, must not be reported FINISHED/STOPPED - that would
   // credit the job before the driver has confirmed the device is actually idle (a
   // genuinely-busy printer whose deviceState frame just hasn't landed yet would otherwise
   // look complete mid-print). It must report UNKNOWN until deviceState is confirmed either
@@ -228,7 +228,7 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
 
-  test('does not replay a terminal outcome after a reconnect (busy observation resets with the socket)', async () => {
+  test('does not replay a terminal outcome after a reconnect (print observation resets with the socket)', async () => {
     const printer = makePrinter();
     const ws1 = await drive(printer, { deviceState: 1, state: 0, printProgress: 60, printFileName: 'part.gcode' });
     expect((await creality.getStatus(printer)).status).toBe('PRINTING');
@@ -248,6 +248,35 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
 
+  // Regression (PR review): busy alone is not evidence of a print. deviceState is
+  // nonzero for heating, leveling, and self-test too, and frames are partial, so a
+  // fresh connection can cache an old latched `state: 2` and then see a non-print
+  // busy cycle. When that activity ends, the stale latch must not surface as a new
+  // FINISHED (the poller would credit any active job).
+  test('IDLE (not FINISHED) when a non-print busy cycle ends with a stale terminal latch cached', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { state: 2 }); // old latched outcome arrives first
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 }))); // self-test/leveling: busy, no print-phase state
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0 }))); // activity ends
+    expect((await creality.getStatus(printer)).status).toBe('IDLE');
+  });
+
+  test('a self-test after a reported FINISHED does not re-report the same outcome', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { deviceState: 1, state: 0 }); // real print observed
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0, state: 2 }))); // completes
+    expect((await creality.getStatus(printer)).status).toBe('FINISHED');
+    expect((await creality.getStatus(printer)).status).toBe('IDLE');
+    // Operator runs a self-test: busy again, but `state` keeps the old latch (2).
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 })));
+    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0 }))); // self-test ends
+    expect((await creality.getStatus(printer)).status).toBe('IDLE'); // no second FINISHED, no double credit
+  });
+
   test('merges partial telemetry frames across pushes', async () => {
     const printer = makePrinter();
     const ws = await drive(printer, { deviceState: 1, state: 0, printFileName: 'part.gcode' });
@@ -264,6 +293,30 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('PRINTING');
     ws.close();
     expect((await creality.getStatus(printer)).status).toBe('OFFLINE');
+  });
+});
+
+// ─── Application-level heartbeat ────────────────────────────────────────────────
+// Regression (PR review): the firmware sends {"ModeCode":"heart_beat"} and expects the
+// literal string "ok" back (not JSON). Firmware using this exchange closes the socket
+// when unanswered, leaving active jobs flapping OFFLINE on every reconnect.
+// Protocol source: ha_creality_ws ws_client.py.
+
+describe('heartbeat acknowledgement', () => {
+  test('replies with the literal "ok" to a heart_beat frame', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { deviceState: 1, state: 0 });
+    ws.emit('message', Buffer.from(JSON.stringify({ ModeCode: 'heart_beat', msg: 0 })));
+    expect(ws.sent).toContain('ok'); // raw string, not JSON.stringify('ok')
+  });
+
+  test('a heart_beat frame is not merged into cached telemetry', async () => {
+    const printer = makePrinter();
+    const ws = await drive(printer, { deviceState: 1, state: 0, printProgress: 42, printFileName: 'part.gcode' });
+    ws.emit('message', Buffer.from(JSON.stringify({ ModeCode: 'heart_beat', msg: 0 })));
+    const r = await creality.getStatus(printer);
+    expect(r.status).toBe('PRINTING'); // status unchanged by the heartbeat frame
+    expect(r.progress).toBe(42);
   });
 });
 
@@ -321,6 +374,29 @@ describe('connection lifecycle', () => {
 
   test('disposeConnection is a no-op for a printer with no cached connection', () => {
     expect(() => creality.disposeConnection(999999)).not.toThrow();
+  });
+
+  // Regression (PR review): backup restore bulk-replaces the printers table without
+  // going through the per-printer lifecycle routes, so it disposes every cached
+  // connection at once (see server/routes/backup.js).
+  test('disposeAllConnections closes every cached socket and forgets them all', async () => {
+    const p1 = makePrinter({ ip: '192.168.1.81' });
+    const p2 = makePrinter({ ip: '192.168.1.82', name: 'K1_02' });
+    const ws1 = await drive(p1, { deviceState: 0, state: 0 });
+    const ws2 = await drive(p2, { deviceState: 0, state: 0 });
+
+    creality.disposeAllConnections();
+    expect(ws1.readyState).toBe(3);
+    expect(ws2.readyState).toBe(3);
+
+    const before = WebSocket.instances.length;
+    jest.advanceTimersByTime(60000); // no reconnect attempts fire for disposed connections
+    expect(WebSocket.instances.length).toBe(before);
+
+    // Both map entries are gone: the next poll of each builds a brand-new connection.
+    await creality.getStatus(p1);
+    await creality.getStatus(p2);
+    expect(WebSocket.instances.length).toBe(before + 2);
   });
 });
 

@@ -148,6 +148,16 @@ module.exports = (db) => {
       const hasFilamentColors = Array.isArray(backup.filament_colors);
       const hasSettings       = Array.isArray(backup.settings);
 
+      // Restore bulk-replaces the printers table below, bypassing the per-printer
+      // lifecycle routes that drop driver connections. Dispose every cached Creality
+      // connection up front so no socket, heartbeat, or reconnect loop survives into
+      // the restored farm (and no stale telemetry cache gets reused if a printer ID
+      // and host happen to recur). Lazy require, gated on a Creality printer actually
+      // existing, so the driver module stays unloaded on farms without one.
+      if (db.prepare("SELECT COUNT(*) AS c FROM printers WHERE type = 'creality'").get().c > 0) {
+        try { require('../drivers/creality').disposeAllConnections(); } catch (_) {}
+      }
+
       const restore = db.transaction(() => {
         // Delete in FK dependency order
         db.prepare('DELETE FROM printer_events').run();

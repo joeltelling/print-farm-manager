@@ -96,7 +96,7 @@ Required: `name`, `ip`, `model`. Optional: `group_name`, `type` (defaults to `"p
 
 `api_key` is required unless `type` is one of the key-less connectors (`elegoo-centauri`, `klipper`, `creality`), which authenticate without one.
 
-`model` must match a `model_id` already registered in the `printer_models` table (managed in Settings, not a fixed list) — e.g. `mk4`, `mk4s`, `c1`, `c1l`, `xl` for Prusa, or a Creality model such as `k1` once added.
+`model` must match a `model_id` already registered in the `printer_models` table (managed in Settings, not a fixed list), e.g. `mk4`, `mk4s`, `c1`, `c1l`, `xl` for Prusa, or a Creality model such as `k1` once added. The model must also belong to the printer's connector: each registered model carries a `connector` value, and a create or update whose `model` and effective `type` disagree is rejected with `400` (the scheduler matches G-code by model alone, so a mismatched pair would dispatch incompatible G-code through the wrong driver).
 
 Returns `201` with the created printer object. Returns `409` if `name` already exists.
 
@@ -236,7 +236,7 @@ MK4S_01,192.168.1.100,aK3jR7xQ2pLm9vN,MK4S Farm,prusa,MK4S
 C1 Rarity,192.168.1.101,bR5mQ8nZ4vKs2Pw,CORE One Farm,prusa,C1
 ```
 
-The `model` column is optional but strongly recommended. Valid values (case-insensitive) are any `model_id` already registered in Settings — e.g. `MK4`, `MK4S`, `C1`, `C1L`, `XL` for Prusa, or a registered Creality model such as `K1`. When present it takes priority over name inference — any printer name is valid.
+The `model` column is optional but strongly recommended. Valid values (case-insensitive) are any `model_id` already registered in Settings, e.g. `MK4`, `MK4S`, `C1`, `C1L`, `XL` for Prusa, or a registered Creality model such as `K1`. When present it takes priority over name inference; any printer name is valid. The model must belong to the row's connector `type` (a `k1` row with `type: prusa` is flagged, same as the single-add endpoint).
 
 **Import rules:**
 - If `model` column is present and valid, it is used directly (normalized to lowercase)

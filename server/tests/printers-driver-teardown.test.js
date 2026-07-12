@@ -12,6 +12,7 @@ jest.mock('../drivers/creality', () => ({
   cancelJob: jest.fn(),
   checkIfPrinting: jest.fn(),
   disposeConnection: jest.fn(),
+  disposeAllConnections: jest.fn(),
 }));
 
 const request  = require('supertest');
@@ -97,6 +98,11 @@ beforeAll(() => {
     );
   `);
 
+  // Models must be registered (and belong to the right connector) for the
+  // create/update routes' model-connector validation to pass.
+  db.prepare("INSERT INTO printer_models (model_id, label, connector) VALUES ('k1', 'K1', 'creality')").run();
+  db.prepare("INSERT INTO printer_models (model_id, label, connector) VALUES ('mk4s', 'MK4S', 'prusa')").run();
+
   app = express();
   app.use(express.json());
   app.use('/api/printers', require('../routes/printers')(db));
@@ -160,7 +166,9 @@ describe('printer lifecycle drops the Creality driver connection', () => {
 
   test('PUT /api/printers/:id switching the connector type off creality', async () => {
     const id = seedPrinter();
-    const res = await request(app).put(`/api/printers/${id}`).send({ type: 'prusa' });
+    // The model must move with the connector: model-connector validation rejects
+    // a type change that leaves the printer on the other connector's model.
+    const res = await request(app).put(`/api/printers/${id}`).send({ type: 'prusa', model: 'mk4s' });
     expect(res.status).toBe(200);
     expect(disposeConnection).toHaveBeenCalledWith(id);
   });

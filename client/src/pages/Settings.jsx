@@ -34,7 +34,7 @@ const CONNECTOR_LABEL = {
 // Connector types that do not use an API key at all (field hidden entirely).
 // Creality is deliberately NOT in this set: its local API accepts an optional
 // Authorization: Bearer <api_key> (some Creality Print / Nebula setups require one),
-// so the field is shown but not required — see the `required` prop below.
+// so the field is shown but not required (see the `required` prop below).
 const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper']);
 
 // Per-brand hints on where to find connection credentials
@@ -45,7 +45,7 @@ const CREDENTIAL_HELP = {
   'bambu':            'Enable LAN Mode on the printer first. The Access Code is on the printer screen under Settings → WLAN; the Serial Number is under Settings → Device.',
   'klipper':          'No API key needed — just the IP of the machine running Moonraker. Port 7125 is used automatically.',
   'octoprint':        'API Key: in OctoPrint under Settings → API. If OctoPrint isn\'t on port 80 (commonly :5000), include the port in the IP field, e.g. 192.168.1.50:5000.',
-  'creality':         'IP address only for most K-series printers on the LAN — the API key is optional and only needed if you\'ve configured one (e.g. Creality Print / Nebula). Port 9999 is used automatically.',
+  'creality':         'IP address only for most K-series printers on the LAN. The API key is optional and only needed if you\'ve configured one (e.g. Creality Print / Nebula). Port 9999 is used automatically.',
 };
 
 export default function Settings() {

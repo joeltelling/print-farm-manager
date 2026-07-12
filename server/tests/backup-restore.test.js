@@ -14,6 +14,13 @@
 // migration adds a new column that the restore logic somehow stops picking up, this is the
 // test that should catch it.
 
+// Restore lazily requires the creality driver to dispose its cached persistent
+// connections (they bypass the per-printer lifecycle routes during a bulk restore).
+// Mock it so no real WebSocket module loads here; the stable mock fn survives the
+// jest.resetModules() in beforeEach because the factory closes over it.
+const mockDisposeAllConnections = jest.fn();
+jest.mock('../drivers/creality', () => ({ disposeAllConnections: mockDisposeAllConnections }));
+
 const request  = require('supertest');
 const express  = require('express');
 const Database = require('better-sqlite3');
@@ -479,6 +486,44 @@ describe('Backup restore — gcode_files path traversal', () => {
     try {
       const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
       expect(restoreRes.status).toBe(400);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+});
+
+// Reported (PR review): restore bulk-deletes every printer at the top of its
+// transaction, bypassing the lifecycle routes where disposeConnection() is called, so
+// an existing Creality socket kept its heartbeat and reconnect loop after the restored
+// farm had replaced (or removed) that printer. Restore must dispose every cached
+// Creality connection before replacing the printers table.
+describe('Backup restore disposes cached Creality driver connections', () => {
+  test('disposeAllConnections is called when a Creality printer exists', async () => {
+    db.prepare(`
+      INSERT INTO printers (name, ip, api_key, type, model, status, is_held, is_active, created_at)
+      VALUES ('K1_restore', '192.168.1.60', '', 'creality', 'k1', 'IDLE', 0, 1, ?)
+    `).run(Date.now());
+
+    const exportRes = await request(app).get('/api/backup');
+    const backupFile = writeTempBackupFile(exportRes.body);
+    try {
+      mockDisposeAllConnections.mockClear();
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(mockDisposeAllConnections).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('the driver module is not touched when no Creality printer exists', async () => {
+    const exportRes = await request(app).get('/api/backup'); // seed data is bambu-only
+    const backupFile = writeTempBackupFile(exportRes.body);
+    try {
+      mockDisposeAllConnections.mockClear();
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(mockDisposeAllConnections).not.toHaveBeenCalled();
     } finally {
       fs.unlinkSync(backupFile);
     }

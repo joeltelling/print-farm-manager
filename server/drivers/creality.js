@@ -1,8 +1,8 @@
-// Creality driver — Creality local API (WebSocket status/control + HTTP file upload)
+// Creality driver - Creality local API (WebSocket status/control + HTTP file upload)
 // Connector family: Creality (K1 / K1C / K1 Max / K2 / Ender-3 V3 / Hi series)
 // Implements the shared driver interface: getStatus, uploadAndPrint, cancelJob, checkIfPrinting
 //
-// This is the API used by Creality Print / OrcaSlicer's "Creality Print" host — the
+// This is the API used by Creality Print / OrcaSlicer's "Creality Print" host - the
 // same one the printer's own touchscreen and the Creality app speak on the LAN.
 //
 // Connection model (like bambu.js, not prusa.js):
@@ -10,7 +10,7 @@
 //   of *partial* JSON objects (each frame carries only the fields that changed). We hold
 //   one socket per printer in a module-level Map, merge every frame into a cached "latest"
 //   object, and answer getStatus() from that cache instantly. OFFLINE is returned until the
-//   first frame arrives after (re)connect — an open socket with no data yet is not a
+//   first frame arrives after (re)connect - an open socket with no data yet is not a
 //   reachable printer, and reporting stale pre-disconnect state is how false FINISHED
 //   transitions happen (see docs/driver-authoring.md).
 //
@@ -18,7 +18,7 @@
 // triggered over the WebSocket with an opGcodeFile "set" command pointing at the uploaded
 // file's on-printer path.
 //
-// Protocol references (reverse-engineered — no official spec):
+// Protocol references (reverse-engineered - no official spec):
 //   OrcaSlicer src/slic3r/Utils/CrealityPrint.cpp  (upload endpoint + opGcodeFile trigger)
 //   OrcaSlicer issue #2103                          (upload/print flow, curl example)
 //   github.com/3dg1luk43/ha_creality_ws             (state codes, telemetry field names)
@@ -61,9 +61,9 @@ function safeSend(ws, obj) {
 // ─── Connection management ────────────────────────────────────────────────────
 
 // Returns (or lazily creates) the connection object for a printer. The socket is
-// established in the background — callers check conn.connected / conn.latest.
+// established in the background - callers check conn.connected / conn.latest.
 // Keyed by printer.id, but a cached connection is only reused while its host still
-// matches the printer's current `ip` — editing a Creality printer's address (the
+// matches the printer's current `ip` - editing a Creality printer's address (the
 // detail/edit form) must not leave polling and reconnect attempts pointed at the
 // old address until the server restarts.
 function getOrCreateConnection(printer) {
@@ -75,7 +75,7 @@ function getOrCreateConnection(printer) {
     connections.delete(printer.id);
   }
 
-  const conn = { host, ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, finishReported: false, sawBusy: false };
+  const conn = { host, ws: null, latest: null, connected: false, heartbeat: null, reconnectTimer: null, closed: false, sawPrint: false };
   connections.set(printer.id, conn);
   connect(printer, conn);
   return conn;
@@ -103,6 +103,15 @@ function disposeConnection(printerId) {
   connections.delete(printerId);
 }
 
+// Closes and forgets every cached connection. Called from backup restore, which
+// bulk-replaces the printers table without going through the per-printer lifecycle
+// routes: any socket left behind would keep reconnecting to a printer the restored
+// farm may no longer contain (or reuse a stale cache if an ID and host recur).
+function disposeAllConnections() {
+  for (const conn of connections.values()) teardownConnection(conn);
+  connections.clear();
+}
+
 function connect(printer, conn) {
   const url = `ws://${hostOf(printer)}:${WS_PORT}/`;
   let ws;
@@ -116,7 +125,7 @@ function connect(printer, conn) {
 
   ws.on('open', () => {
     conn.connected = true;
-    // Prime the cache immediately and keep the socket warm — the printer streams
+    // Prime the cache immediately and keep the socket warm - the printer streams
     // telemetry, and re-requesting the print objects doubles as a keepalive.
     safeSend(ws, { method: 'get', params: { reqPrintObjects: 1 } });
     clearInterval(conn.heartbeat);
@@ -128,8 +137,18 @@ function connect(printer, conn) {
     try {
       const data = JSON.parse(buf.toString());
       if (data && typeof data === 'object') {
+        // Application-level heartbeat: the firmware sends {"ModeCode":"heart_beat"} and
+        // expects the literal string "ok" back (not JSON). Firmware that uses this
+        // exchange closes the socket when unanswered, which would leave active jobs
+        // flapping OFFLINE on every reconnect. Acknowledge and skip the telemetry merge:
+        // a heartbeat frame carries no printer state. (Protocol source: ha_creality_ws
+        // ws_client.py, which replies the same way.)
+        if (data.ModeCode === 'heart_beat') {
+          try { if (ws.readyState === WebSocket.OPEN) ws.send('ok'); } catch (_) {}
+          return;
+        }
         // Telemetry keys arrive at the top level; some frames nest them under `params`.
-        // Merge both — Creality sends partial updates, not a full snapshot each frame.
+        // Merge both: Creality sends partial updates, not a full snapshot each frame.
         conn.latest = { ...(conn.latest || {}), ...data };
         if (data.params && typeof data.params === 'object') {
           conn.latest = { ...conn.latest, ...data.params };
@@ -144,9 +163,9 @@ function connect(printer, conn) {
     // Drop cached state so a reconnect reports OFFLINE until fresh telemetry arrives,
     // rather than replaying stale pre-disconnect state (avoids false FINISHED flaps).
     conn.latest = null;
-    // The busy observation dies with the socket: after a reconnect, a latched terminal
+    // The print observation dies with the socket: after a reconnect, a latched terminal
     // `state` is the previous print's outcome, not a fresh event (see mapStatus).
-    conn.sawBusy = false;
+    conn.sawPrint = false;
     if (!conn.closed) scheduleReconnect(printer, conn);
   });
 
@@ -178,31 +197,37 @@ async function waitForData(conn, timeoutMs) {
 // Maps the printer's cached telemetry to a canonical status string.
 //
 // Field semantics, confirmed by capturing a full print lifecycle on real K1 firmware:
-//   deviceState — the LIVE device status: 0 = idle, non-zero = busy (printing, heating,
+//   deviceState - the LIVE device status: 0 = idle, non-zero = busy (printing, heating,
 //                 leveling, self-test). This is the reliable "is it running" signal.
-//   state       — a print phase / last-outcome code, NOT the live status. It reads 0 or 1
+//   state       - a print phase / last-outcome code, NOT the live status. It reads 0 or 1
 //                 while a print runs, then LATCHES at 2 (completed) or 4 (stopped) and
 //                 stays there while the device sits idle, until the next print. 5 = paused.
-//   printProgress / printFileName / printJobTime — LAST-PRINT RESIDUALS: the K1 leaves them
+//   printProgress / printFileName / printJobTime - LAST-PRINT RESIDUALS: the K1 leaves them
 //                 populated (progress=100, filename set) after a print ends. Never infer
 //                 completion from them, or the driver latches FINISHED forever.
-//   printId     — observed empty ("") even mid-print on this firmware; not a usable signal.
+//   printId     - observed empty ("") even mid-print on this firmware; not a usable signal.
 //
 // Because `state` latches its terminal outcome while idle, reporting FINISHED/STOPPED
 // straight from it would never return the printer to IDLE. Instead we emit the terminal
-// outcome exactly ONCE, on the busy→idle edge, then report IDLE — crediting fires on the
-// single transition (poller reacts to transitions) and the printer returns to service.
-// `conn.finishReported` carries that one-shot latch and is reset whenever the device is
-// busy again (a new or continuing print).
+// outcome exactly ONCE, then report IDLE: crediting fires on the single transition
+// (the poller reacts to transitions) and the printer returns to service.
 //
-// A terminal outcome is also only trusted when THIS connection watched the print run:
-// `conn.sawBusy` records that a busy deviceState (or a pause) was observed since the
-// socket (re)connected, and is cleared when the socket closes. Without it, the first
-// idle snapshot after a (re)connect would replay the previous print's latched 2/4 as a
-// fresh FINISHED/STOPPED, and the scheduler would credit a job this driver never saw
-// print. With no observed busy state the driver reports IDLE and leaves the missed-
-// finish case to the poller's PRINTING-to-IDLE hold, which asks the operator instead
-// of inferring.
+// A terminal outcome is only trusted when THIS connection watched the print itself:
+// `conn.sawPrint` is set when a busy deviceState is seen with a print-phase `state`
+// (0/1), or when a pause (`state 5`) is seen, and it is consumed when the terminal
+// outcome is reported and cleared when the socket closes. Two failure modes force
+// this strictness:
+//   1. A fresh connection's first idle snapshot replays the previous print's latched
+//      2/4. Emitting FINISHED there lets a reconnect credit a database job the driver
+//      never watched run.
+//   2. A generic busy cycle (heating, leveling, self-test) retains a stale latched
+//      terminal `state`. Frames are partial, so a fresh connection can cache the old
+//      `state: 2`, then see `deviceState: 1` from a self-test; when that activity
+//      ends, the stale latch must not surface as a new FINISHED. Busy alone is not
+//      evidence of a print, only a print-phase `state` alongside it is.
+// With no observed print, an idle latched outcome maps to IDLE and the missed-finish
+// case is left to the poller's PRINTING to IDLE hold, which asks the operator
+// instead of inferring.
 function mapStatus(s, conn, printerName) {
   if (!s) return 'UNKNOWN';
 
@@ -213,20 +238,21 @@ function mapStatus(s, conn, printerName) {
   // Paused is reported by `state` regardless of deviceState. A pause also proves a
   // print is in flight on this connection's watch, so its eventual terminal outcome
   // is genuine (covers connecting while paused, then the operator stopping the print).
-  if (state === 5) { conn.sawBusy = true; return 'PAUSED'; }
+  if (state === 5) { conn.sawPrint = true; return 'PAUSED'; }
 
   // Busy: actively printing / heating / leveling / self-testing.
   // Checked BEFORE the errcode so a non-fatal hardware warning (e.g. mainboard fan)
   // during a running print does not override PRINTING. The error code is logged
   // for diagnostics; the scheduler only sees ERROR when the printer is idle.
   if (device != null && device !== 0) {
-    if (errcode) console.warn(`[creality] ${printerName} non-fatal error code ${errcode} while busy — staying PRINTING`);
-    conn.finishReported = false;
-    conn.sawBusy = true;
+    if (errcode) console.warn(`[creality] ${printerName} non-fatal error code ${errcode} while busy, staying PRINTING`);
+    // Only a print-phase `state` proves a print is running; a busy device with a
+    // latched terminal `state` (2/4) is heating/leveling/self-test activity.
+    if (state === 0 || state === 1) conn.sawPrint = true;
     return 'PRINTING';
   }
 
-  // deviceState hasn't arrived in the cache yet — e.g. the first frame after (re)connect
+  // deviceState hasn't arrived in the cache yet - e.g. the first frame after (re)connect
   // carries only a latched `state` (2/4) before a later frame merges deviceState in, or a
   // stray partial frame merged in before either field was ever populated. Do not infer idle
   // from its mere absence: a busy printer whose deviceState frame just hasn't landed yet
@@ -236,15 +262,17 @@ function mapStatus(s, conn, printerName) {
   if (device == null) return 'UNKNOWN';
 
   // From here, deviceState === 0 is confirmed idle.
-  // Device is idle. If an error code is present, it stopped the print — report ERROR.
+  // Device is idle. If an error code is present, it stopped the print - report ERROR.
   if (errcode) return 'ERROR';
 
   // Device is idle. Surface the just-ended print's outcome once, then IDLE, but only
-  // if this connection actually observed the print run (sawBusy): a latched terminal
-  // `state` seen by a fresh connection is the LAST print's outcome, not a new event.
-  if (conn.sawBusy && !conn.finishReported) {
-    if (state === 2) { conn.finishReported = true; return 'FINISHED'; }
-    if (state === 4) { conn.finishReported = true; return 'STOPPED'; }
+  // if this connection actually observed the print run (sawPrint): a latched terminal
+  // `state` with no observed print is the LAST print's outcome, not a new event.
+  // Consuming the flag on report makes the outcome one-shot AND prevents a later
+  // non-print busy cycle (e.g. a self-test) from re-surfacing the same latch.
+  if (conn.sawPrint) {
+    if (state === 2) { conn.sawPrint = false; return 'FINISHED'; }
+    if (state === 4) { conn.sawPrint = false; return 'STOPPED'; }
   }
   return 'IDLE';
 }
@@ -258,7 +286,7 @@ async function getStatus(printer) {
     const conn = getOrCreateConnection(printer);
 
     if (!conn.connected || !conn.latest) {
-      // Not connected yet or no telemetry since (re)connect — background reconnect is running.
+      // Not connected yet or no telemetry since (re)connect - background reconnect is running.
       return { status: 'OFFLINE', progress: null, timeRemaining: null, currentFile: null };
     }
 
@@ -277,7 +305,7 @@ async function getStatus(printer) {
 
     // printFileName is reported as a full on-printer path on the K-series
     // (e.g. "/usr/data/printer_data/gcodes/benchy.gcode") and may carry the
-    // multer-prepended timestamp prefix — reduce to a clean display name.
+    // multer-prepended timestamp prefix - reduce to a clean display name.
     const rawFile = active ? (s.printFileName || null) : null;
     const currentFile = rawFile ? path.basename(rawFile).replace(/^\d+_/, '') : null;
 
@@ -295,7 +323,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
   const host = hostOf(printer);
 
   // ── HTTP multipart upload ────────────────────────────────────────────────
-  // Multipart (field "file") — a raw body POST makes some firmware prepend the HTTP
+  // Multipart (field "file") - a raw body POST makes some firmware prepend the HTTP
   // headers into the saved G-code (OrcaSlicer issue #8128), which then errors on print.
   const form = new FormData();
   form.append('file', fs.createReadStream(gcodeFullPath), { filename });
@@ -315,18 +343,18 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
   } catch (err) {
     if (err.response?.status === 409) {
       throw Object.assign(
-        new Error(`409 Conflict on upload — transfer likely already in progress on ${printer.name}`),
+        new Error(`409 Conflict on upload - transfer likely already in progress on ${printer.name}`),
         { code: 'UPLOAD_CONFLICT' }
       );
     }
     throw err;
   }
-  console.log(`[creality] Upload complete on ${printer.name} — triggering print`);
+  console.log(`[creality] Upload complete on ${printer.name} - triggering print`);
 
   // ── WebSocket print trigger ──────────────────────────────────────────────
   const conn = getOrCreateConnection(printer);
   if (!await waitForData(conn, 10000)) {
-    throw new Error(`Creality ${printer.name} WebSocket not connected — cannot trigger print`);
+    throw new Error(`Creality ${printer.name} WebSocket not connected - cannot trigger print`);
   }
 
   safeSend(conn.ws, {
@@ -334,7 +362,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
     params: { opGcodeFile: `printprt:${REMOTE_GCODE_DIR}/${filename}` },
   });
 
-  // Resolve only once the printer confirms it started — the scheduler marks the job
+  // Resolve only once the printer confirms it started - the scheduler marks the job
   // 'printing' the moment this resolves. Poll the cached telemetry (nudging a refresh each
   // tick) for up to 20s. If it never confirms, throw so the scheduler retries; a print that
   // actually started despite a missed confirmation is recovered via checkIfPrinting().
@@ -357,7 +385,7 @@ async function cancelJob(printer) {
   try {
     const conn = getOrCreateConnection(printer);
     if (!await waitForData(conn, 8000)) {
-      console.warn(`[creality] ${printer.name} not connected — cannot cancel`);
+      console.warn(`[creality] ${printer.name} not connected - cannot cancel`);
       return;
     }
     safeSend(conn.ws, { method: 'set', params: { stop: 1 } });
@@ -379,4 +407,4 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, disposeConnection };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, disposeConnection, disposeAllConnections };

@@ -181,7 +181,7 @@ export default function PrinterDetail() {
   }
 
   // Types that do not use an API key at all (field hidden). Creality is deliberately
-  // excluded — its local API accepts an optional Authorization: Bearer <api_key>, so the
+  // excluded: its local API accepts an optional Authorization: Bearer <api_key>, so the
   // field is shown here but never required (this edit form has no `required` inputs).
   const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper']);
 
@@ -398,7 +398,9 @@ export default function PrinterDetail() {
                   disabled={savingDetails}
                   style={{ ...detailInputStyle, cursor: 'pointer' }}
                 >
-                  {models.map(m => (
+                  {/* A model belongs to one connector; the server rejects mismatched
+                      pairs, so only offer models this printer's connector can drive. */}
+                  {models.filter(m => m.connector === (printer.type || 'prusa')).map(m => (
                     <option key={m.model_id} value={m.model_id}>{m.label}</option>
                   ))}
                 </select>
