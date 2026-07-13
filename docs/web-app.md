@@ -154,7 +154,7 @@ Searchable directory of every active printer registered in the farm, grouped by 
 
 **Search behavior:** when a query is active, collapse state is overridden — groups with matches expand, groups with zero matches are hidden, and a "N of M match" hint appears above the list.
 
-**Columns within a group:** Name, Group, IP, Status badge. (Model is implied by the group header.)
+**Columns within a group:** Name, Group, IP, Status badge. (Model is implied by the group header.) Badge text is translated via `common.status*` keys, mirroring Fleet.jsx/Dashboard.jsx's `labelKey` convention.
 
 **Bulk edit:** selecting one or more printers (row checkboxes / select-all) reveals a bulk-edit bar. It can set **Material** and **Color** (dropdowns from the filament library) and **Group** (free-text input with a `<datalist>` autocomplete, now sourced from the persisted group registry, `GET /api/groups`, rather than derived from currently-loaded printers, so a registered group still autocompletes even if no printer currently carries it; typing a new name still works and registers it). "Apply to selected" loops `PUT /api/printers/:id` for each selected printer; only non-empty fields are sent, so empty fields are left unchanged. Each changed field is recorded as an `info_changed` event on the printer. Common use: funnel small prints to low-spool machines by bulk-assigning them a group, then targeting that group from the G-code's `allowed_groups` (or the project's, see the Projects page).
 
@@ -166,7 +166,7 @@ Click any row to navigate to `/printers/:id` (the Printer Detail view).
 
 Per-machine history and annotation screen. Reached by clicking a printer card in the Fleet page, clicking a row in the Printers page, or via the "View History" button in the Decommissioned page.
 
-**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable.
+**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable. Status badge and the job-history status column are translated via `common.status*`/`jobs.status*` keys (the job-history column also maps the legacy `done` job status alias to `common.statusFinished`); dates and durations are formatted using the active `i18n.language` and translated `h`/`m` duration units, so a future non-English language doesn't mix translated labels with English-only formatting.
 
 **Rename:** a **Rename** button next to the printer name swaps the header into an inline edit form. Save sends `PUT /api/printers/:id` with the new `name`; the server's UNIQUE-name 409 is surfaced inline. Escape or the Cancel button closes the form without saving.
 
