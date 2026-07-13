@@ -18,6 +18,35 @@ Server-side scheduling logic only; no driver code touched, no change to candidat
 - `docs/api.md`: reworded the `dispatch_batch_size` settings-table row to describe it as a concurrency target.
 - `client/src/pages/Settings.jsx`: reworded the Dispatch Settings help text and the batch-size field label to match.
 - `server/tests/scheduler-sweep.test.js`: migrated every test's mock seam from `_dispatchToPrinter` to `_reserveJob`/`_executeUpload`; added a fill-to-target concurrency harness (sparse/ample/dense candidate scenarios, proving peak concurrency actually reaches `dispatch_batch_size` when real work exists anywhere in the queue and never exceeds it) and one test exercising the ceiling check through the real wave loop against real dispatch SQL, reproducing Joel's exact scenario (a no-candidate printer ahead of two real candidates competing for a part with room for only two).
+## 2026-07-12: Creality: heartbeat ack, stricter print evidence, model-connector validation, restore-time disposal
+
+PR #20 review round 5. Four code findings plus a repository-convention sweep, all in this branch.
+
+**[P1] Model-connector enforcement.** `printer_models.connector` was only used by the Settings UI to filter pickers; the create, update, and CSV-import routes checked that a `model_id` existed but not that it belonged to the printer's connector. A direct API or CSV write could pair a `creality` printer with the `mk4s` model, and since the scheduler selects G-code by `printer.model` alone, that mismatch would dispatch Prusa G-code through the Creality driver to physical hardware. All three write paths now reject a model whose registered connector differs from the printer's effective type (400 on single add/update, flagged row on CSV import). The PrinterDetail edit form's model dropdown, previously unfiltered, now only offers models belonging to the printer's connector, matching the Add Printer form.
+
+**[P1] Application-level heartbeat acknowledged.** The firmware sends `{"ModeCode":"heart_beat"}` and expects the literal string `ok` back (not JSON); unanswered, some firmware closes the socket, leaving active jobs flapping OFFLINE through the reconnect loop. The message handler now replies before the telemetry merge and skips merging the heartbeat frame (it carries no printer state). Protocol source: `ha_creality_ws` `ws_client.py`, which implements the same exchange.
+
+**[P1] Terminal outcomes now require print evidence, not just busy.** The previous round gated FINISHED/STOPPED on having observed a busy `deviceState`, but `deviceState` is also nonzero for heating, leveling, and self-test, and frames are partial: a fresh connection could cache an old latched `state: 2`, watch a self-test run and end, and surface the stale latch as a new FINISHED (credited by the poller). The gate is now a `sawPrint` flag set only when busy is seen together with a print-phase `state` (`0`/`1`) or a pause (`state 5`), consumed when the outcome is reported, and cleared on socket close. Consuming it on report also prevents a non-print busy cycle after a genuine FINISHED from re-reporting the same latch (a double part credit the previous `finishReported` reset would have allowed).
+
+**[P2] Backup restore disposes cached connections.** Restore bulk-deletes every printer inside its transaction, bypassing the lifecycle routes that call `disposeConnection()`. The driver now exports `disposeAllConnections()` and `server/routes/backup.js` calls it (lazily, only when a Creality printer exists) before replacing the printers table, so no socket, heartbeat, or reconnect loop survives into the restored farm.
+
+**[P2] Em/en dash sweep.** Removed every em and en dash from the lines this PR adds (driver, tests, routes, client comments and UI strings, docs, and these changelog entries), per the repository prose rule; also removed a duplicated `update.bat` changelog entry introduced by the rebase.
+
+### Changes
+- `server/drivers/creality.js`: heartbeat ack in the message handler; `sawPrint` replaces `sawBusy`/`finishReported` in `mapStatus()`; new exported `disposeAllConnections()`.
+- `server/routes/printers.js`: model-connector validation on `POST /`, `PUT /:id`, and CSV import.
+- `server/routes/backup.js`: dispose all cached Creality connections before restore replaces the printers table.
+- `client/src/pages/PrinterDetail.jsx`: model dropdown filtered to the printer's connector.
+- `server/tests/creality-driver.test.js`: heartbeat ack tests; stale-latch-with-self-test and double-credit regression tests; `disposeAllConnections` coverage.
+- `server/tests/printers-model-connector.test.js`: new; all three write paths, including the legacy-data escape hatch (edits that touch neither type nor model are not blocked).
+- `server/tests/backup-restore.test.js`: restore calls `disposeAllConnections()` when a Creality printer exists, and leaves the driver module untouched when none does.
+- `server/tests/printers-driver-teardown.test.js`: connector-switch test updated to move the model with the type, per the new validation.
+- `docs/multi-brand.md`, `docs/api.md`: heartbeat, `sawPrint` semantics, restore disposal, and the model-connector rule documented.
+
+Heartbeat and state-mapping changes are implemented from the cited protocol sources and prior captured K1 telemetry; this round is not yet validated on hardware.
+
+---
+
 ## 2026-07-12: Creality: no terminal status without an observed print, drop connections when a printer leaves the connector
 
 PR #20 review (round 4) found two remaining issues in the Creality driver, both fixed here. The branch was also rebased onto current `main` to resolve the merge conflicts GitHub reported; the review's other two findings (scheduler group-routing and the Jobs page missed-finish fields) were artifacts of the stale base and are resolved by the rebase itself, with no code change in this branch.
@@ -66,11 +95,11 @@ Neither change touches `completed_qty`, and neither implements multi-group print
 - `docs/database.md`, `docs/api.md`, `docs/web-app.md`: documented `printer_groups`, the new endpoints, and the targeting cascade (which also closed a pre-existing gap: `gcodes.allowed_groups`/`required_material`/`required_color` were live but undocumented before this).
 
 Server-side and display logic only, no driver code touched; nothing here requires hardware validation beyond the existing dispatch-eligibility test coverage.
-## 2026-07-10 — Creality: fix premature FINISHED on partial frames, fix stale connection on IP edit
+## 2026-07-10 - Creality: fix premature FINISHED on partial frames, fix stale connection on IP edit
 
 PR #20 review found two remaining correctness issues in the Creality driver:
 
-**[P1] Terminal status emitted before `deviceState` was confirmed.** `mapStatus()` only refused to guess when *both* `state` and `deviceState` were missing. A frame carrying only a latched `state` (`2`/`4`) — e.g. the first message after (re)connect, before a later frame merges `deviceState` in — fell through to the idle/outcome branch and was reported `FINISHED`/`STOPPED` even though the driver had never confirmed the device was actually idle. If the DB still had an active `printing` job, the poller would forward that as a real completion and credit the job while the printer was genuinely still mid-print.
+**[P1] Terminal status emitted before `deviceState` was confirmed.** `mapStatus()` only refused to guess when *both* `state` and `deviceState` were missing. A frame carrying only a latched `state` (`2`/`4`) - e.g. the first message after (re)connect, before a later frame merges `deviceState` in - fell through to the idle/outcome branch and was reported `FINISHED`/`STOPPED` even though the driver had never confirmed the device was actually idle. If the DB still had an active `printing` job, the poller would forward that as a real completion and credit the job while the printer was genuinely still mid-print.
 
 **Fix:** `mapStatus()` now returns `UNKNOWN` whenever `deviceState` hasn't merged into the cache yet, regardless of whether `state` is present. Terminal outcomes (`FINISHED`/`STOPPED`) and `ERROR` are only reachable once `deviceState` is confirmed `0`.
 
@@ -79,7 +108,7 @@ PR #20 review found two remaining correctness issues in the Creality driver:
 **Fix:** `getOrCreateConnection()` now tracks the connected host on the connection object and compares it against the printer's current `ip` on every call. A mismatch tears down the stale socket (`teardownConnection()`: marks it closed so its own `close` handler doesn't reschedule a reconnect, clears the heartbeat/reconnect timers, removes listeners, closes the socket) and opens a fresh connection to the new address.
 
 ### Changes
-- `server/drivers/creality.js`: `mapStatus()` — return `UNKNOWN` on missing `deviceState` alone (was: only when `state` was also missing); `getOrCreateConnection()` — key connection reuse on host match, not just printer ID; added `teardownConnection()`.
+- `server/drivers/creality.js`: `mapStatus()` - return `UNKNOWN` on missing `deviceState` alone (was: only when `state` was also missing); `getOrCreateConnection()` - key connection reuse on host match, not just printer ID; added `teardownConnection()`.
 - `server/tests/creality-driver.test.js`: added regression tests for a terminal `state` arriving before `deviceState` (both the genuinely-idle and still-busy outcomes), and for reconnecting to a new address on IP change vs. reusing the connection when unchanged.
 - `docs/multi-brand.md`: updated the Creality connection and state-mapping notes to describe both fixes.
 
@@ -138,16 +167,9 @@ CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not i
 
 ---
 
-## 2026-07-06 - update.bat: discard package-lock.json drift before pulling
+## 2026-07-08 - Docs: align Creality API/CSV docs with optional `api_key` and dynamic model list
 
-`update.bat` runs `npm install`, which rewrites `package-lock.json` when the farm machine's npm version differs from the one that generated the lockfile. That local drift blocked `git pull` ("Your local changes ... would be overwritten by merge") the first time the lockfile changed upstream (the 2026-07-03 js-yaml bump). Hit on a real farm machine 2026-07-06.
-
-### Changes
-- `update.bat`: step 1 now runs `git checkout -- package-lock.json client/package-lock.json` before `git pull`. The farm checkout is a deploy target with no intentional local changes, so discarding lockfile drift is always safe there.
-- `docs/installation.md`: documented the discard step and the manual `git restore package-lock.json` recovery for older copies of the script.
-## 2026-07-08 — Docs: align Creality API/CSV docs with optional `api_key` and dynamic model list
-
-PR #20 review found two doc/code mismatches introduced by the Creality connector work: `docs/api.md` still said `api_key` was required for every `POST /api/printers` row and CSV row, and still described `model` as a fixed five-value Prusa enum — neither reflects `server/routes/printers.js`'s `NO_API_KEY_TYPES` (which already exempts `creality`, alongside `elegoo-centauri`/`klipper`) or the fact that `model` has been validated against the operator-managed `printer_models` table (not a hardcoded list) since that table was introduced. Also corrected `docs/multi-brand.md`'s Creality state-mapping note, which still said any nonzero `err.errcode` maps to `ERROR` — the driver (since the 2026-07-08 fix below) checks `deviceState` busy first, so a non-fatal warning code during an active print stays `PRINTING`.
+PR #20 review found two doc/code mismatches introduced by the Creality connector work: `docs/api.md` still said `api_key` was required for every `POST /api/printers` row and CSV row, and still described `model` as a fixed five-value Prusa enum - neither reflects `server/routes/printers.js`'s `NO_API_KEY_TYPES` (which already exempts `creality`, alongside `elegoo-centauri`/`klipper`) or the fact that `model` has been validated against the operator-managed `printer_models` table (not a hardcoded list) since that table was introduced. Also corrected `docs/multi-brand.md`'s Creality state-mapping note, which still said any nonzero `err.errcode` maps to `ERROR` - the driver (since the 2026-07-08 fix below) checks `deviceState` busy first, so a non-fatal warning code during an active print stays `PRINTING`.
 
 ### Changes
 - `docs/api.md`: `POST /api/printers` and CSV-import sections now state `api_key` is required unless `type` is a key-less connector (`elegoo-centauri`, `klipper`, `creality`), and describe `model` as validated against the Settings-managed `printer_models` table rather than a fixed Prusa-only list.
@@ -155,35 +177,35 @@ PR #20 review found two doc/code mismatches introduced by the Creality connector
 
 ---
 
-## 2026-07-08 — Creality: non-fatal hardware warnings no longer fail active jobs
+## 2026-07-08 - Creality: non-fatal hardware warnings no longer fail active jobs
 
-When a Creality printer (K1 Max, confirmed) reports a hardware warning mid-print (e.g. mainboard fan error) via `err.errcode`, the driver previously returned `ERROR` unconditionally — even though `deviceState` confirmed the printer was still busy printing. The poller then transitioned `PRINTING → ERROR`, the scheduler's `_handlePrinterUnavailable` marked the job `failed`, and the part count reset — while the print continued fine on the hardware.
+When a Creality printer (K1 Max, confirmed) reports a hardware warning mid-print (e.g. mainboard fan error) via `err.errcode`, the driver previously returned `ERROR` unconditionally - even though `deviceState` confirmed the printer was still busy printing. The poller then transitioned `PRINTING → ERROR`, the scheduler's `_handlePrinterUnavailable` marked the job `failed`, and the part count reset - while the print continued fine on the hardware.
 
 **Fix:** Reordered `mapStatus()` so the `deviceState` busy check runs before the `errcode` check. A non-fatal error code while the printer is busy logs a warning and stays `PRINTING`; the scheduler never sees an `ERROR` transition. An error code while the printer is idle (a fault that actually stopped the print) still maps to `ERROR`. This is the same disambiguation pattern used in `bambu.js` for `STOPPED` vs `ERROR` (user-cancel vs genuine fault).
 
 ### Changes
-- `server/drivers/creality.js`: reordered `mapStatus()` — `deviceState` busy check now runs before `errcode` check; `errcode` only maps to `ERROR` when idle; logs non-fatal error codes as warnings with the printer name; `mapStatus` now takes a `printerName` parameter for log context.
+- `server/drivers/creality.js`: reordered `mapStatus()` - `deviceState` busy check now runs before `errcode` check; `errcode` only maps to `ERROR` when idle; logs non-fatal error codes as warnings with the printer name; `mapStatus` now takes a `printerName` parameter for log context.
 - `server/tests/creality-driver.test.js`: added regression test for non-fatal `errcode` while busy → `PRINTING`; updated existing `ERROR` test to assert it only fires when `deviceState=0` (fatal fault).
 
 ---
 
-## 2026-07-06 — Creality connector (K1 / K2 / Ender-3 V3 / Hi series)
+## 2026-07-06 - Creality connector (K1 / K2 / Ender-3 V3 / Hi series)
 
-Added a driver for Creality's local API — the same one Creality Print and OrcaSlicer's "Creality Print" host speak on the LAN, used by the K1, K1C, K1 Max, K2, Ender-3 V3, and Hi series. This is a distinct connector from Klipper (Moonraker): although these printers run Klipper internally, their stock firmware exposes Creality's own WebSocket + HTTP API rather than an open Moonraker port.
+Added a driver for Creality's local API - the same one Creality Print and OrcaSlicer's "Creality Print" host speak on the LAN, used by the K1, K1C, K1 Max, K2, Ender-3 V3, and Hi series. This is a distinct connector from Klipper (Moonraker): although these printers run Klipper internally, their stock firmware exposes Creality's own WebSocket + HTTP API rather than an open Moonraker port.
 
 Connection model mirrors Bambu (persistent push, not request/response polling): the printer streams partial telemetry frames over a WebSocket on **port 9999**, which the driver merges into a per-printer cached state and answers `getStatus()` from instantly. `OFFLINE` is reported until the first frame after (re)connect, and the cache is dropped on socket close so stale state is never replayed.
 
-- **Status** *(mapping corrected after real-K1 validation — see the update note below)* — live status comes from `deviceState` (`0` = idle, non-zero = busy: printing / heating / self-test); `state === 5` → `PAUSED`; a nonzero `err.errcode` → `ERROR`. The terminal outcome (`FINISHED` / `STOPPED`, read from `state` `2`/`4`) is emitted **exactly once** on the busy→idle edge, then the driver reports `IDLE` — so the part is credited on that single transition and the printer returns to service.
-- **Upload & print** — HTTP multipart `POST /upload/<name>` (field `file`; raw-body posts make some firmware prepend HTTP headers into the saved G-code, so multipart is required), then a WebSocket `{"method":"set","params":{"opGcodeFile":"printprt:/usr/data/printer_data/gcodes/<name>"}}` trigger. `uploadAndPrint` resolves only after the printer confirms it is printing; a 409 on upload raises `UPLOAD_CONFLICT`. The LAN API is unauthenticated by default; an optional `api_key`, if set, is sent as `Authorization: Bearer`.
-- **Cancel** — WebSocket `{"method":"set","params":{"stop":1}}`.
+- **Status** *(mapping corrected after real-K1 validation - see the update note below)* - live status comes from `deviceState` (`0` = idle, non-zero = busy: printing / heating / self-test); `state === 5` → `PAUSED`; a nonzero `err.errcode` → `ERROR`. The terminal outcome (`FINISHED` / `STOPPED`, read from `state` `2`/`4`) is emitted **exactly once** on the busy→idle edge, then the driver reports `IDLE` - so the part is credited on that single transition and the printer returns to service.
+- **Upload & print** - HTTP multipart `POST /upload/<name>` (field `file`; raw-body posts make some firmware prepend HTTP headers into the saved G-code, so multipart is required), then a WebSocket `{"method":"set","params":{"opGcodeFile":"printprt:/usr/data/printer_data/gcodes/<name>"}}` trigger. `uploadAndPrint` resolves only after the printer confirms it is printing; a 409 on upload raises `UPLOAD_CONFLICT`. The LAN API is unauthenticated by default; an optional `api_key`, if set, is sent as `Authorization: Bearer`.
+- **Cancel** - WebSocket `{"method":"set","params":{"stop":1}}`.
 
 ### Changes
 - `server/drivers/creality.js` (new): the driver.
 - `server/drivers/index.js`: registered the `creality` loader.
 - `server/routes/printers.js`: `creality` added to `NO_API_KEY_TYPES`.
-- `client/src/pages/Settings.jsx`: Add Printer form — connector option, label, no-API-key handling, credential hint, name placeholder.
+- `client/src/pages/Settings.jsx`: Add Printer form - connector option, label, no-API-key handling, credential hint, name placeholder.
 - `server/tests/creality-driver.test.js` (new): state-mapping, upload (incl. `UPLOAD_CONFLICT`), cancel, and registry coverage with `ws`/`axios` mocked.
-- `package.json`: added `ws` dependency (WebSocket client — run `npm install`).
+- `package.json`: added `ws` dependency (WebSocket client - run `npm install`).
 - Docs: `multi-brand.md` connector table + Creality notes; `README.md` supported-printers/tech-stack/CSV rows; `installation.md` credentials table.
 
 ### New dependency
@@ -191,9 +213,9 @@ Connection model mirrors Bambu (persistent push, not request/response polling): 
 npm install ws
 ```
 
-### Update (2026-07-07) — validated on a real Creality K1, status mapping corrected
+### Update (2026-07-07) - validated on a real Creality K1, status mapping corrected
 Ran the connector against a real K1 and the initial state mapping was wrong. Captured telemetry disproved the reverse-engineered field assumptions:
-- `printProgress` / `printFileName` are **last-print residuals** — the K1 leaves them at `100` / the previous filename after a print ends. Synthesizing `FINISHED` from `progress >= 100` latched the printer on `FINISHED` forever, so it never returned to `IDLE` (the reported bug).
+- `printProgress` / `printFileName` are **last-print residuals** - the K1 leaves them at `100` / the previous filename after a print ends. Synthesizing `FINISHED` from `progress >= 100` latched the printer on `FINISHED` forever, so it never returned to `IDLE` (the reported bug).
 - `state` is a **phase/outcome latch, not live status**: it reads `0`/`1` while running, then latches `2` (completed) / `4` (stopped) while the device sits idle. Keying status off it latched the same way. `printId` was empty even mid-print, so it is unusable.
 - The reliable live signal is **`deviceState`** (`0` = idle, non-zero = busy).
 
@@ -203,11 +225,11 @@ Rewrote `mapStatus` to key on `deviceState` and emit the terminal outcome exactl
 - `server/drivers/creality.js`: `mapStatus` rewritten around `deviceState` with a one-shot terminal-outcome latch; `path.basename` for `currentFile`; `DEBUG_CREALITY` raw logging.
 - `server/tests/creality-driver.test.js`: rewritten to the `deviceState` model with regressions for both latching bugs.
 
-### Update (2026-07-07) — PR review: optional API key, safer UNKNOWN fallback
+### Update (2026-07-07) - PR review: optional API key, safer UNKNOWN fallback
 Two issues raised in review, plus a hardware confirmation on a K1 Max fleet (firmware 1.3.x):
 
-- **[P2] No way to configure a Creality API key.** `creality` was in the client's `NO_API_KEY_TYPES` in both `Settings.jsx` (Add Printer) and `PrinterDetail.jsx` (edit), which hid the API key input entirely — but `server/drivers/creality.js` sends it as `Authorization: Bearer` when set (matching `CrealityPrint::set_auth()` in OrcaSlicer's reference implementation), and some Creality Print / Nebula setups require one. Fixed by removing `creality` from the client-side set in both forms so the field is shown, and making it optional there (`required={type !== 'creality'}`, labelled "API Key (optional)") rather than required. The server route's `NO_API_KEY_TYPES` already treated it as optional — only the client was blocking entry.
-- **[P3] `mapStatus` fell through to `IDLE` instead of `UNKNOWN` on unrecognized telemetry.** `getStatus` returns `OFFLINE` before calling `mapStatus` whenever the cache is empty, so the documented `!s → UNKNOWN` guard at the top of `mapStatus` was dead code — the real gap was a partial frame merging into the cache with neither `deviceState` nor `state` populated (e.g. a stray frame arriving before the connect-time `reqPrintObjects` response), which fell through every branch to the `IDLE` default. Fixed with an explicit `state == null && device == null → UNKNOWN` check before the idle/outcome branch, so garbled telemetry holds the printer instead of silently offering it up for dispatch.
+- **[P2] No way to configure a Creality API key.** `creality` was in the client's `NO_API_KEY_TYPES` in both `Settings.jsx` (Add Printer) and `PrinterDetail.jsx` (edit), which hid the API key input entirely - but `server/drivers/creality.js` sends it as `Authorization: Bearer` when set (matching `CrealityPrint::set_auth()` in OrcaSlicer's reference implementation), and some Creality Print / Nebula setups require one. Fixed by removing `creality` from the client-side set in both forms so the field is shown, and making it optional there (`required={type !== 'creality'}`, labelled "API Key (optional)") rather than required. The server route's `NO_API_KEY_TYPES` already treated it as optional - only the client was blocking entry.
+- **[P3] `mapStatus` fell through to `IDLE` instead of `UNKNOWN` on unrecognized telemetry.** `getStatus` returns `OFFLINE` before calling `mapStatus` whenever the cache is empty, so the documented `!s → UNKNOWN` guard at the top of `mapStatus` was dead code - the real gap was a partial frame merging into the cache with neither `deviceState` nor `state` populated (e.g. a stray frame arriving before the connect-time `reqPrintObjects` response), which fell through every branch to the `IDLE` default. Fixed with an explicit `state == null && device == null → UNKNOWN` check before the idle/outcome branch, so garbled telemetry holds the printer instead of silently offering it up for dispatch.
 
 ### Changes (review fixes)
 - `server/drivers/creality.js`: explicit `UNKNOWN` fallback in `mapStatus` for missing `deviceState`/`state`.
