@@ -156,6 +156,16 @@ No code changes. `docs/README.md` gained an index row; `CONTRIBUTING.md`'s Print
 
 ---
 
+## 2026-07-05 - G-code upload: harden filename handling and add upload limits
+
+The upload handler named the on-disk file `Date.now() + '_' + file.originalname`. The current stack routes multipart filenames through Busboy with `preservePath` unset (default `false`), which reduces a path-bearing filename to its basename before `file.originalname` is set, so the previous code was not writing outside `GCODE_DIR`. This adds `path.basename` in the filename callback as defense-in-depth, so the guarantee holds locally rather than relying on that transitive default, and adds multer `limits` (500 MB, one file per request) which the endpoint previously lacked.
+
+### Changes
+- `server/routes/gcodes.js`: `path.basename(file.originalname)` in the multer filename callback (defense-in-depth); added `limits: { fileSize: 500 MB, files: 1 }`.
+- `server/tests/gcodes.test.js`: assert the stored filename is always a basename, and that a second file in one request is rejected by the `files` limit.
+
+---
+
 ## 2026-07-04 — CI: gate Docker publishing on the test suite
 
 `.github/workflows/docker-publish.yml` could previously publish an image even if `server/tests/` was failing — nothing ran the suite. Added a `test` job (`npm ci` + `npm test` on `ubuntu-24.04`) that both `build` and the PR-only `pr_test_build` job now declare as a dependency (`needs: test`), so a red test suite blocks any image build, published or not. `merge` remains gated transitively via `needs: build`.

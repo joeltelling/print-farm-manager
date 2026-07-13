@@ -189,6 +189,51 @@ describe('POST /api/gcodes/upload', () => {
     uploadedPath = res.body.filepath;
   });
 
+  test('stored filename is always a basename (defense-in-depth)', async () => {
+    // Busboy already basenames multipart filenames (preservePath off), so a path-bearing
+    // name arrives here stripped; path.basename in the storage callback locks that in.
+    // Dedicated model so the (part_id, printer_model) pair is unique among these tests.
+    db.prepare(`INSERT OR IGNORE INTO printer_models VALUES ('trav', 'Traversal', 'prusa')`).run();
+    const tmpFile = makeTempGcode('traversal_src.bgcode');
+
+    const res = await request(app)
+      .post('/api/gcodes/upload')
+      .attach('file', tmpFile, { filename: '../../../pwned.bgcode' })
+      .field('part_id', '1')
+      .field('parts_per_plate', '4')
+      .field('printer_model', 'trav');
+
+    fs.unlinkSync(tmpFile);
+
+    expect(res.status).toBe(201);
+    expect(res.body.filepath).not.toMatch(/[\\/]/);
+    expect(res.body.filepath).toMatch(/pwned\.bgcode$/);
+
+    const stored = path.join(GCODE_DIR, res.body.filepath);
+    expect(fs.existsSync(stored)).toBe(true);
+    expect(fs.existsSync(path.resolve(GCODE_DIR, '..', '..', '..', 'pwned.bgcode'))).toBe(false);
+
+    uploadedPath = stored;
+  });
+
+  test('rejects more than one file per request (files limit)', async () => {
+    const a = makeTempGcode('multi_a.bgcode');
+    const b = makeTempGcode('multi_b.bgcode');
+
+    const res = await request(app)
+      .post('/api/gcodes/upload')
+      .attach('file', a)
+      .attach('file', b)
+      .field('part_id', '1')
+      .field('parts_per_plate', '4')
+      .field('printer_model', 'mk4s');
+
+    fs.unlinkSync(a);
+    fs.unlinkSync(b);
+
+    expect(res.status).toBe(400);
+  });
+
   test('returns 400 when no file is attached', async () => {
     const res = await request(app)
       .post('/api/gcodes/upload')

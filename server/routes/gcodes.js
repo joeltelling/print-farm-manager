@@ -8,9 +8,11 @@ const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
 const storage = multer.diskStorage({
   destination: GCODE_DIR,
-  filename: (_req, file, cb) => cb(null, Date.now() + '_' + file.originalname),
+  // Busboy already reduces multipart filenames to their basename (preservePath off), so
+  // this path.basename is defense-in-depth rather than relying on that transitive default.
+  filename: (_req, file, cb) => cb(null, Date.now() + '_' + path.basename(file.originalname)),
 });
-const upload = multer({ storage });
+const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 1 } });
 
 function runUpload(req, res) {
   return new Promise((resolve, reject) => {
