@@ -73,4 +73,4 @@ EXPOSE 3000 5173
 # via the bind mount. `&&`, not `;` — a broken build must stop here loudly
 # instead of silently falling through into `npm run dev` with the server half
 # of it doomed to crash on the same missing-dist check for a non-obvious reason.
-CMD ["sh", "-c", "[ -f client/dist/index.html ] || npm run build && npm run dev"]
+CMD ["sh", "-c", "npm run dev"]

@@ -13,6 +13,13 @@ const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
 
+const envFilePath = path.join(process.cwd(), ".env");
+
+if (!process.env.NODE_ENV && path.existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+  console.log("Loaded environment from .env");
+}
+
 const db             = require('./db');
 const PrinterPoller  = require('./poller');
 const JobScheduler   = require('./scheduler');
@@ -34,6 +41,7 @@ const printerJobsRouter  = require('./routes/printer-jobs')(db);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+const APP_ENV = process.env.NODE_ENV ?? 'production';
 
 app.use(express.json());
 
@@ -64,24 +72,29 @@ app.delete('/api/notifications/:id', (req, res) => {
 });
 
 // Serve built React client (production mode)
-const clientDist = path.join(__dirname, '../client/dist');
-if (!fs.existsSync(path.join(clientDist, 'index.html'))) {
-  console.error('');
-  console.error('  ERROR: client/dist/index.html not found.');
-  console.error('  The React client has not been built yet.');
-  console.error('');
-  console.error('  Run this once before starting the server:');
-  console.error('    npm run build');
-  console.error('');
-  console.error('  (See docs/installation.md for the full setup steps.)');
-  console.error('');
-  process.exit(1);
+if (APP_ENV !== 'development') {
+  const clientDist = path.join(__dirname, '../client/dist');
+
+  if (!fs.existsSync(path.join(clientDist, 'index.html'))) {
+    console.error('');
+    console.error('  ERROR: client/dist/index.html not found.');
+    console.error('  The React client has not been built yet.');
+    console.error('');
+    console.error('  Run this once before starting the server:');
+    console.error('    npm run build');
+    console.error('');
+    console.error('  (See docs/installation.md for the full setup steps.)');
+    console.error('');
+    process.exit(1);
+  }
+
+  app.use(express.static(clientDist));
+
+  // SPA catch-all — non-API routes serve index.html
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
 }
-app.use(express.static(clientDist));
-// SPA catch-all — non-API routes serve index.html
-app.get(/^(?!\/api).*/, (_req, res) => {
-  res.sendFile(path.join(clientDist, 'index.html'));
-});
 
 // Start server
 const server = app.listen(PORT, () => {

@@ -87,6 +87,7 @@ npm run dev
 ```bash
 git clone https://github.com/joeltelling/print-farm-manager.git
 cd print-farm-manager
+cp .env.example .env
 docker compose up --build print-farm-manager-dev
 ```
 

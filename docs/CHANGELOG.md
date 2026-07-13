@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-07-12 - Server: fix client build required in dev environment
+
+`client/dist/index.html` was not found the first time the services are spun up.  This causes the server to crash and exits the process.
+
+### Changes
+- `server/index.js`: optionally skips the check for, and serving the statically built client app when the `NODE_ENV` environment variable is set to `development`
+- `.env.example`: created a new example `.env` file that can be used to pre-populate the local environment variables with sensible defaults for non-sensitive values.  This can be extended to include key/(empty)value pairs for sensitive environment variables, should the need arise
+- `README.md`: updated to include section on docker with updated step to create the `.env` file with values pre-filled from the example
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."
