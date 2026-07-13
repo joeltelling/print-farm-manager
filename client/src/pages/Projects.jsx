@@ -474,8 +474,9 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
       }
     } catch (err) {
       setError(err.message);
+    } finally {
+      setParsingGcode(false);
     }
-    setParsingGcode(false);
   }
 
   async function save() {

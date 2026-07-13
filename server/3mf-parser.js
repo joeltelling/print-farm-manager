@@ -60,6 +60,10 @@ function parse3mfFile(filePath) {
       offset += 46 + nameLen + readU16(buf, offset + 30) + readU16(buf, offset + 32);
     }
     if (jsonOffset < 0) return result;
+    if (compressedSize > MAX_COMPRESSED_ENTRY) {
+      console.warn(`[3mf-parser] Skipping plate_1.json in ${filePath}: ${compressedSize} compressed bytes exceeds ${MAX_COMPRESSED_ENTRY} byte limit`);
+      return result;
+    }
 
     const compressed = buf.slice(jsonOffset, jsonOffset + compressedSize);
     let jsonStr;

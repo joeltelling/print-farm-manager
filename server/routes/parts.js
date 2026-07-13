@@ -17,6 +17,7 @@ const bulkStorage = multer.diskStorage({
   destination: GCODE_DIR,
   filename: (_req, file, cb) => cb(null, Date.now() + '_' + crypto.randomBytes(4).toString('hex') + '_' + file.originalname),
 });
+const MAX_BULK_BYTES = 500 * 1024 * 1024; // 500 MB total per request
 const bulkUpload = multer({
   storage: bulkStorage,
   limits: { fileSize: 100 * 1024 * 1024, files: 200 }, // 100 MB per file, 200 files max
@@ -285,6 +286,16 @@ module.exports = (db) => {
       return res.status(400).json({ error: 'At least one gcode file is required' });
     }
 
+    // Reject requests that exceed the aggregate size budget before accepting
+    // all files — multer has already written them, but the budget keeps one
+    // request from filling the disk.
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    if (totalBytes > MAX_BULK_BYTES) {
+      cleanupFiles();
+      const mb = (totalBytes / (1024 * 1024)).toFixed(1);
+      return res.status(400).json({ error: `Total upload size ${mb} MB exceeds ${MAX_BULK_BYTES / (1024 * 1024)} MB limit` });
+    }
+
     // Parse per-file overrides as a positional array — index N maps to files[N].
     // Using index avoids collisions when two files share the same basename.
     let overridesArr = [];
@@ -318,24 +329,28 @@ module.exports = (db) => {
           const fallbackName = baseName.replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim() || 'Imported Part';
           const partName = ov.name || fallbackName;
 
-          // Validate quantity and parts_per_plate server-side (truthy check
-          // allows "0" and "-1" through — parseInt catches non-positive values).
-          const parsedQty = parseInt(ov.quantity || 1, 10);
-          const parsedPpp = parseInt(ov.parts_per_plate || 1, 10);
+          // Validate quantity and parts_per_plate server-side.  Reject
+          // non-integer strings ("1.5", "2e3", "1junk") before parseInt
+          // silently truncates them to a valid-looking number.
+          const rawQty = ov.quantity || 1;
+          const rawPpp = ov.parts_per_plate || 1;
+          if (!/^\d+$/.test(String(rawQty))) {
+            throw new Error(`Invalid quantity "${rawQty}" for "${file.originalname}" — must be a positive integer`);
+          }
+          if (!/^\d+$/.test(String(rawPpp))) {
+            throw new Error(`Invalid parts per plate "${rawPpp}" for "${file.originalname}" — must be a positive integer`);
+          }
+          const parsedQty = parseInt(rawQty, 10);
+          const parsedPpp = parseInt(rawPpp, 10);
           if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
-            throw new Error(`Invalid quantity "${ov.quantity || 1}" for "${file.originalname}" — must be a positive integer`);
+            throw new Error(`Invalid quantity "${rawQty}" for "${file.originalname}" — must be a positive integer`);
           }
           if (!Number.isFinite(parsedPpp) || parsedPpp <= 0) {
-            throw new Error(`Invalid parts per plate "${ov.parts_per_plate || 1}" for "${file.originalname}" — must be a positive integer`);
+            throw new Error(`Invalid parts per plate "${rawPpp}" for "${file.originalname}" — must be a positive integer`);
           }
 
-          // Parse file content for metadata — .3mf uses ZIP reader, others use gcode scanner
-          const is3mf = file.originalname.toLowerCase().endsWith('.3mf');
-          const gcodeMeta = is3mf ? parse3mfFile(file.path) : parseGcodeFile(file.path);
-
           // Printer model: override > gcode metadata
-          const printerModel = ov.printer_model || gcodeMeta.printer_model || '';
-
+          const printerModel = ov.printer_model || '';
           if (!printerModel) {
             throw new Error(`No printer model for "${file.originalname}" — select one in the staging table`);
           }
@@ -346,16 +361,45 @@ module.exports = (db) => {
             throw new Error(`Unknown printer model "${printerModel}" for "${file.originalname}" — add it in Settings first`);
           }
 
-          // Bambu printers require .3mf files — reject non-.3mf at import time so
-          // the operator catches the problem now rather than at dispatch time when
-          // the scheduler holds the printer with a failed job.
-          if (modelRow.connector === 'bambu' && !file.originalname.toLowerCase().endsWith('.3mf')) {
+          // File-format ↔ connector contract.  Bambu requires .3mf; other
+          // drivers upload the raw bytes as the print file, so a .3mf for
+          // Prusa / Klipper / OctoPrint would fail at dispatch.
+          const is3mf = file.originalname.toLowerCase().endsWith('.3mf');
+          if (modelRow.connector === 'bambu' && !is3mf) {
             throw new Error(`"${file.originalname}" is not a .3mf file — Bambu printers require .3mf files`);
           }
+          if (modelRow.connector !== 'bambu' && is3mf) {
+            throw new Error(`"${file.originalname}" is a .3mf file — model "${printerModel}" (connector: ${modelRow.connector}) does not support .3mf`);
+          }
+
+          // Parse file content for metadata
+          const gcodeMeta = is3mf ? parse3mfFile(file.path) : parseGcodeFile(file.path);
 
           // Targeting fields from staging table overrides
-          const amsSlot = ov.ams_slot !== undefined && ov.ams_slot !== '' ? parseInt(ov.ams_slot, 10) : null;
-          const allowedGroups = ov.allowed_groups || null;
+          const rawAms = ov.ams_slot !== undefined ? String(ov.ams_slot) : '';
+          const amsSlot = rawAms !== '' ? parseInt(rawAms, 10) : null;
+
+          // Bambu models require an explicit spool choice — NULL defaults to
+          // external spool (use_ams: false), which may be wrong for an AMS job.
+          if (modelRow.connector === 'bambu' && amsSlot === null) {
+            throw new Error(`"${file.originalname}" needs an AMS / external spool selection — choose a slot or "External Spool"`);
+          }
+
+          // Groups must be a valid JSON array (for scheduler json_each()) or null
+          let allowedGroups = null;
+          const rawGroups = (ov.allowed_groups || '').trim();
+          if (rawGroups) {
+            try {
+              const parsed = JSON.parse(rawGroups);
+              if (!Array.isArray(parsed) || !parsed.every(s => typeof s === 'string')) {
+                throw new Error(`Invalid groups for "${file.originalname}" — must be a JSON array of strings`);
+              }
+              allowedGroups = rawGroups;
+            } catch (_) {
+              throw new Error(`Invalid groups for "${file.originalname}" — must be a JSON array of strings`);
+            }
+          }
+
           const requiredMaterial = ov.required_material || null;
           const requiredColor = ov.required_color || null;
 

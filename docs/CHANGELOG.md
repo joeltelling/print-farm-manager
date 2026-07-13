@@ -2,14 +2,38 @@
 
 ---
 
-## 2026-07-11 — Bulk import JSON parse error fix + gcode-parser cleanup
+## 2026-07-13 — Bulk import hardening (P1/P2 review fixes)
 
-The bulk import flow could surface a cryptic `JSON.parse: unexpected character at line 1 column 1` error when the server threw an uncaught exception (e.g., iterating `undefined` after a multer error). The client's error handler now reads the response as text first and surfaces the actual server error snippet instead.
+Multiple rounds of review hardening for the bulk part import feature. Covers collision-proof file storage, input validation, file-format enforcement, Bambu AMS targeting parity, G-code parser improvements, and client UX fixes.
 
-### Changes
-- `server/gcode-parser.js` — removed dead `const zlib = require('zlib')` import (unused since `.3mf` ZIP reading was extracted to `server/3mf-parser.js`); removed outdated Bambu `.3mf` comment block and replaced with a pointer to `3mf-parser.js`
-- `server/routes/parts.js` — hardened the catch block at line 381 to use `for (const file of (files || []))` so a missing `req.files` array doesn't cause a secondary uncaught TypeError
-- `client/src/components/BulkImportPanel.jsx` — reads response body as text before attempting JSON parse; on parse failure, displays the raw server response snippet with status code instead of the unhelpful `JSON.parse` message
+### P1 fixes (data safety)
+- **Unique on-disk filenames** (`server/routes/parts.js`): storage names include `crypto.randomBytes(4).toString('hex')` so two `plate.gcode` files from different directories can never collide.
+- **Positional override mapping** (`server/routes/parts.js`): overrides are matched to files by array index, not by basename — duplicate-named files no longer share an override entry.
+- **Aggregate upload size limit** (`server/routes/parts.js`): `MAX_BULK_BYTES = 500 MB` per request prevents one import from filling the farm disk, on top of the existing 100 MB per-file limit.
+- **Size-bounded .3mf parsing** (`server/3mf-parser.js`): rejects .3mf files > 50 MB and ZIP entries > 10 MB before reading; `inflateRawSync` limited to `maxOutputLength`.
+- **File-format ↔ connector contract** (`server/routes/parts.js`): rejects `.3mf` files for non-Bambu models (Prusa/Klipper/OctoPrint drivers can't use them) and rejects non-`.3mf` for Bambu.
+- **Groups as JSON arrays** (`client/src/components/BulkImportPanel.jsx` + `server/routes/parts.js`): the client serializes comma-separated groups as `JSON.stringify(["Group A","Group B"])`; the server validates it's a valid JSON array of strings before storing as `gcodes.allowed_groups`. This matches the scheduler's `json_each()` query and the dispatch diagnostic's `JSON.parse()`.
+- **Group registry source** (`client/src/components/BulkImportPanel.jsx`): the groups datalist now reads from the persisted `/api/groups` registry rather than deriving from currently-assigned printers, so groups with no active printers still appear for autocomplete.
+
+### P2 fixes (correctness)
+- **Strict integer validation** (`server/routes/parts.js`): raw quantity and parts-per-plate strings are checked with `/^\d+$/` before `parseInt` — values like `"1.5"`, `"2e3"`, and `"1junk"` are rejected with a clear error instead of being silently truncated.
+- **Explicit Bambu AMS choice required** (`server/routes/parts.js`): Bambu models must have an AMS slot or external spool explicitly selected — rows with null/empty `ams_slot` are rejected server-side, so an AMS-tray job can't silently dispatch as external-spool.
+- **Nozzle temperature regex anchored** (`server/gcode-parser.js`): `\bnozzle_temperature` with word boundary prevents `bed_temperature = 60` from falsely matching and filling `nozzle_temp: 60`.
+- **Parse G-code loading state** (`client/src/pages/Projects.jsx`): `setParsingGcode(false)` moved into a `finally` block so error responses (e.g. 404) don't permanently disable both parse buttons until remount.
+- **Clear file-update header comment** (`server/gcode-parser.js`): removed stale comment block that implied direct .3mf parsing; replaced with pointer to `../3mf-parser.js`.
+- **AMS label corrected** (`client/src/components/BulkImportPanel.jsx`): the AMS slot selector default now reads `— choose a slot —` instead of the misleading `— use printer default —`.
+- **Cleanup on all early-rejection paths** (`server/routes/parts.js`): `cleanupFiles()` now runs on project_id missing, project not found, invalid overrides JSON, and aggregate size limit — every path that rejects after multer has already stored files.
+
+### G-code parser improvements
+- **Day-component time parsing** (`server/gcode-parser.js — parseTimeString()`): `"1d 2h 30m"` → 95400 seconds (was 9000); `"2d"` → 172800 (was null). The `/[dhms]/i` guard routes suffixed strings through `parseTimeString()` before falling back to `parseFloat()`.
+- **Robust dual-scan** (`server/gcode-parser.js`): every file's head buffer (first 4KB) is now scanned with both `HEAD_PATTERNS` and `TAIL_PATTERNS` regardless of file size. Large files additionally get the dedicated 50KB tail scan.
+
+### Files changed
+- `server/routes/parts.js` — aggregate limit, strict integer validation, .3mf connector gate, Bambu AMS required, groups JSON validation, cleanup on all rejection paths
+- `server/gcode-parser.js` — nozzle temp anchoring, day parsing, dual head-scan, dead zlib import removed
+- `server/3mf-parser.js` — compressed entry size guard, `maxOutputLength` on inflate
+- `client/src/components/BulkImportPanel.jsx` — groups serialized as JSON array, groups from `/api/groups` registry, AMS label fix
+- `client/src/pages/Projects.jsx` — `finally` block for Parse G-code loading state
 
 ---
 

@@ -22,13 +22,11 @@ export default function BulkImportPanel({ projectId, onImported }) {
 
   useEffect(() => {
     fetch('/api/printers').then(r => r.json())
-      .then(ps => {
-        setModels([...new Set(ps.filter(p => p.model).map(p => p.model))]);
-        setAvailableGroups([...new Set(ps.filter(p => p.group_name).map(p => p.group_name))]);
-      })
+      .then(ps => setModels([...new Set(ps.filter(p => p.model).map(p => p.model))]))
       .catch(() => {});
     fetch('/api/filaments/types').then(r => r.json()).then(setFilamentTypes).catch(() => {});
     fetch('/api/filaments/colors').then(r => r.json()).then(setAllColors).catch(() => {});
+    fetch('/api/groups').then(r => r.json()).then(groups => setAvailableGroups(groups.map(g => g.name))).catch(() => {});
   }, []);
 
   function addFiles(e) {
@@ -49,11 +47,16 @@ export default function BulkImportPanel({ projectId, onImported }) {
     setImporting(true); setError(null);
     const fd = new FormData();
     fd.append('project_id', String(projectId));
-    const overrides = items.map(it => ({
-      fn: it.fn, name: it.name, quantity: it.qty, parts_per_plate: it.ppp, printer_model: it.model,
-      ams_slot: it.amsSlot || '', allowed_groups: it.groups.trim() || bulkGroups.trim() || '',
-      required_material: it.material || bulkMaterial || '', required_color: it.color || bulkColor || '',
-    }));
+    const overrides = items.map(it => {
+      const groupsRaw = (it.groups || '').trim() || bulkGroups.trim();
+      const groupsArr = groupsRaw ? groupsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+      return {
+        fn: it.fn, name: it.name, quantity: it.qty, parts_per_plate: it.ppp, printer_model: it.model,
+        ams_slot: it.amsSlot || '',
+        allowed_groups: groupsArr.length ? JSON.stringify(groupsArr) : '',
+        required_material: it.material || bulkMaterial || '', required_color: it.color || bulkColor || '',
+      };
+    });
     fd.append('overrides', JSON.stringify(overrides));
     for (const it of items) fd.append('files', it.file);
     try {
@@ -106,7 +109,7 @@ export default function BulkImportPanel({ projectId, onImported }) {
           {filamentTypes.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Material</span><select value={bulkMaterial} onChange={e => { setBulkMaterial(e.target.value); setBulkColor(''); }} style={{ ...sx.i, width: 120, fontSize: 11 }}><option value="">— any —</option>{filamentTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></>}
           {colorOptions.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Color</span><select value={bulkColor} onChange={e => setBulkColor(e.target.value)} style={{ ...sx.i, width: 120, fontSize: 11 }}><option value="">— any —</option>{colorOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></>}
           {availableGroups.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Groups</span><input type="text" value={bulkGroups} onChange={e => setBulkGroups(e.target.value)} placeholder="comma-separated" list="bulk-group-list" style={{ ...sx.i, width: 160, fontSize: 11 }} /><datalist id="bulk-group-list">{availableGroups.map(g => <option key={g} value={g} />)}</datalist></>}
-          <span style={{ fontSize: 11, color: '#64748b' }}>AMS Slot</span><select onChange={e => e.target.value && bulk('amsSlot', e.target.value)} style={{ ...sx.i, width: 130, fontSize: 11 }}><option value="">— use printer default —</option><option value="-1">External Spool</option><option value="0">AMS Slot 1</option><option value="1">AMS Slot 2</option><option value="2">AMS Slot 3</option><option value="3">AMS Slot 4</option></select>
+          <span style={{ fontSize: 11, color: '#64748b' }}>AMS Slot</span><select onChange={e => e.target.value && bulk('amsSlot', e.target.value)} style={{ ...sx.i, width: 130, fontSize: 11 }}><option value="">— choose a slot —</option><option value="-1">External Spool</option><option value="0">AMS Slot 1</option><option value="1">AMS Slot 2</option><option value="2">AMS Slot 3</option><option value="3">AMS Slot 4</option></select>
         </div>
       )}
       {items.length > 0 && (

@@ -15,7 +15,7 @@ const TAIL_PATTERNS = [
   { key: 'estimated_time_s',  regex: /estimated (?:printing )?time[:\s]*[=]?\s*(.+)/i },
   { key: 'layer_height',      regex: /layer_height\s*=\s*([\d.]+)/i },
   { key: 'filament_type',     regex: /filament_type\s*=\s*(\w+)/i },
-  { key: 'nozzle_temp',       regex: /(?:nozzle_temperature|temperature)\s*=\s*([\d.]+)/i },
+  { key: 'nozzle_temp',       regex: /\bnozzle_temperature\s*=\s*([\d.]+)/i },
   { key: 'bed_temp',          regex: /bed_temperature\s*=\s*([\d.]+)/i },
   { key: 'printer_model',     regex: /printer_model\s*=\s*([\w\s-]+)/i },
 ];
