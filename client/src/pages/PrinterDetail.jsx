@@ -90,19 +90,21 @@ export default function PrinterDetail() {
   const [models, setModels]           = useState([]);
   const [filamentTypes, setFilamentTypes]   = useState([]);
   const [filamentColors, setFilamentColors] = useState([]);
+  const [groups, setGroups]                 = useState([]);
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsDraft, setDetailsDraft]     = useState({});
   const [detailsError, setDetailsError]     = useState(null);
   const [savingDetails, setSavingDetails]   = useState(false);
 
   const fetchData = useCallback(async () => {
-    const [printerRes, eventsRes, statsRes, modelsRes, typesRes, colorsRes] = await Promise.all([
+    const [printerRes, eventsRes, statsRes, modelsRes, typesRes, colorsRes, groupsRes] = await Promise.all([
       fetch(`/api/printers/${id}`),
       fetch(`/api/printers/${id}/events`),
       fetch(`/api/printers/${id}/jobs/stats`),
       fetch('/api/models'),
       fetch('/api/filaments/types'),
       fetch('/api/filaments/colors'),
+      fetch('/api/groups'),
     ]);
     if (printerRes.ok)  setPrinter(await printerRes.json());
     if (eventsRes.ok)   setEvents(await eventsRes.json());
@@ -110,6 +112,7 @@ export default function PrinterDetail() {
     if (modelsRes.ok)   setModels(await modelsRes.json());
     if (typesRes.ok)    setFilamentTypes(await typesRes.json());
     if (colorsRes.ok)   setFilamentColors(await colorsRes.json());
+    if (groupsRes.ok)   setGroups((await groupsRes.json()).map(g => g.name));
     setLoading(false);
   }, [id]);
 
@@ -367,8 +370,12 @@ export default function PrinterDetail() {
                   onChange={e => setDetailsDraft(d => ({ ...d, group_name: e.target.value }))}
                   disabled={savingDetails}
                   placeholder="optional"
+                  list="printer-detail-group-options"
                   style={detailInputStyle}
                 />
+                <datalist id="printer-detail-group-options">
+                  {groups.map(g => <option key={g} value={g} />)}
+                </datalist>
               </label>
               <label style={detailLabelStyle}>
                 Serial Number

@@ -75,6 +75,10 @@ beforeAll(() => {
       label     TEXT NOT NULL,
       connector TEXT NOT NULL
     );
+    CREATE TABLE printer_groups (
+      name       TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   app = express();

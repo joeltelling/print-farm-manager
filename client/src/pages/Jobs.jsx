@@ -9,10 +9,23 @@ const JOB_STATUS = {
   queued:    { bg: '#1f2937', text: '#9ca3af', label: 'Queued' },
   uploading: { bg: '#3b2c69', text: '#a78bfa', label: 'Uploading' },
   printing:  { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
+  awaiting:  { bg: '#14532d', text: '#4ade80', label: 'Awaiting Sign-off' },
   finished:  { bg: '#14532d', text: '#86efac', label: 'Finished' },
   failed:    { bg: '#7f1d1d', text: '#f87171', label: 'Failed' },
   cancelled: { bg: '#111827', text: '#6b7280', label: 'Cancelled', strike: true },
 };
+
+// The printer can be held (awaiting operator sign-off) while the job row is still
+// 'printing' (e.g. a printer goes PRINTING -> IDLE directly between polls, with no
+// observable FINISHED/STOPPED tick). The scheduler correctly holds the printer but has
+// nothing to resolve the job against yet, so the row stays 'printing' until Set Ready
+// or Bad Print is used. Display-only: never write this back as jobs.status.
+function displayJobStatus(job) {
+  if (job.status === 'printing' && job.printer_is_held === 1 && job.printer_status !== 'PRINTING') {
+    return 'awaiting';
+  }
+  return job.status;
+}
 
 const STATUS_OPTIONS = ['all', 'queued', 'uploading', 'printing', 'finished', 'failed', 'cancelled'];
 
@@ -157,7 +170,7 @@ export default function Jobs() {
       {jobs.length > 0 && (
         <div className="jobs-cards">
           {jobs.map(job => {
-            const st = JOB_STATUS[job.status] || { bg: '#1f2937', text: '#9ca3af', label: job.status };
+            const st = JOB_STATUS[displayJobStatus(job)] || { bg: '#1f2937', text: '#9ca3af', label: job.status };
             return (
               <div key={job.id} style={{ background: '#1e2433', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#cbd5e1' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -207,7 +220,7 @@ export default function Jobs() {
             </thead>
             <tbody>
               {jobs.map(job => {
-                const st = JOB_STATUS[job.status] || { bg: '#1f2937', text: '#9ca3af', label: job.status };
+                const st = JOB_STATUS[displayJobStatus(job)] || { bg: '#1f2937', text: '#9ca3af', label: job.status };
                 return (
                   <tr
                     key={job.id}

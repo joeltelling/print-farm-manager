@@ -1,7 +1,7 @@
 // Tests for:
-//   GET /api/printers/groups
 //   GET /api/printers/filaments
 //   PUT /api/printers/:id — loaded_material / loaded_color fields
+//   Auto-registration into printer_groups on create/update
 
 const request  = require('supertest');
 const express  = require('express');
@@ -44,6 +44,10 @@ beforeAll(() => {
       label     TEXT NOT NULL,
       connector TEXT NOT NULL
     );
+    CREATE TABLE printer_groups (
+      name       TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
     CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, status TEXT DEFAULT 'draft',
       priority INTEGER DEFAULT 0, created_at INTEGER, updated_at INTEGER);
     CREATE TABLE parts (id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT,
@@ -76,24 +80,6 @@ beforeAll(() => {
   app = express();
   app.use(express.json());
   app.use('/api/printers', require('../routes/printers')(db));
-});
-
-// ── GET /api/printers/groups ──────────────────────────────────────────────────
-
-describe('GET /api/printers/groups', () => {
-  test('returns distinct group names from active printers', async () => {
-    const res = await request(app).get('/api/printers/groups');
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(['Rack A', 'Rack B']); // sorted, no nulls, no dupes
-  });
-
-  test('excludes decommissioned printers', async () => {
-    // P5 is inactive (is_active=0) and has no group set anyway, but verify
-    // decommissioned printers don't pollute the list
-    const res = await request(app).get('/api/printers/groups');
-    expect(res.body).not.toContain(null);
-    expect(res.body.length).toBe(2);
-  });
 });
 
 // ── GET /api/printers/filaments ───────────────────────────────────────────────
@@ -226,5 +212,49 @@ describe('PUT /api/printers/:id — material and color', () => {
     expect(res.status).toBe(200);
     expect(res.body.loaded_material).toBe('TPU');
     expect(res.body.loaded_color).toBe('Orange');
+  });
+});
+
+// ── printer_groups auto-registration ───────────────────────────────────────
+// A group typed on a printer must persist in the registry even after every
+// printer carrying it is later reassigned elsewhere: this is what the
+// registry exists to fix. Create/update are the two places a new name enters.
+
+describe('printer_groups auto-registration', () => {
+  test('POST /api/printers registers a new group_name', async () => {
+    const res = await request(app)
+      .post('/api/printers')
+      .send({ name: 'NewOne', ip: '10.0.0.9', api_key: 'k', model: 'mk4s', group_name: 'Rack Z' });
+    expect(res.status).toBe(201);
+    expect(db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Rack Z')).toBeTruthy();
+  });
+
+  test('PUT /api/printers/:id registers a new group_name', async () => {
+    const row = db.prepare(
+      "INSERT INTO printers (name, ip, api_key, model, is_active, created_at) VALUES ('GroupEditMe', '10.0.0.8', '', 'mk4s', 1, ?)"
+    ).run(Date.now());
+
+    const res = await request(app)
+      .put(`/api/printers/${row.lastInsertRowid}`)
+      .send({ group_name: 'Rack Q' });
+    expect(res.status).toBe(200);
+    expect(db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Rack Q')).toBeTruthy();
+  });
+
+  test('the registry keeps a group even after the only printer carrying it moves away', async () => {
+    const created = await request(app)
+      .post('/api/printers')
+      .send({ name: 'Mover', ip: '10.0.0.7', api_key: 'k', model: 'mk4s', group_name: 'Rack Solo' });
+    expect(db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Rack Solo')).toBeTruthy();
+
+    // Reassign the only printer that ever carried "Rack Solo" elsewhere.
+    await request(app)
+      .put(`/api/printers/${created.body.id}`)
+      .send({ group_name: 'Rack Other' });
+
+    // No printer carries "Rack Solo" anymore, but the registry entry survives:
+    // this is the exact bug the registry exists to fix.
+    expect(db.prepare('SELECT COUNT(*) AS c FROM printers WHERE group_name = ?').get('Rack Solo').c).toBe(0);
+    expect(db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Rack Solo')).toBeTruthy();
   });
 });

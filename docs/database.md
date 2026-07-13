@@ -55,19 +55,35 @@ If the `model` column is absent or blank, the import falls back to name-based in
 
 If a `model` column is present, name inference is skipped entirely — any printer name is valid.
 
+### printer_groups
+
+A persisted registry of group names, independent of which printers currently carry a given `group_name`. `printers.group_name` stays plain free text (matched by string equality, not a foreign key), so nothing else in the schema changes: this table exists purely so a group used to restrict dispatch (see `gcodes.allowed_groups` / `projects.allowed_groups` below) can never silently disappear from every picker just because every printer that carried it was reassigned elsewhere.
+
+```sql
+CREATE TABLE IF NOT EXISTS printer_groups (
+  name        TEXT PRIMARY KEY,
+  created_at  INTEGER NOT NULL
+);
+```
+
+Populated two ways: automatically, whenever a non-empty `group_name` is written on a printer (create, update, bulk-edit, or CSV import) that isn't already registered; or explicitly, via Settings → Groups. Deleting a group (`DELETE /api/groups/:name`) is blocked while any active printer, G-code, or project still references it.
+
 ### projects
 
 Top-level organizational unit for a production run.
 
 ```sql
 CREATE TABLE IF NOT EXISTS projects (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL,
-  description TEXT,
-  status      TEXT DEFAULT 'draft',   -- draft | active | paused | completed
-  priority    INTEGER DEFAULT 0,      -- reserved for Phase 2 priority ordering
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  name              TEXT NOT NULL,
+  description       TEXT,
+  status            TEXT DEFAULT 'draft',   -- draft | active | paused | completed
+  priority          INTEGER DEFAULT 0,      -- reserved for Phase 2 priority ordering
+  required_material TEXT,                   -- optional project-wide default; gcode-level overrides
+  required_color    TEXT,                   -- optional project-wide default; gcode-level overrides
+  allowed_groups    TEXT,                   -- nullable JSON array; optional project-wide default; gcode-level overrides
+  created_at        INTEGER NOT NULL,
+  updated_at        INTEGER NOT NULL
 );
 ```
 
@@ -103,22 +119,27 @@ A G-code file attached to a specific Part + printer model combination.
 
 ```sql
 CREATE TABLE IF NOT EXISTS gcodes (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  part_id          INTEGER NOT NULL REFERENCES parts(id),
-  printer_model    TEXT NOT NULL,      -- mk4s | core1 | core1l | xl
-  filename         TEXT NOT NULL,
-  filepath         TEXT NOT NULL,      -- absolute path under server/gcode/
-  parts_per_plate  INTEGER NOT NULL,
-  est_print_secs   INTEGER,            -- nullable; per-plate print time in seconds
-  material_grams   REAL,              -- nullable; per-plate filament weight in grams
-  ams_slot         INTEGER,            -- Bambu only: -1=external spool, 0–N=AMS slot, NULL=non-Bambu
-  created_at       INTEGER NOT NULL
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id            INTEGER NOT NULL REFERENCES parts(id),
+  printer_model      TEXT NOT NULL,      -- mk4s | core1 | core1l | xl
+  filename           TEXT NOT NULL,
+  filepath           TEXT NOT NULL,      -- absolute path under server/gcode/
+  parts_per_plate    INTEGER NOT NULL,
+  est_print_secs     INTEGER,            -- nullable; per-plate print time in seconds
+  material_grams     REAL,              -- nullable; per-plate filament weight in grams
+  ams_slot           INTEGER,            -- Bambu only: -1=external spool, 0-N=AMS slot, NULL=non-Bambu
+  allowed_groups     TEXT,               -- nullable JSON array e.g. '["Rack A","Rack B"]'; NULL = no restriction
+  required_material  TEXT,               -- nullable; overrides the project default below when set
+  required_color     TEXT,               -- nullable; overrides the project default below when set
+  created_at         INTEGER NOT NULL
 );
 ```
 
 **Uniqueness on `(part_id, printer_model)`** is enforced at the application layer, not as a DB constraint, so the error message shown to the operator is clear and specific.
 
 `est_print_secs` and `material_grams` are **per-plate** values (i.e., covering all parts on one plate, not one part). They are auto-populated from the filename on upload when the Bambu-style naming convention is detected, and can be edited later via `PUT /api/gcodes/:id`. Since each gcode belongs to one `printer_model`, the stats system can break down elapsed time and material used by model across a project's completed jobs.
+
+**Targeting cascade (`allowed_groups`, `required_material`, `required_color`):** all three follow the same gcode-overrides-project pattern. The scheduler's dispatch candidate query and the `GET /api/parts/:id/dispatch-status` diagnostic both evaluate `COALESCE(gcodes.X, projects.X)`: a value set on the gcode always wins; otherwise the project's default (if any) applies; if neither is set, the field is unrestricted. `allowed_groups` differs from the material/color pair only in shape: it is a JSON array (a gcode or project can allow multiple groups), matched with `EXISTS (SELECT 1 FROM json_each(...) WHERE value = ?)` against the candidate printer's `group_name`, instead of a scalar equality check.
 
 ### jobs
 

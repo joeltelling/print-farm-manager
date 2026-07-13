@@ -259,6 +259,34 @@ The `model` column is optional but strongly recommended. Valid values (case-inse
 
 ---
 
+## Groups
+
+Persisted registry of printer group names (see `printer_groups` in [database.md](database.md)). Independent of `printers.group_name`: a group stays registered even when no printer currently carries it, which is what lets a G-code's or project's `allowed_groups` restriction stay meaningful (and editable) after every printer in that group is reassigned elsewhere.
+
+### `GET /api/groups`
+
+Returns all registered groups, ordered by name.
+
+```json
+[{ "name": "Rack A", "created_at": 1783800000000 }]
+```
+
+### `POST /api/groups`
+
+**Body:** `{ "name": "Rack A" }`. Required, trimmed. Returns `201` with the created row, or `409` if the name already exists.
+
+Groups are also registered automatically: creating or updating a printer with a non-empty `group_name` not already in the registry adds it silently (see `POST /api/printers`, `PUT /api/printers/:id`, `POST /api/printers/import`).
+
+### `DELETE /api/groups/:name`
+
+Returns `404` if the group doesn't exist. Returns `409` if it's still referenced anywhere (an active printer's `group_name`, a G-code's `allowed_groups`, or a project's `allowed_groups`), with a message naming which:
+
+```json
+{ "error": "Cannot delete: group \"Rack A\" is used by 2 active printer(s), 1 G-code restriction(s)" }
+```
+
+---
+
 ## Projects
 
 ### `GET /api/projects`
@@ -280,6 +308,18 @@ Returns `201` with created project (`status` defaults to `"draft"`).
 Partial update. Accepts: `name`, `description`, `status` (`draft` | `active` | `paused` | `completed`).
 
 When setting `status` to `active`, the UI also calls `POST /api/scheduler/dispatch` to trigger an immediate sweep of idle printers.
+
+### `PUT /api/projects/:id/filament`
+
+Sets project-wide default `required_material` / `required_color`, applied to every G-code in the project that doesn't set its own override.
+
+**Body:** `{ "required_material": "PETG", "required_color": "Red" }`. Either field, empty string, or omitted resolves to `NULL` (no default).
+
+### `PUT /api/projects/:id/groups`
+
+Sets a project-wide default `allowed_groups`, applied to every G-code in the project that doesn't set its own `allowed_groups` override. Mirrors `PUT /api/gcodes/:id`'s `allowed_groups` field, and follows the same gcode-overrides-project precedence as `/filament` above; see the "Targeting cascade" note in [database.md](database.md).
+
+**Body:** `{ "allowed_groups": ["Rack A", "Rack B"] }`. An empty array (or omitted) clears the project default back to unrestricted.
 
 ### `DELETE /api/projects/:id`
 
@@ -360,7 +400,7 @@ Returns `404` if not found.
 
 Optional query param `?part_id=N` to filter by part.
 
-Returns all G-code records. Each record includes `part_id`, `printer_model`, `filename`, `filepath`, `parts_per_plate`, `est_print_secs`, `material_grams`, `ams_slot`, `created_at`.
+Returns all G-code records. Each record includes `part_id`, `printer_model`, `filename`, `filepath`, `parts_per_plate`, `est_print_secs`, `material_grams`, `ams_slot`, `allowed_groups`, `required_material`, `required_color`, `created_at`.
 
 `filepath` stores only the filename (not an absolute path) — the server resolves the full path at runtime using its own `server/gcode/` directory. This makes the DB portable across machines.
 
@@ -397,21 +437,25 @@ Upload a G-code file and create a DB record. `Content-Type: multipart/form-data`
 - `est_print_secs` (optional) — per-plate print time in seconds
 - `material_grams` (optional) — per-plate material weight in grams
 - `ams_slot` (optional) — Bambu only
+- `allowed_groups` (optional): JSON array string e.g. `'["Rack A","Rack B"]'`; restricts dispatch to printers in one of these groups. Omitted or empty means unrestricted at the G-code level (falls back to the project's `allowed_groups`, if any; see `PUT /api/projects/:id/groups`)
+- `required_material` / `required_color` (optional): overrides the project's defaults for this G-code specifically
 
 Returns `201` with created G-code record. Returns `409` if a G-code for this `(part_id, printer_model)` combination already exists.
 
 ### `PUT /api/gcodes/:id`
 
-Update `est_print_secs` and/or `material_grams` for a G-code. Omitting a field leaves it unchanged; sending `null` or `""` clears it.
+Update `est_print_secs`, `material_grams`, `allowed_groups`, `required_material`, and/or `required_color` for a G-code. Omitting a field leaves it unchanged; sending `null` (or, for the time/material fields, `""`) clears it back to "inherit from project / unrestricted".
 
 **Body:**
 ```json
-{ "print_time": "2h15m", "material_grams": "45g" }
+{ "print_time": "2h15m", "material_grams": "45g", "allowed_groups": "[\"Rack A\"]", "required_material": "PETG", "required_color": "Red" }
 ```
 
 `print_time` accepts the same human-readable formats as `PUT /api/parts/:id` did for `print_time`: `"2h15m"`, `"90m"`, `"1:30:00"`, bare integer (seconds). Returns `400` if non-empty and unparseable.
 
 `material_grams` accepts `"45g"`, `"45.5g"`, `"1.2kg"`, bare number. Returns `400` if non-empty and unparseable.
+
+`allowed_groups` is a JSON-encoded array string, matching the shape `POST /api/gcodes/upload` accepts (see above). This G-code's `allowed_groups`, `required_material`, and `required_color` always take precedence over the project's defaults when set; see `PUT /api/projects/:id/groups` and `PUT /api/projects/:id/filament`.
 
 Returns the updated G-code record.
 
@@ -431,13 +475,15 @@ Historical jobs (`finished`, `failed`, `cancelled`) are retained with their `gco
 
 Returns jobs with part/project/printer names joined. Supports query params: `?printer_id=N`, `?part_id=N`, `?project_id=N`, `?status=printing`.
 
-Each job includes: `part_name`, `project_id`, `project_name`, `printer_name`, `printer_model`.
+Each job includes: `part_name`, `project_id`, `project_name`, `printer_name`, `printer_model`, `printer_is_held`, `printer_status`.
 
 Job statuses: `uploading` | `printing` | `queued` | `finished` | `failed` | `cancelled`.
 
+`printer_is_held` and `printer_status` are the current state of the job's printer, not a property of the job row itself. A job can sit at `status: "printing"` after its printer has already been held for operator sign-off (for example a printer that goes `PRINTING` -> `IDLE` directly, with no observable `FINISHED`/`STOPPED` in between polls): the job stays `printing` until Set Ready or Bad Print resolves it. Clients should treat `status === 'printing' && printer_is_held === 1 && printer_status !== 'PRINTING'` as "awaiting operator confirmation," not as an active print.
+
 ### `GET /api/jobs/:id`
 
-Single job with same joins. `404` if not found.
+Single job with same joins, including `printer_is_held` and `printer_status`. `404` if not found.
 
 ### `DELETE /api/jobs/:id`
 
@@ -495,7 +541,7 @@ Body: `{ "value": "..." }`. Allowed keys:
 
 | Key | Validation | Used by |
 |---|---|---|
-| `dispatch_batch_size` | integer 1–100 | Scheduler batch size |
+| `dispatch_batch_size` | integer 1-100 | How many printers the scheduler keeps uploading or printing at once (a concurrency target, not a fixed group size; it draws deeper into the ready queue to fill the target if some printers have no dispatchable candidate) |
 | `farm_name` | ≤ 40 chars | Sidebar branding (falls back to "Print Farm") |
 
 Returns `400` for unknown keys or failed validation.
@@ -578,7 +624,7 @@ All error responses use this shape:
 
 ### `GET /api/backup`
 
-Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
+Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
@@ -586,9 +632,9 @@ Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `print
 
 Replaces all farm data from a previously exported backup file. Clears the DB and rewrites all tables; gcode files are written to `server/gcode/`. Since `filepath` stores only the filename, no path rewriting is needed — the restored DB works correctly on any machine. Each `gcode_files` key must be a bare filename — any key that isn't (e.g. containing `/`, `\`, or equal to `.`/`..`) is rejected with `400` before anything is written to disk, since it would otherwise be able to resolve outside `server/gcode/`.
 
-Each table's restore INSERT covers the columns the *live* schema currently has (derived from `PRAGMA table_info`) that are also present in the backup's data, rather than a hardcoded list — so printer `serial_number`/`loaded_material`/`loaded_color`, project `required_material`/`required_color`, part `print_time_seconds`/`material_grams`, and gcode `ams_slot`/`material_grams`/`allowed_groups`/`required_material`/`required_color` all round-trip correctly, along with any future column a migration adds. A column present in the live schema but missing from every row of a given backup (e.g. an older backup that predates it) is omitted from the INSERT entirely so the column's own schema default applies, instead of failing on `NOT NULL` columns like `parts.sort_order`.
+Each table's restore INSERT covers the columns the *live* schema currently has (derived from `PRAGMA table_info`) that are also present in the backup's data, rather than a hardcoded list: so printer `serial_number`/`loaded_material`/`loaded_color`, project `required_material`/`required_color`/`allowed_groups`, part `print_time_seconds`/`material_grams`, and gcode `ams_slot`/`material_grams`/`allowed_groups`/`required_material`/`required_color` all round-trip correctly, along with any future column a migration adds. A column present in the live schema but missing from every row of a given backup (e.g. an older backup that predates it) is omitted from the INSERT entirely so the column's own schema default applies, instead of failing on `NOT NULL` columns like `parts.sort_order`.
 
-`printer_models`, `filament_types`, `filament_colors`, and `settings` are restored the same way, but each is only cleared and rewritten if that key is present in the uploaded file — restoring a backup taken before these were added to the export leaves the farm's current printer models, filament library, and settings untouched rather than wiping them with nothing to restore.
+`printer_models`, `printer_groups`, `filament_types`, `filament_colors`, and `settings` are restored the same way, but each is only cleared and rewritten if that key is present in the uploaded file: restoring a backup taken before these were added to the export leaves the farm's current printer models, groups, filament library, and settings untouched rather than wiping them with nothing to restore.
 
 **Request:** `multipart/form-data` with field `file` — the `.json` backup file. Max 500 MB.
 
@@ -602,6 +648,7 @@ Each table's restore INSERT covers the columns the *live* schema currently has (
   "jobs": 340,
   "printer_events": 210,
   "printer_models": 6,
+  "printer_groups": 4,
   "filament_types": 3,
   "filament_colors": 9
 }

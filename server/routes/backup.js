@@ -70,6 +70,7 @@ module.exports = (db) => {
     const jobs            = db.prepare('SELECT * FROM jobs').all();
     const printer_events  = db.prepare('SELECT * FROM printer_events').all();
     const printer_models  = db.prepare('SELECT * FROM printer_models').all();
+    const printer_groups  = db.prepare('SELECT * FROM printer_groups').all();
     const filament_types  = db.prepare('SELECT * FROM filament_types').all();
     const filament_colors = db.prepare('SELECT * FROM filament_colors').all();
     const settings        = db.prepare('SELECT * FROM settings').all();
@@ -93,6 +94,7 @@ module.exports = (db) => {
       jobs,
       printer_events,
       printer_models,
+      printer_groups,
       filament_types,
       filament_colors,
       settings,
@@ -141,6 +143,7 @@ module.exports = (db) => {
       // keys at all — guard each so restoring one doesn't wipe current config with nothing
       // to restore it from. New backups always include all of them together.
       const hasPrinterModels  = Array.isArray(backup.printer_models);
+      const hasPrinterGroups  = Array.isArray(backup.printer_groups);
       const hasFilamentTypes  = Array.isArray(backup.filament_types);
       const hasFilamentColors = Array.isArray(backup.filament_colors);
       const hasSettings       = Array.isArray(backup.settings);
@@ -156,6 +159,7 @@ module.exports = (db) => {
         if (hasFilamentColors) db.prepare('DELETE FROM filament_colors').run(); // before filament_types — FK on type_id
         if (hasFilamentTypes)  db.prepare('DELETE FROM filament_types').run();
         if (hasPrinterModels)  db.prepare('DELETE FROM printer_models').run();
+        if (hasPrinterGroups)  db.prepare('DELETE FROM printer_groups').run();
         if (hasSettings)       db.prepare('DELETE FROM settings').run();
 
         // Reinsert with original IDs so FK relationships are preserved. Each inserter
@@ -169,6 +173,7 @@ module.exports = (db) => {
           job:            makeInserter(db, 'jobs', backup.jobs || []),
           printer_event:  makeInserter(db, 'printer_events', backup.printer_events || []),
           printer_model:  makeInserter(db, 'printer_models', backup.printer_models || []),
+          printer_group:  makeInserter(db, 'printer_groups', backup.printer_groups || []),
           filament_type:  makeInserter(db, 'filament_types', backup.filament_types || []),
           filament_color: makeInserter(db, 'filament_colors', backup.filament_colors || []),
           setting:        makeInserter(db, 'settings', backup.settings || []),
@@ -176,6 +181,7 @@ module.exports = (db) => {
 
         // printer_models before printers — printers.model refers to it logically
         for (const m of (backup.printer_models || [])) stmts.printer_model.run(m);
+        for (const g of (backup.printer_groups || [])) stmts.printer_group.run(g);
         for (const p of (backup.printers || [])) stmts.printer.run(p);
         for (const p of (backup.projects || [])) stmts.project.run(p);
         for (const p of (backup.parts    || [])) stmts.part.run(p);
@@ -206,7 +212,7 @@ module.exports = (db) => {
 
       restore();
 
-      console.log(`[backup] Farm restored — ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
+      console.log(`[backup] Farm restored: ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.printer_groups || []).length} groups, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
 
       res.json({
         ok: true,
@@ -217,6 +223,7 @@ module.exports = (db) => {
         jobs:            (backup.jobs            || []).length,
         printer_events:  (backup.printer_events  || []).length,
         printer_models:  (backup.printer_models  || []).length,
+        printer_groups:  (backup.printer_groups  || []).length,
         filament_types:  (backup.filament_types  || []).length,
         filament_colors: (backup.filament_colors || []).length,
       });

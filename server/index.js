@@ -35,6 +35,7 @@ const backupRouter       = require('./routes/backup')(db);
 const dashboardRouter    = require('./routes/dashboard')(db);
 const settingsRouter     = require('./routes/settings')(db);
 const modelsRouter       = require('./routes/models')(db);
+const groupsRouter       = require('./routes/groups')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
 
@@ -54,6 +55,7 @@ app.use('/api/backup',          backupRouter);
 app.use('/api/dashboard',       dashboardRouter);
 app.use('/api/settings',        settingsRouter);
 app.use('/api/models',          modelsRouter);
+app.use('/api/groups',          groupsRouter);
 app.use('/api/filaments',       filamentsRouter);
 
 // Health check
@@ -123,7 +125,9 @@ const server = app.listen(PORT, () => {
   });
 
   // Bulk set-ready — releases hold for multiple printers and dispatches through the
-  // batched sweep (dispatch_batch_size at a time, waits for each batch to reach printing before the next).
+  // batched sweep, which keeps pulling from the ready queue until dispatch_batch_size
+  // printers actually have a job reserved (or the queue runs out), not a fixed chunk
+  // of dispatch_batch_size printers evaluated at a time (see _sweepInBatches).
   // Used by the "Set Ready (N)" action in the Fleet UI.
   app.post('/api/printers/set-ready-batch', (req, res) => {
     const { ids } = req.body;
@@ -135,7 +139,7 @@ const server = app.listen(PORT, () => {
     const printers = db.prepare(`SELECT * FROM printers WHERE id IN (${placeholders}) AND is_active = 1`).all(...ids);
     const batchSetting = db.prepare("SELECT value FROM settings WHERE key = 'dispatch_batch_size'").get();
     const batchSize = batchSetting ? parseInt(batchSetting.value, 10) : 10;
-    console.log(`[server] Batch set-ready: ${printers.length} printer(s) — dispatching in batches of ${batchSize}`);
+    console.log(`[server] Batch set-ready: ${printers.length} printer(s), target concurrency ${batchSize}`);
     scheduler._sweepInBatches(printers).catch(err =>
       console.error('[scheduler] Batch set-ready sweep error:', err)
     );
