@@ -1,5 +1,9 @@
 // Creality driver - Creality local API (WebSocket status/control + HTTP file upload)
-// Connector family: Creality (K1 / K1C / K1 Max / K2 / Ender-3 V3 / Hi series)
+// Connector family: Creality K1 platform (K1 / K1C / K1 Max / Ender-3 V3 / Hi series)
+// K2-platform printers (F008/F012/F021/F022: K2 Plus and friends) are NOT supported:
+// they store G-code under /mnt/UDISK/printer_data/gcodes and use a distinct CFS start
+// flow (CrealityPrint's supports_multi_color_print() branch), neither of which is
+// implemented here. Implement that branch before registering K2 models.
 // Implements the shared driver interface: getStatus, uploadAndPrint, cancelJob, checkIfPrinting
 //
 // This is the API used by Creality Print / OrcaSlicer's "Creality Print" host - the
@@ -31,8 +35,10 @@ const FormData = require('form-data');
 
 const WS_PORT = 9999;
 
-// On-printer directory where uploaded G-code lands (Klipper-based Creality firmware).
-// The opGcodeFile trigger references files by this absolute path with a "printprt:" scheme.
+// On-printer directory where uploaded G-code lands (K1-platform Klipper firmware).
+// The opGcodeFile trigger references files by this absolute path with a "printprt:"
+// scheme. K2-platform printers use /mnt/UDISK/printer_data/gcodes instead (see the
+// header note); do not point a K2 at this driver.
 const REMOTE_GCODE_DIR = '/usr/data/printer_data/gcodes';
 
 // Map of printer.id → { ws, latest, connected, heartbeat, reconnectTimer, closed }
@@ -50,6 +56,20 @@ function num(v) {
   if (v == null || v === '') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+// Creality firmware stores uploads with spaces replaced by underscores (CrealityPrint's
+// safe_filename()). Sanitize once and use the SAME name for the multipart filename, the
+// upload URL, the start command, and telemetry comparison; mixing the raw and stored
+// names makes every dispatch of a name with spaces wait on a file that does not exist.
+function remoteFilename(filename) {
+  return filename.replace(/ /g, '_');
+}
+
+// The name getStatus reports for a file: the sanitized basename with any multer
+// timestamp prefix stripped (mirrors the currentFile cleanup in getStatus).
+function reportedName(filename) {
+  return remoteFilename(path.basename(filename)).replace(/^\d+_/, '');
 }
 
 function safeSend(ws, obj) {
@@ -333,21 +353,26 @@ async function getStatus(printer) {
 async function uploadAndPrint(printer, gcodeFullPath, filename) {
   const host = hostOf(printer);
 
+  // One sanitized remote name for everything below: the firmware stores the file under
+  // this name (spaces become underscores), so the URL, the multipart filename, the
+  // start command, and the confirmation must all agree on it.
+  const remoteName = remoteFilename(filename);
+
   // ── HTTP multipart upload ────────────────────────────────────────────────
   // Multipart (field "file") - a raw body POST makes some firmware prepend the HTTP
   // headers into the saved G-code (OrcaSlicer issue #8128), which then errors on print.
   const form = new FormData();
-  form.append('file', fs.createReadStream(gcodeFullPath), { filename });
+  form.append('file', fs.createReadStream(gcodeFullPath), { filename: remoteName });
 
   const headers = form.getHeaders();
   // The K1 LAN API is unauthenticated by default; send a Bearer token only if configured
   // (some Creality Print / Nebula setups require one).
   if (printer.api_key) headers['Authorization'] = `Bearer ${printer.api_key}`;
 
-  console.log(`[creality] Uploading ${filename} to ${printer.name}…`);
+  console.log(`[creality] Uploading ${filename} to ${printer.name} as ${remoteName}…`);
   try {
     await axios.post(
-      `http://${host}/upload/${encodeURIComponent(filename)}`,
+      `http://${host}/upload/${encodeURIComponent(remoteName)}`,
       form,
       { headers, timeout: 300000, maxContentLength: Infinity, maxBodyLength: Infinity } // 5 min for large files
     );
@@ -370,7 +395,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
   safeSend(conn.ws, {
     method: 'set',
-    params: { opGcodeFile: `printprt:${REMOTE_GCODE_DIR}/${filename}` },
+    params: { opGcodeFile: `printprt:${REMOTE_GCODE_DIR}/${remoteName}` },
   });
 
   // Resolve only once the printer confirms it started - the scheduler marks the job
@@ -381,7 +406,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
   // device activity or a different print cannot stand in for the dispatched job. If it
   // never confirms, throw so the scheduler retries; a print that actually started despite
   // a missed confirmation is recovered via checkIfPrinting().
-  const expectedFile = filename.replace(/^\d+_/, ''); // match getStatus's display cleanup
+  const expectedFile = reportedName(filename); // what getStatus will report for remoteName
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
     safeSend(conn.ws, { method: 'get', params: { reqPrintObjects: 1 } });
@@ -392,7 +417,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
       return;
     }
   }
-  throw new Error(`Creality ${printer.name} did not confirm printing ${filename} within 20s of the print command`);
+  throw new Error(`Creality ${printer.name} did not confirm printing ${remoteName} within 20s of the print command`);
 }
 
 // ─── Cancel ──────────────────────────────────────────────────────────────────
@@ -413,11 +438,17 @@ async function cancelJob(printer) {
 
 // ─── Check if printing ────────────────────────────────────────────────────────
 
-// Returns true if the printer is currently PRINTING or PAUSED.
-async function checkIfPrinting(printer) {
+// Returns true if the printer is currently PRINTING or PAUSED. When expectedFilename
+// is provided (the scheduler's failed-upload recovery passes the reserved G-code's
+// name), the active print must also BE that file: a printer already busy with a
+// different print must not turn a failed reservation into a tracked job, or its
+// eventual completion credits a part that never ran.
+async function checkIfPrinting(printer, expectedFilename) {
   try {
-    const { status } = await getStatus(printer);
-    return status === 'PRINTING' || status === 'PAUSED';
+    const { status, currentFile } = await getStatus(printer);
+    if (status !== 'PRINTING' && status !== 'PAUSED') return false;
+    if (expectedFilename == null) return true;
+    return currentFile === reportedName(expectedFilename);
   } catch (_) {
     return false;
   }

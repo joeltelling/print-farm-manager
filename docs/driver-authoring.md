@@ -36,7 +36,7 @@ uploadAndPrint(printer, gcodeFullPath, filename, options)
 cancelJob(printer)
   → resolves when cancellation is confirmed (or logged as failed)
 
-checkIfPrinting(printer)
+checkIfPrinting(printer, expectedFilename?)
   → boolean
 ```
 
@@ -103,9 +103,11 @@ If all attempts fail, the scheduler calls your `checkIfPrinting()` before giving
 
 Called when the farm cancels a job (operator action). Attempt the cancellation and log a warning on failure rather than throwing; callers do not handle rejections from this function. If your protocol has no reliable cancel, ship a documented stub (see `prusa.js`) rather than a best-effort guess that might cancel the wrong thing.
 
-### checkIfPrinting(printer)
+### checkIfPrinting(printer, expectedFilename?)
 
 Return `true` if the printer is currently printing **or paused**, `false` otherwise, and `false` on any error. Paused counts as printing because a paused job is still occupying the printer and still recoverable.
+
+The scheduler's failed-upload recovery passes the reserved G-code's filename as an optional second argument. If your protocol can identify the active print's file, only return `true` when it matches (see `creality.js`): recovery is claiming the job as started, and confirming it against a printer that is busy with a *different* print records a job that never ran, whose completion then credits the wrong part. If your protocol cannot tell which file is printing, ignore the argument; the behavior is then no worse than before, but say so in your driver's comments so the limitation is a decision, not an accident.
 
 ---
 

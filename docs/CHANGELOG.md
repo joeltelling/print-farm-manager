@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-07-14: Creality: file-correlated upload recovery, sanitized remote filenames, K2 support claim removed
+
+PR #20 review round 7, four findings.
+
+**[P1] Failed-upload recovery is now correlated to the reserved G-code.** After all upload retries, the scheduler's recovery called `driver.checkIfPrinting(printer)` with no filename; the Creality implementation returns true for any active or paused print, so a printer already running someone else's file would turn the failed reservation into a `printing` job, and that job's eventual completion could credit a part that never ran. The scheduler now passes the reserved filename (`checkIfPrinting(printer, candidate.filename)`), and the Creality driver only reports true when the active print IS that file; otherwise the printer stays held for operator resolution, the existing safe path. The driver contract in `docs/driver-authoring.md` documents the optional second argument; drivers that cannot identify the active file ignore it and behave exactly as before, so no other driver changes.
+
+**[P1] One sanitized remote filename everywhere.** Creality firmware stores uploads with spaces converted to underscores (CrealityPrint's `safe_filename()`), but the driver passed the raw farm filename to the upload URL, multipart filename, `opGcodeFile` start command, and confirmation check. A `Bracket v2.gcode` dispatch would upload a file stored as `Bracket_v2.gcode`, then command and wait for `Bracket v2.gcode`: every attempt times out and the printer ends up held. The driver now derives the sanitized name once and uses it for all four operations (and `checkIfPrinting`'s filename comparison uses the same normalization).
+
+**[P1] K2 removed from support claims.** The connector advertised K2 support but always used the K1 path (`/usr/data/printer_data/gcodes`); K2-platform printers (F008/F012/F021/F022: K2 Plus and friends) store G-code under `/mnt/UDISK/printer_data/gcodes` with a distinct CFS start flow, so a stock K2 would upload successfully and then be commanded at the wrong path, retry, and end up held. Rather than implement an unvalidatable protocol branch blind, K2 is removed from every support claim (README, docs tables, installation guide, UI connector labels, driver header) and the driver documents the K2 path difference so the branch can be added deliberately later.
+
+**[P2] Connector/model contract corrected in docs.** `docs/multi-brand.md` said the `model` column "is used only for display grouping in the UI" and omitted `elegoo-centauri2` from the connector list. In fact `model` is the G-code routing key (`gcodes.printer_model = printers.model` in the scheduler's candidate query), and every printer write path validates the model's registered connector against the printer type. The paragraph now documents all seven connector identifiers and the model's routing role.
+
+### Changes
+- `server/scheduler.js`: recovery passes the reserved filename to `checkIfPrinting`.
+- `server/drivers/creality.js`: `remoteFilename()`/`reportedName()` helpers; sanitized name used for upload URL, multipart filename, start command, and confirmation; `checkIfPrinting(printer, expectedFilename?)` filename correlation; K1-platform-only header and path notes.
+- `server/tests/scheduler-file.test.js`: regression test that recovery passes the reserved filename and stays held on mismatch.
+- `server/tests/creality-driver.test.js`: filename-correlated `checkIfPrinting` tests (including space sanitization) and an end-to-end sanitization test across upload, start, and confirmation.
+- `docs/driver-authoring.md`: `checkIfPrinting(printer, expectedFilename?)` contract.
+- `docs/multi-brand.md`, `README.md`, `docs/README.md`, `docs/installation.md`, `client/src/pages/Settings.jsx`: K2 removed from support claims; connector/model contract corrected.
+
+Sanitization and the K2 path facts are taken from OrcaSlicer's `CrealityPrint.cpp` (`safe_filename()`, `supports_multi_color_print()`); not yet validated on hardware this round.
+
+---
+
 ## 2026-07-13: Creality: PRINTING requires print-phase evidence, upload confirmation is command-correlated, legacy model pairs stay editable
 
 PR #20 review round 6, two findings.

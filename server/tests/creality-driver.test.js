@@ -490,6 +490,35 @@ describe('uploadAndPrint', () => {
     await assertion;
   });
 
+  // Regression (PR review): Creality firmware stores uploads with spaces replaced by
+  // underscores (CrealityPrint safe_filename()). One sanitized remote name must be used
+  // for the URL, the multipart filename, the start command, and the confirmation, or a
+  // "Bracket v2.gcode" dispatch commands and waits on a file the printer actually
+  // stored as "Bracket_v2.gcode" and times out on every attempt.
+  test('sanitizes spaces to underscores consistently across upload, start, and confirmation', async () => {
+    const printer = makePrinter({ id: 506 });
+    const ws = await drive(printer, { deviceState: 1, state: 0, printProgress: 1, printFileName: 'Bracket_v2.gcode' });
+    axios.post.mockResolvedValueOnce({});
+
+    const FormData = require('form-data');
+    const appendSpy = jest.spyOn(FormData.prototype, 'append');
+
+    const fullPath = createTestFile(`creality_spaces_${Date.now()}.gcode`);
+    const promise = creality.uploadAndPrint(printer, fullPath, 'Bracket v2.gcode');
+    await jest.advanceTimersByTimeAsync(1500);
+    await promise; // resolves: confirmation matches the sanitized name the printer reports
+
+    expect(axios.post.mock.calls[0][0]).toBe('http://192.168.1.77/upload/Bracket_v2.gcode');
+    const fileCall = appendSpy.mock.calls.find(([name]) => name === 'file');
+    expect(fileCall[2].filename).toBe('Bracket_v2.gcode');
+    const sentCommands = ws.sent.map(s => JSON.parse(s));
+    expect(sentCommands).toContainEqual({
+      method: 'set',
+      params: { opGcodeFile: 'printprt:/usr/data/printer_data/gcodes/Bracket_v2.gcode' },
+    });
+    appendSpy.mockRestore();
+  });
+
   test('does not confirm the print from a non-print busy cycle (no print-phase state)', async () => {
     const printer = makePrinter({ id: 505 });
     // Busy with a latched terminal state: a self-test/heating cycle, not a print.
@@ -543,6 +572,22 @@ describe('checkIfPrinting', () => {
     const printer = makePrinter({ id: 702 });
     await drive(printer, { deviceState: 0, state: 0 });
     expect(await creality.checkIfPrinting(printer)).toBe(false);
+  });
+
+  // Regression (PR review): the scheduler's failed-upload recovery passes the reserved
+  // filename. A printer busy with a DIFFERENT print must not confirm the reservation,
+  // or the never-started job's eventual "completion" credits the wrong part.
+  test('with a filename: true only when the active print is that file', async () => {
+    const printer = makePrinter({ id: 703 });
+    await drive(printer, { deviceState: 1, state: 0, printProgress: 10, printFileName: 'x.gcode' });
+    expect(await creality.checkIfPrinting(printer, 'x.gcode')).toBe(true);
+    expect(await creality.checkIfPrinting(printer, 'other.gcode')).toBe(false);
+  });
+
+  test('with a filename: compares against the sanitized stored name (spaces become underscores)', async () => {
+    const printer = makePrinter({ id: 704 });
+    await drive(printer, { deviceState: 1, state: 0, printFileName: '/usr/data/printer_data/gcodes/Bracket_v2.gcode' });
+    expect(await creality.checkIfPrinting(printer, 'Bracket v2.gcode')).toBe(true);
   });
 });
 

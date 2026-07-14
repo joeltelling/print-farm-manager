@@ -447,7 +447,14 @@ class JobScheduler extends EventEmitter {
       // This handles the case where our request timed out but the printer
       // received the file and started the job anyway. If it is printing, treat
       // the upload as a success so the job is tracked correctly.
-      const isActuallyPrinting = await driver.checkIfPrinting(printer);
+      //
+      // The reserved filename is passed so drivers that can identify the active
+      // print's file (creality) only report true for THIS job's file. Without the
+      // correlation, a printer already running someone else's print would turn this
+      // failed reservation into a 'printing' job, and its eventual completion would
+      // credit a part that never ran. Drivers that cannot tell which file is
+      // printing ignore the argument and behave as before.
+      const isActuallyPrinting = await driver.checkIfPrinting(printer, candidate.filename);
       if (isActuallyPrinting) {
         this.db.prepare(`UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ?`).run(Date.now(), jobId);
         console.log(`[scheduler] ${printer.name} upload appeared to fail but printer is printing — job ${jobId} recovered`);

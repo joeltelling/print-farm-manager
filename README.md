@@ -33,7 +33,7 @@ No cloud. No subscriptions. No vendor lock-in.
 | **Bambu Lab** | MQTT + FTPS | X1C, P1S, and other Bambu models (with AMS slot selection) |
 | **Klipper** | Moonraker REST API | Voron and any Klipper-firmware printer |
 | **OctoPrint** | OctoPrint REST API | Any printer running OctoPrint / OctoPi |
-| **Creality** | Creality local API (WebSocket :9999 + HTTP upload) | K1, K1C, K1 Max, K2, Ender-3 V3, Hi series (stock firmware) |
+| **Creality** | Creality local API (WebSocket :9999 + HTTP upload) | K1, K1C, K1 Max, Ender-3 V3, Hi series (stock firmware; K2 platform not supported) |
 
 ---
 

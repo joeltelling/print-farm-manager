@@ -256,6 +256,34 @@ describe('_dispatchToPrinter — upload failure recovery', () => {
     expect(printer.is_held).toBe(0);
   });
 
+  // Regression (PR review): recovery must be correlated to the reserved G-code. The
+  // scheduler passes the reserved filename so a driver that can identify the active
+  // print's file only reports true for THIS job's file; a printer already running a
+  // different print must stay held instead of turning the failed reservation into a
+  // 'printing' job whose completion would credit a part that never ran.
+  test('passes the reserved filename to checkIfPrinting and stays held when it does not match', async () => {
+    const filename = `correlate_${Date.now()}.bgcode`;
+    createTestFile(filename);
+    const db = makeDb(filename);
+    const scheduler = new JobScheduler(db, { on: () => {} });
+
+    mockDriver.uploadAndPrint.mockRejectedValue(new Error('ETIMEDOUT'));
+    // Driver reports the active print is NOT this job's file.
+    mockDriver.checkIfPrinting.mockResolvedValue(false);
+
+    const promise = scheduler._dispatchToPrinter(fakePrinter);
+    await jest.runAllTimersAsync();
+    const jobId = await promise;
+
+    // makeDb stores the gcode row's display filename as 'test.bgcode' (filepath is
+    // what varies per test); the reservation's filename is what recovery must check.
+    expect(mockDriver.checkIfPrinting).toHaveBeenCalledWith(fakePrinter, 'test.bgcode');
+    expect(jobId).toBeNull();
+    const job = db.prepare('SELECT status FROM jobs ORDER BY id DESC LIMIT 1').get();
+    expect(job.status).toBe('uploading'); // held for the operator, not recovered
+    expect(db.prepare('SELECT is_held FROM printers WHERE id = 1').get().is_held).toBe(1);
+  });
+
   test('leaves job as uploading (not failed) and holds printer when all retries exhausted and not printing', async () => {
     const filename = `exhaust_${Date.now()}.bgcode`;
     createTestFile(filename);
