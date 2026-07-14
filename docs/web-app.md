@@ -166,7 +166,7 @@ Click any row to navigate to `/printers/:id` (the Printer Detail view).
 
 Per-machine history and annotation screen. Reached by clicking a printer card in the Fleet page, clicking a row in the Printers page, or via the "View History" button in the Decommissioned page.
 
-**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable. Status badge and the job-history status column are translated via `common.status*`/`jobs.status*` keys (the job-history column also maps the legacy `done` job status alias to `common.statusFinished`); dates and durations are formatted using the active `i18n.language` and translated `h`/`m` duration units, so a future non-English language doesn't mix translated labels with English-only formatting.
+**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable. Status badge and the job-history status column are translated via `common.status*`/`jobs.status*` keys (the job-history column also maps the legacy `done` job status alias to `common.statusFinished`); dates and durations are formatted using `i18n.resolvedLanguage` (falling back to `i18n.language`, then `en`) and translated `h`/`m` duration units, so a future non-English language doesn't mix translated labels with English-only formatting.
 
 **Rename:** a **Rename** button next to the printer name swaps the header into an inline edit form. Save sends `PUT /api/printers/:id` with the new `name`; the server's UNIQUE-name 409 is surfaced inline. Escape or the Cancel button closes the form without saving.
 
@@ -212,7 +212,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 5. Clicking Save calls `POST /api/printers` with the operator-selected model
 6. Saved rows are removed from the flagged list and the imported count increments
 
-**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
+**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Language → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
 
 **Groups section:** lists every registered group (`GET /api/groups`) with a Delete button per row and a name-only add form (`POST /api/groups`). Modeled on the Printer Models section, minus the type/color hierarchy Filament Library has. Deleting a group is blocked with an inline error naming the printer/G-code/project count still referencing it (`DELETE /api/groups/:name`, `409`). A group doesn't have to be created here first: typing a new name on a printer (Add Printer form, Printers bulk-edit, PrinterDetail, or CSV import) registers it automatically; this section exists for pre-creating a group before any printer uses it, and for cleanup.
 
@@ -305,8 +305,11 @@ This matches the server's 15-second poll interval. In practice, the UI is never 
 | `react` | ^18.3.1 | UI framework |
 | `react-dom` | ^18.3.1 | DOM renderer |
 | `react-router-dom` | ^6.24.0 | Client-side routing |
-| `vite` | ^5.3.1 | Dev server and bundler |
-| `@vitejs/plugin-react` | ^4.3.1 | JSX transform + Fast Refresh |
+| `i18next` | ^26.0.0 | i18n core (resources, interpolation, pluralization) |
+| `i18next-browser-languagedetector` | ^8.0.0 | Detects/caches the visitor's language (localStorage, then browser) |
+| `react-i18next` | ^17.0.0 | React bindings (`useTranslation`, `Trans`) for i18next |
+| `vite` | ^8.0.16 | Dev server and bundler |
+| `@vitejs/plugin-react` | ^5.2.0 | JSX transform + Fast Refresh |
 
 ## Quick Start (client only)
 
