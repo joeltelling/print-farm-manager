@@ -23,6 +23,30 @@ const bulkUpload = multer({
   limits: { fileSize: 100 * 1024 * 1024, files: 200 }, // 100 MB per file, 200 files max
 });
 
+// Run multer inside a Promise so we can enforce the aggregate upload cap
+// on the raw inbound stream (Content-Length is not reliable for chunked
+// requests) and catch limit errors (too many files, file too large) as
+// clean JSON 400s instead of Express's default HTML 500.
+function runBulkUpload(req, res) {
+  return new Promise((resolve, reject) => {
+    let totalBytes = 0;
+    const dataHandler = (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_BULK_BYTES) {
+        req.removeListener('data', dataHandler);
+        reject(new Error(`Aggregate upload size exceeds ${MAX_BULK_BYTES / (1024 * 1024)} MB limit`));
+      }
+    };
+    req.on('data', dataHandler);
+
+    bulkUpload.array('files', 200)(req, res, (err) => {
+      req.removeListener('data', dataHandler);
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
 module.exports = (db) => {
   const ACTIVE_QTY_SQL = `
     COALESCE((
@@ -259,15 +283,19 @@ module.exports = (db) => {
   // Accepts multipart/form-data with 'files' (multiple gcode files) and optional
   // 'defaults' JSON string for fields applied to all parts.
   // Fields per-file can be overridden via 'overrides' JSON array keyed by original filename.
-  router.post('/bulk-import', (req, res, next) => {
-    // Check Content-Length before multer writes any files to disk.
-    const contentLength = parseInt(req.headers['content-length'], 10);
-    if (Number.isFinite(contentLength) && contentLength > MAX_BULK_BYTES) {
-      const mb = (contentLength / (1024 * 1024)).toFixed(1);
-      return res.status(400).json({ error: `Request size ${mb} MB exceeds ${MAX_BULK_BYTES / (1024 * 1024)} MB limit` });
+  router.post('/bulk-import', async (req, res) => {
+    try {
+      await runBulkUpload(req, res);
+    } catch (err) {
+      // Clean up any partial files multer wrote before the error
+      if (req.files) {
+        for (const f of req.files) {
+          try { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); } catch (_) {}
+        }
+      }
+      return res.status(400).json({ error: err.message });
     }
-    next();
-  }, bulkUpload.array('files', 200), (req, res) => {
+
     const { project_id, overrides } = req.body;
     const files = req.files;
 
@@ -303,9 +331,9 @@ module.exports = (db) => {
       return res.status(400).json({ error: 'Cannot bulk import into a completed project. Re-activate the project first, then import.' });
     }
 
-    // Double-check the aggregate size (defense in depth: Content-Length
-    // check above should have caught this before multer, but re-verify in
-    // case the header was missing or spoofed).
+    // Re-verify aggregate size against the files actually written (defense
+    // in depth: runBulkUpload catches oversized streams before multer, but
+    // re-verify here in case the stream counter diverged).
     const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
     if (totalBytes > MAX_BULK_BYTES) {
       cleanupFiles();
@@ -398,12 +426,18 @@ module.exports = (db) => {
           // Parse file content for metadata
           const gcodeMeta = is3mf ? parse3mfFile(file.path) : parseGcodeFile(file.path);
 
-          // Targeting fields from staging table overrides
+          // Targeting fields from staging table overrides.
+          // AMS slot must be a whole integer string (same strictness as qty/ppp).
+          // parseInt alone accepts "3.5" → 3 and "2e3" → 2, which would
+          // silently target a different tray than the caller submitted.
           const rawAms = ov.ams_slot !== undefined ? String(ov.ams_slot) : '';
           let amsSlot = null;
           if (rawAms !== '') {
+            if (!/^-?\d+$/.test(rawAms)) {
+              throw new Error(`Invalid AMS slot "${rawAms}" for "${file.originalname}": must be -1 (external spool) or a non-negative integer`);
+            }
             const parsedSlot = parseInt(rawAms, 10);
-            if (!Number.isFinite(parsedSlot) || (parsedSlot !== -1 && parsedSlot < 0)) {
+            if (parsedSlot !== -1 && parsedSlot < 0) {
               throw new Error(`Invalid AMS slot "${rawAms}" for "${file.originalname}": must be -1 (external spool) or a non-negative integer`);
             }
             amsSlot = parsedSlot;

@@ -18,7 +18,7 @@ export default function BulkImportPanel({ projectId, onImported }) {
   const [bulkColor, setBulkColor] = useState('');
   const [bulkGroups, setBulkGroups] = useState('');
   const [availableGroups, setAvailableGroups] = useState([]);
-  const [amsSlotOptions, setAmsSlotOptions] = useState([]);
+  const [amsSlotsByModel, setAmsSlotsByModel] = useState({});
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -29,6 +29,16 @@ export default function BulkImportPanel({ projectId, onImported }) {
     fetch('/api/filaments/colors').then(r => r.json()).then(setAllColors).catch(() => {});
     fetch('/api/groups').then(r => r.json()).then(groups => setAvailableGroups(groups.map(g => g.name))).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const missing = [...new Set(items.map(it => it.model).filter(Boolean))]
+      .filter(m => !(m in amsSlotsByModel));
+    if (!missing.length) return;
+    Promise.all(missing.map(m =>
+      fetch(`/api/printers/ams?model=${encodeURIComponent(m)}`)
+        .then(r => r.json()).then(s => ({ [m]: s || [] })).catch(() => ({ [m]: [] }))
+    )).then(r => setAmsSlotsByModel(p => Object.assign({}, p, ...r)));
+  }, [items, amsSlotsByModel]);
 
   function addFiles(e) {
     const sel = Array.from(e.target.files || []);
@@ -64,22 +74,20 @@ export default function BulkImportPanel({ projectId, onImported }) {
       const res = await fetch('/api/parts/bulk-import', { method: 'POST', body: fd });
       const raw = await res.text();
       let data;
-      try {
-        data = JSON.parse(raw);
-      } catch (_) {
-        const snippet = raw.length > 300 ? raw.slice(0, 300) + '…' : raw;
-        setError(`Server error (${res.status}): ${snippet}`);
-        return;
-      }
+      try { data = JSON.parse(raw); } catch (_) { setError(`Server error (${res.status}): ${raw.length > 300 ? raw.slice(0, 300) + '...' : raw}`); return; }
       if (!res.ok) { setError(data.error || 'Import failed'); return; }
       setItems([]); setFiles([]); onImported(data.count);
     } catch (err) { setError(err.message); }
     finally { setImporting(false); }
   }
 
-  const th = (t, w) => ({ color: '#64748b', fontSize: 11, fontWeight: 600, textAlign: 'left', padding: '4px 8px', width: w });
-  const effectiveMat = bulkMaterial;
-  const colorOptions = allColors.filter(c => !effectiveMat || c.type_name === effectiveMat);
+const th = (t, w) => ({ color: '#64748b', fontSize: 11, fontWeight: 600, textAlign: 'left', padding: '4px 8px', width: w });
+const effectiveMat = bulkMaterial;
+const colorOptions = allColors.filter(c => !effectiveMat || c.type_name === effectiveMat);
+  
+  // Deduplicate slots for the bulk setter bar to prevent React duplicate key errors
+  const uniqueBulkSlots = Array.from(new Map(Object.values(amsSlotsByModel).flat().filter(s => s.slot >= 0).map(s => [s.slot, s])).values());
+
   return (
     <div style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 16, marginTop: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -93,7 +101,7 @@ export default function BulkImportPanel({ projectId, onImported }) {
         </label>
         {items.length > 0 && <>
           <button onClick={() => { setItems([]); setFiles([]); setError(null); }} style={{ ...sx.btn, color: '#f87171' }}>Clear All</button>
-          <button onClick={doImport} disabled={importing} style={{ ...sx.btnPrimary, opacity: importing ? 0.6 : 1 }}>{importing ? 'Importing…' : `Import ${items.length} Part(s)`}</button>
+          <button onClick={doImport} disabled={importing} style={{ ...sx.btnPrimary, opacity: importing ? 0.6 : 1 }}>{importing ? 'Importing...' : `Import ${items.length} Part(s)`}</button>
         </>}
       </div>
       {items.length > 1 && (
@@ -101,7 +109,7 @@ export default function BulkImportPanel({ projectId, onImported }) {
           <span style={{ fontSize: 11, color: '#475569' }}>Bulk set all:</span>
           <span style={{ fontSize: 11, color: '#64748b' }}>Qty</span><input type="number" min={1} placeholder="1" onChange={e => e.target.value && bulk('qty', +e.target.value)} style={{ ...sx.i, width: 70 }} />
           <span style={{ fontSize: 11, color: '#64748b' }}>Per Plate</span><input type="number" min={1} placeholder="1" onChange={e => e.target.value && bulk('ppp', +e.target.value)} style={{ ...sx.i, width: 70 }} />
-          {models.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Model</span><select onChange={e => { const v = e.target.value; if (v) { bulk('model', v); fetch(`/api/printers/ams?model=${encodeURIComponent(v)}`).then(r => r.json()).then(setAmsSlotOptions).catch(() => setAmsSlotOptions([])); } else { setAmsSlotOptions([]); } }} style={{ ...sx.i, width: 100, fontSize: 11 }}><option value="">Set all…</option>{models.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</select></>}
+          {models.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Model</span><select onChange={e => e.target.value && bulk('model', e.target.value)} style={{ ...sx.i, width: 100, fontSize: 11 }}><option value="">Set all...</option>{models.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</select></>}
         </div>
       )}
       {items.length > 0 && (
@@ -110,7 +118,7 @@ export default function BulkImportPanel({ projectId, onImported }) {
           {filamentTypes.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Material</span><select value={bulkMaterial} onChange={e => { setBulkMaterial(e.target.value); setBulkColor(''); }} style={{ ...sx.i, width: 120, fontSize: 11 }}><option value="">(any)</option>{filamentTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}</select></>}
           {colorOptions.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Color</span><select value={bulkColor} onChange={e => setBulkColor(e.target.value)} style={{ ...sx.i, width: 120, fontSize: 11 }}><option value="">(any)</option>{colorOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></>}
           {availableGroups.length > 0 && <><span style={{ fontSize: 11, color: '#64748b' }}>Groups</span><input type="text" value={bulkGroups} onChange={e => setBulkGroups(e.target.value)} placeholder="comma-separated" list="bulk-group-list" style={{ ...sx.i, width: 160, fontSize: 11 }} /><datalist id="bulk-group-list">{availableGroups.map(g => <option key={g} value={g} />)}</datalist></>}
-          <span style={{ fontSize: 11, color: '#64748b' }}>AMS Slot</span><select onChange={e => e.target.value && bulk('amsSlot', e.target.value)} style={{ ...sx.i, width: 130, fontSize: 11 }}><option value="">(choose a slot)</option><option value="-1">External Spool</option>{amsSlotOptions.filter(s => s.slot >= 0).map(s => <option key={s.slot} value={s.slot}>AMS Slot {s.slot + 1}{s.type ? ` — ${s.type}` : ''}</option>)}</select>
+          <span style={{ fontSize: 11, color: '#64748b' }}>AMS Slot</span><select onChange={e => e.target.value && bulk('amsSlot', e.target.value)} style={{ ...sx.i, width: 130, fontSize: 11 }}><option value="">(choose a slot)</option><option value="-1">External Spool</option>{uniqueBulkSlots.map(s => <option key={s.slot} value={s.slot}>AMS Slot {s.slot + 1}{s.type ? `, ${s.type}` : ''}</option>)}</select>
         </div>
       )}
       {items.length > 0 && (
@@ -118,20 +126,29 @@ export default function BulkImportPanel({ projectId, onImported }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr style={{ borderBottom: '1px solid #2d3748' }}>
               <th style={th('File', undefined)}>File</th><th style={th('Part Name', undefined)}>Part Name</th>
-              <th style={{ ...th('Qty', 70), textAlign: 'center' }}>Qty</th><th style={{ ...th('Per Plate', 70), textAlign: 'center' }}>Plate</th>
-              <th style={th('Model', 100)}>Model *</th><th style={{ width: 30 }} />
+              <th style={{ ...th('Qty', 60), textAlign: 'center' }}>Qty</th><th style={{ ...th('Per Plate', 60), textAlign: 'center' }}>Plate</th>
+              <th style={th('Model', 100)}>Model *</th><th style={th('AMS', 90)}>AMS</th><th style={{ width: 30 }} />
             </tr></thead>
             <tbody>{items.map((it, idx) => (
               <tr key={idx} style={{ borderBottom: '1px solid #1e2433' }}>
                 <td style={{ padding: '4px 8px', color: '#94a3b8', fontSize: 11, fontFamily: 'monospace', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.fn}</td>
                 <td style={{ padding: '4px 8px' }}><input value={it.name} onChange={e => upd(idx, 'name', e.target.value)} style={{ ...sx.i, width: '100%', boxSizing: 'border-box' }} /></td>
-                <td style={{ padding: '4px 8px', textAlign: 'center' }}><input type="number" min={1} value={it.qty} onChange={e => upd(idx, 'qty', +e.target.value || 1)} style={{ ...sx.i, width: 70, textAlign: 'center' }} /></td>
-                <td style={{ padding: '4px 8px', textAlign: 'center' }}><input type="number" min={1} value={it.ppp} onChange={e => upd(idx, 'ppp', +e.target.value || 1)} style={{ ...sx.i, width: 70, textAlign: 'center' }} /></td>
+                <td style={{ padding: '4px 8px', textAlign: 'center' }}><input type="number" min={1} value={it.qty} onChange={e => upd(idx, 'qty', +e.target.value || 1)} style={{ ...sx.i, width: 60, textAlign: 'center' }} /></td>
+                <td style={{ padding: '4px 8px', textAlign: 'center' }}><input type="number" min={1} value={it.ppp} onChange={e => upd(idx, 'ppp', +e.target.value || 1)} style={{ ...sx.i, width: 60, textAlign: 'center' }} /></td>
                 <td style={{ padding: '4px 8px' }}>{models.length > 0
-                  ? <select value={it.model} onChange={e => upd(idx, 'model', e.target.value)} style={{ ...sx.i, width: 90, fontSize: 11 }}><option value="">Select…</option>{models.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</select>
+                  ? <select value={it.model} onChange={e => upd(idx, 'model', e.target.value)} style={{ ...sx.i, width: 90, fontSize: 11 }}><option value="">Select...</option>{models.map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}</select>
                   : <input value={it.model} onChange={e => upd(idx, 'model', e.target.value)} placeholder="e.g. mk4s" style={{ ...sx.i, width: 90, fontSize: 11 }} />}
                 </td>
-                <td style={{ padding: '4px 4px' }}><button onClick={() => rm(idx)} title="Remove" aria-label="Remove file" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 6px', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>×</button></td>
+                <td style={{ padding: '4px 8px' }}>
+                  <select value={it.amsSlot} onChange={e => upd(idx, 'amsSlot', e.target.value)} style={{ ...sx.i, width: 90, fontSize: 11 }}>
+                    <option value="">(default)</option>
+                    <option value="-1">Ext Spool</option>
+                    {(amsSlotsByModel[it.model] || []).filter(s => s.slot >= 0).map(s => (
+                      <option key={s.slot} value={s.slot}>Slot {s.slot + 1}</option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ padding: '4px 4px' }}><button onClick={() => rm(idx)} title="Remove" aria-label="Remove file" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 6px', fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{'\u00D7'}</button></td>
               </tr>
             ))}</tbody>
           </table>
