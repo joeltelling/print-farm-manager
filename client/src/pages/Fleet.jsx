@@ -22,6 +22,18 @@ const STATUS_COLORS = {
 
 const KNOWN_STATUSES = new Set(Object.keys(STATUS_COLORS));
 
+// Mirrors Jobs.jsx's JOB_STATUS labelKey mapping, same job status codes, same keys.
+// 'done' is a legacy alias for 'finished' (see DONE_STATUSES in server/routes/dashboard.js).
+const JOB_STATUS_LABEL_KEYS = {
+  queued:    'jobs.statusQueued',
+  uploading: 'common.statusUploading',
+  printing:  'common.statusPrinting',
+  finished:  'common.statusFinished',
+  done:      'common.statusFinished',
+  failed:    'jobs.statusFailed',
+  cancelled: 'jobs.statusCancelled',
+};
+
 function statusStyle(status) {
   return STATUS_COLORS[status] || STATUS_COLORS.UNKNOWN;
 }
@@ -667,7 +679,7 @@ export default function Fleet() {
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{job.part_name}</div>
                     <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace', marginBottom: 4 }}>{job.gcode_filename}</div>
                     <div style={{ fontSize: 11, color: '#475569' }}>
-                      {t('fleet.linkJobRowMeta', { id: job.id, status: job.status })}
+                      {t('fleet.linkJobRowMeta', { id: job.id, status: t(JOB_STATUS_LABEL_KEYS[job.status] || 'common.statusUnknown') })}
                       {job.original_printer_name ? t('fleet.linkJobRowWasOn', { name: job.original_printer_name }) : ''}
                     </div>
                   </div>

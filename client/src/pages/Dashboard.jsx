@@ -325,10 +325,13 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
                   {group.map(printer => {
                     const c = cellColors(printer);
+                    // Keep this condition identical to Fleet.jsx and Printers.jsx (see CLAUDE.md sync pairs).
+                    const isAwaiting = printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE' || printer.status === 'STOPPED');
+                    const cellStatusLabel = isAwaiting ? t('common.statusAwaitingShort') : statusLabel(t, printer.status);
                     return (
                       <div
                         key={printer.id}
-                        title={`${printer.name}: ${statusLabel(t, printer.status)}`}
+                        title={`${printer.name}: ${cellStatusLabel}`}
                         style={{
                           width: 54, height: 44, borderRadius: 6,
                           background: c.bg, border: `1px solid ${c.border}`,
