@@ -941,7 +941,7 @@ export default function Projects() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchProjects(); }, [fetchProjects]);
 

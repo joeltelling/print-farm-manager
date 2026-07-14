@@ -369,7 +369,7 @@ export default function Fleet() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchPrinters();
