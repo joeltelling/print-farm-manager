@@ -480,7 +480,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
             {group.label}
           </span>
           <span style={{ fontSize: 12, color: '#475569' }}>
-            {isFiltered ? `${visible} of ${total}` : `${total}`}
+            {isFiltered ? t('printers.groupHeaderCount', { visible, total }) : total}
           </span>
 
           {!dimmed && (

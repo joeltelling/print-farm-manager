@@ -36,7 +36,9 @@
     "durationDays": "{{d}}d",
     "durationHoursMinutes": "{{h}}h {{m}}m",
     "durationHours": "{{h}}h",
-    "durationMinutes": "{{m}}m"
+    "durationMinutes": "{{m}}m",
+    "massGrams": "{{g}}g",
+    "massKilograms": "{{kg}}kg"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -159,6 +161,7 @@
     "applyToSelected": "Apply to selected",
     "emptyFieldsUnchanged": "Empty fields are left unchanged",
     "matchCount": "{{matched}} of {{total}} match \"{{query}}\"",
+    "groupHeaderCount": "{{visible}} of {{total}}",
     "noPrintersFound": "No printers found.",
     "selectAllInGroup": "Select all in this group",
     "pillPrinting": "printing",

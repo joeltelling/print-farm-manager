@@ -90,11 +90,11 @@ function formatDuration(secs, t) {
   return t('common.durationMinutes', { m });
 }
 
-function formatMaterial(grams) {
+function formatMaterial(grams, t) {
   if (grams == null) return null;
-  if (grams < 1000) return `${Math.round(grams)}g`;
+  if (grams < 1000) return t('common.massGrams', { g: Math.round(grams) });
   const kg = (grams / 1000).toFixed(2).replace(/\.?0+$/, '');
-  return `${kg}kg`;
+  return t('common.massKilograms', { kg });
 }
 
 // ── Row-level status summary badges for the fleet grid ───────────────────────
@@ -487,7 +487,7 @@ export default function Dashboard() {
                           <span style={{ color: '#374151' }}>·</span>
                         )}
                         {proj.material_used_grams > 0 && (
-                          <span style={{ color: '#a78bfa' }}>{formatMaterial(proj.material_used_grams)}</span>
+                          <span style={{ color: '#a78bfa' }}>{formatMaterial(proj.material_used_grams, t)}</span>
                         )}
                         {proj.model_breakdown && proj.model_breakdown.length > 1 && (
                           <>
