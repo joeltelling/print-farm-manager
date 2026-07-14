@@ -2,6 +2,29 @@
 
 ---
 
+## 2026-07-13: Creality: PRINTING requires print-phase evidence, upload confirmation is command-correlated, legacy model pairs stay editable
+
+PR #20 review round 6, two findings.
+
+**[P1] Generic device activity no longer confirms a farm print.** `deviceState != 0` covers heating, leveling, and self-test as well as printing, but `mapStatus()` reported every busy frame as `PRINTING`, and the scheduler treats `PRINTING` as proof a dispatched job started: `uploadAndPrint()` resolved on any cached `PRINTING`/`PAUSED`, retry recovery accepted `checkIfPrinting()`, and an OFFLINE-held job is auto-unheld on return to `PRINTING`. A self-test or heating cycle during dispatch or recovery could therefore record an unstarted job as printing, and its later busy-to-idle transition became a missed finish an operator could confirm and credit. Two changes:
+
+1. `PRINTING` now requires busy plus a print-phase `state` (`0`/`1`); busy without that evidence maps to `UNKNOWN`, the safe hold (not offered work, nothing confirmed, credited, or unheld) that already covers unresolved telemetry. `sawPrint` and `PRINTING` are now set by exactly the same condition.
+2. `uploadAndPrint()` confirmation is command-correlated: it requires the print-phase status AND the printer's reported filename to match the file the command just sent, so another print (or residual telemetry) cannot confirm the dispatched job. The failure message now names the file.
+
+**[P2] Legacy model/connector pairs stay editable.** The round-5 server validation deliberately skips updates that name neither `model` nor `type`, but the PrinterDetail form always submitted `detailsDraft.model`, and its new connector-filtered dropdown hid a legacy wrong-connector model from the options, so a pre-existing row like `type: prusa, model: k1` could not save an IP, group, key, or filament edit (400 on every save). The form now omits an unchanged model from the payload, and renders a legacy value as a marked option (`k1 (legacy: not a prusa model)`) so the select shows the truth and picking a listed model remains the remediation path.
+
+Also from this round's review: the two findings filed against the pre-rebase head (dispatch-batch sweep regression, dashes in `server/scheduler.js`/`server/index.js`/scheduler tests) do not exist at the current head; those files are byte-identical to `main` and the flagged `Settings.jsx` lines are main's own #37 text. No change was needed for them.
+
+### Changes
+- `server/drivers/creality.js`: busy branch of `mapStatus()` returns `PRINTING` only with print-phase `state`, else `UNKNOWN`; `uploadAndPrint()` confirm loop matches the dispatched filename.
+- `client/src/pages/PrinterDetail.jsx`: unchanged model omitted from the update payload; legacy wrong-connector model rendered as a marked option in the connector-filtered dropdown.
+- `server/tests/creality-driver.test.js`: busy-without-print-phase cases updated from `PRINTING` to `UNKNOWN` expectations; new tests for busy-with-no-state, wrong-file confirmation, and non-print-busy confirmation.
+- `docs/multi-brand.md`: state-mapping and upload-confirmation notes updated.
+
+The stricter confirmation depends on `state` flipping to `0`/`1` and `printFileName` updating promptly when a dispatched print starts; prior K1 captures show both, but this round is not yet validated on hardware. If a firmware turns out to latch `state` through the heating phase, the visible symptom would be upload confirmations timing out and retrying, not phantom credits.
+
+---
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."

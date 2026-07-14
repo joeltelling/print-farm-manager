@@ -211,18 +211,23 @@ export default function PrinterDetail() {
     setSavingDetails(true);
     setDetailsError(null);
     try {
+      const body = {
+        ip,
+        api_key: detailsDraft.api_key.trim(),
+        serial_number: detailsDraft.serial_number.trim(),
+        group_name: detailsDraft.group_name.trim() || null,
+        loaded_material: detailsDraft.loaded_material.trim() || null,
+        loaded_color: detailsDraft.loaded_color.trim() || null,
+      };
+      // Omit an unchanged model. The server validates the model-connector pair on any
+      // update that names either field, but deliberately leaves updates that name
+      // neither alone, so a legacy row whose stored model belongs to another connector
+      // must stay editable (IP, group, key, filament) until the operator fixes the pair.
+      if (detailsDraft.model !== printer.model) body.model = detailsDraft.model;
       const res = await fetch(`/api/printers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ip,
-          api_key: detailsDraft.api_key.trim(),
-          serial_number: detailsDraft.serial_number.trim(),
-          group_name: detailsDraft.group_name.trim() || null,
-          model: detailsDraft.model,
-          loaded_material: detailsDraft.loaded_material.trim() || null,
-          loaded_color: detailsDraft.loaded_color.trim() || null,
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -240,6 +245,16 @@ export default function PrinterDetail() {
   if (!printer) return <p style={{ color: '#fca5a5' }}>Printer not found.</p>;
 
   const sc = STATUS_COLORS[printer.status] || STATUS_COLORS.UNKNOWN;
+
+  // Models this printer's connector can drive (the server rejects mismatched pairs).
+  // A legacy row whose stored model belongs to another connector still renders that
+  // value as a marked option: the select shows the truth, unrelated edits keep working
+  // (the unchanged model is omitted from the payload), and picking a listed model is
+  // the remediation path.
+  const connectorModels = models.filter(m => m.connector === (printer.type || 'prusa'));
+  const legacyModel = printer.model && !connectorModels.some(m => m.model_id === printer.model)
+    ? printer.model
+    : null;
 
   return (
     <div style={{ maxWidth: 720 }}>
@@ -398,9 +413,12 @@ export default function PrinterDetail() {
                   disabled={savingDetails}
                   style={{ ...detailInputStyle, cursor: 'pointer' }}
                 >
-                  {/* A model belongs to one connector; the server rejects mismatched
-                      pairs, so only offer models this printer's connector can drive. */}
-                  {models.filter(m => m.connector === (printer.type || 'prusa')).map(m => (
+                  {legacyModel && (
+                    <option value={legacyModel}>
+                      {legacyModel} (legacy: not a {printer.type || 'prusa'} model)
+                    </option>
+                  )}
+                  {connectorModels.map(m => (
                     <option key={m.model_id} value={m.model_id}>{m.label}</option>
                   ))}
                 </select>

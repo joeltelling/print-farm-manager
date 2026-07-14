@@ -198,7 +198,8 @@ async function waitForData(conn, timeoutMs) {
 //
 // Field semantics, confirmed by capturing a full print lifecycle on real K1 firmware:
 //   deviceState - the LIVE device status: 0 = idle, non-zero = busy (printing, heating,
-//                 leveling, self-test). This is the reliable "is it running" signal.
+//                 leveling, self-test). Reliable for "is it doing something", but NOT
+//                 print-specific on its own.
 //   state       - a print phase / last-outcome code, NOT the live status. It reads 0 or 1
 //                 while a print runs, then LATCHES at 2 (completed) or 4 (stopped) and
 //                 stays there while the device sits idle, until the next print. 5 = paused.
@@ -240,16 +241,26 @@ function mapStatus(s, conn, printerName) {
   // is genuine (covers connecting while paused, then the operator stopping the print).
   if (state === 5) { conn.sawPrint = true; return 'PAUSED'; }
 
-  // Busy: actively printing / heating / leveling / self-testing.
-  // Checked BEFORE the errcode so a non-fatal hardware warning (e.g. mainboard fan)
-  // during a running print does not override PRINTING. The error code is logged
-  // for diagnostics; the scheduler only sees ERROR when the printer is idle.
+  // Busy: the device is actively doing something, which covers printing but also
+  // heating, leveling, and self-tests. Checked BEFORE the errcode so a non-fatal
+  // hardware warning (e.g. mainboard fan) during activity does not surface as ERROR;
+  // the code is logged for diagnostics and ERROR is only reachable once idle.
+  //
+  // Only a print-phase `state` (0/1) alongside busy is reported as PRINTING. The
+  // scheduler treats PRINTING as proof that a dispatched job is running (upload
+  // confirmation, checkIfPrinting recovery, releasing an OFFLINE hold), so a
+  // self-test or heating cycle must never stand in for it: that path ends with a
+  // busy-to-idle transition an operator could confirm and credit as a missed finish
+  // for a job that never printed. Generic busy without print-phase evidence reports
+  // UNKNOWN, the safe non-print hold: the printer is not offered work, nothing is
+  // confirmed or credited, and the fleet holds it until telemetry resolves.
   if (device != null && device !== 0) {
-    if (errcode) console.warn(`[creality] ${printerName} non-fatal error code ${errcode} while busy, staying PRINTING`);
-    // Only a print-phase `state` proves a print is running; a busy device with a
-    // latched terminal `state` (2/4) is heating/leveling/self-test activity.
-    if (state === 0 || state === 1) conn.sawPrint = true;
-    return 'PRINTING';
+    if (errcode) console.warn(`[creality] ${printerName} non-fatal error code ${errcode} while busy`);
+    if (state === 0 || state === 1) {
+      conn.sawPrint = true;
+      return 'PRINTING';
+    }
+    return 'UNKNOWN';
   }
 
   // deviceState hasn't arrived in the cache yet - e.g. the first frame after (re)connect
@@ -364,19 +375,24 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
   // Resolve only once the printer confirms it started - the scheduler marks the job
   // 'printing' the moment this resolves. Poll the cached telemetry (nudging a refresh each
-  // tick) for up to 20s. If it never confirms, throw so the scheduler retries; a print that
-  // actually started despite a missed confirmation is recovered via checkIfPrinting().
+  // tick) for up to 20s. Confirmation is command-correlated: it requires a print-phase
+  // status (PRINTING/PAUSED, which itself needs `state` 0/1, never a self-test or heating
+  // cycle) AND the reported file to match the one this command just sent, so unrelated
+  // device activity or a different print cannot stand in for the dispatched job. If it
+  // never confirms, throw so the scheduler retries; a print that actually started despite
+  // a missed confirmation is recovered via checkIfPrinting().
+  const expectedFile = filename.replace(/^\d+_/, ''); // match getStatus's display cleanup
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
     safeSend(conn.ws, { method: 'get', params: { reqPrintObjects: 1 } });
     await new Promise(r => setTimeout(r, 1000));
-    const { status } = await getStatus(printer);
-    if (status === 'PRINTING' || status === 'PAUSED') {
-      console.log(`[creality] Print started on ${printer.name}`);
+    const { status, currentFile } = await getStatus(printer);
+    if ((status === 'PRINTING' || status === 'PAUSED') && currentFile === expectedFile) {
+      console.log(`[creality] Print started on ${printer.name}: ${expectedFile}`);
       return;
     }
   }
-  throw new Error(`Creality ${printer.name} did not report printing within 20s of the print command`);
+  throw new Error(`Creality ${printer.name} did not confirm printing ${filename} within 20s of the print command`);
 }
 
 // ─── Cancel ──────────────────────────────────────────────────────────────────

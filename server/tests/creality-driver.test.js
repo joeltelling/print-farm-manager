@@ -213,8 +213,24 @@ describe('getStatus state mapping', () => {
     const printer = makePrinter();
     const ws = await drive(printer, { state: 2 }); // stale/latched state, deviceState unknown
     expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
-    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 }))); // actually still printing
+    // Busy arrives, but the cached `state` is still the old latch: without print-phase
+    // evidence this stays UNKNOWN (held), not PRINTING.
+    ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 })));
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
+    // The print-phase state lands: now it is a confirmed print.
+    ws.emit('message', Buffer.from(JSON.stringify({ state: 1 })));
     expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+  });
+
+  // Regression (PR review): deviceState is nonzero for heating, leveling, and self-test
+  // too, and the scheduler treats PRINTING as proof a dispatched job started (upload
+  // confirmation, checkIfPrinting recovery, OFFLINE-hold release). Generic busy without
+  // a print-phase `state` must therefore report UNKNOWN (safe hold), never PRINTING.
+  test('UNKNOWN (not PRINTING) when the device is busy with no print-phase state', async () => {
+    const printer = makePrinter();
+    await drive(printer, { deviceState: 1 }); // busy, `state` never populated
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
+    expect(await creality.checkIfPrinting(printer)).toBe(false); // recovery cannot latch onto it
   });
 
   // Regression (PR review): `state` is a latched last-outcome code, so a fresh connection
@@ -258,7 +274,7 @@ describe('getStatus state mapping', () => {
     const ws = await drive(printer, { state: 2 }); // old latched outcome arrives first
     expect((await creality.getStatus(printer)).status).toBe('UNKNOWN');
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 }))); // self-test/leveling: busy, no print-phase state
-    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN'); // held, not PRINTING
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0 }))); // activity ends
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
   });
@@ -272,7 +288,7 @@ describe('getStatus state mapping', () => {
     expect((await creality.getStatus(printer)).status).toBe('IDLE');
     // Operator runs a self-test: busy again, but `state` keeps the old latch (2).
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 1 })));
-    expect((await creality.getStatus(printer)).status).toBe('PRINTING');
+    expect((await creality.getStatus(printer)).status).toBe('UNKNOWN'); // busy but no print-phase state
     ws.emit('message', Buffer.from(JSON.stringify({ deviceState: 0 }))); // self-test ends
     expect((await creality.getStatus(printer)).status).toBe('IDLE'); // no second FINISHED, no double credit
   });
@@ -456,6 +472,35 @@ describe('uploadAndPrint', () => {
     const fullPath = createTestFile(`creality_fail_${Date.now()}.gcode`);
     await expect(creality.uploadAndPrint(printer, fullPath, 'x.gcode'))
       .rejects.toThrow('500');
+  });
+
+  // Regression (PR review): confirmation must be command-correlated. A printer busy
+  // with a DIFFERENT file (or generic activity like a self-test) must not confirm the
+  // job this command just dispatched; the scheduler would record an unstarted job as
+  // printing and its later busy-to-idle transition becomes a creditable missed finish.
+  test('does not confirm the print while the printer reports a different file', async () => {
+    const printer = makePrinter({ id: 504 });
+    await drive(printer, { deviceState: 1, state: 0, printProgress: 50, printFileName: 'other.gcode' });
+    axios.post.mockResolvedValueOnce({});
+
+    const fullPath = createTestFile(`creality_wrongfile_${Date.now()}.gcode`);
+    const promise = creality.uploadAndPrint(printer, fullPath, 'x.gcode');
+    const assertion = expect(promise).rejects.toThrow('did not confirm printing');
+    await jest.advanceTimersByTimeAsync(21000); // let the 20s confirm window expire
+    await assertion;
+  });
+
+  test('does not confirm the print from a non-print busy cycle (no print-phase state)', async () => {
+    const printer = makePrinter({ id: 505 });
+    // Busy with a latched terminal state: a self-test/heating cycle, not a print.
+    await drive(printer, { deviceState: 1, state: 2, printFileName: 'x.gcode' });
+    axios.post.mockResolvedValueOnce({});
+
+    const fullPath = createTestFile(`creality_selftest_${Date.now()}.gcode`);
+    const promise = creality.uploadAndPrint(printer, fullPath, 'x.gcode');
+    const assertion = expect(promise).rejects.toThrow('did not confirm printing');
+    await jest.advanceTimersByTimeAsync(21000);
+    await assertion;
   });
 });
 
