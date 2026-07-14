@@ -85,8 +85,18 @@ const th = (t, w) => ({ color: '#64748b', fontSize: 11, fontWeight: 600, textAli
 const effectiveMat = bulkMaterial;
 const colorOptions = allColors.filter(c => !effectiveMat || c.type_name === effectiveMat);
   
-  // Deduplicate slots for the bulk setter bar to prevent React duplicate key errors
-  const uniqueBulkSlots = Array.from(new Map(Object.values(amsSlotsByModel).flat().filter(s => s.slot >= 0).map(s => [s.slot, s])).values());
+  const modelsInStaging = [...new Set(items.map(it => it.model).filter(Boolean))];
+  let uniqueBulkSlots = [];
+
+  if (modelsInStaging.length > 0 && modelsInStaging.every(m => amsSlotsByModel[m])) {
+    // Start with the slots of the first model
+    uniqueBulkSlots = amsSlotsByModel[modelsInStaging[0]].filter(s => s.slot >= 0);
+    // Intersect with all other models in staging
+    for (let i = 1; i < modelsInStaging.length; i++) {
+      const slotsForModel = amsSlotsByModel[modelsInStaging[i]].map(s => s.slot);
+      uniqueBulkSlots = uniqueBulkSlots.filter(s => slotsForModel.includes(s.slot));
+    }
+  }
 
   return (
     <div style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 16, marginTop: 8 }}>

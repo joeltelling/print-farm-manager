@@ -34,7 +34,8 @@ function runBulkUpload(req, res) {
       totalBytes += chunk.length;
       if (totalBytes > MAX_BULK_BYTES) {
         req.removeListener('data', dataHandler);
-        reject(new Error(`Aggregate upload size exceeds ${MAX_BULK_BYTES / (1024 * 1024)} MB limit`));
+        // Emit error so Multer catches it, aborts parsing, cleans up, and triggers the callback
+        req.emit('error', new Error(`Aggregate upload size exceeds ${MAX_BULK_BYTES / (1024 * 1024)} MB limit`));
       }
     };
     req.on('data', dataHandler);
