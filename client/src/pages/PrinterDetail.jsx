@@ -616,7 +616,7 @@ export default function PrinterDetail() {
       {jobHistory.total > 0 && (
         <div style={{ marginTop: 32 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            {t('printerDetail.jobHistory', { count: jobHistory.total.toLocaleString(language) })}
+            {t('printerDetail.jobHistory', { count: jobHistory.total })}
           </div>
 
           <div style={{ overflowX: 'auto' }}>
