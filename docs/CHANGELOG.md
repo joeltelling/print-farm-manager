@@ -2,6 +2,132 @@
 
 ---
 
+## 2026-07-14: i18n formatting locale: separate regional date/number format from translation language
+
+The previous fix (feeding `i18n.resolvedLanguage` into every `Intl` call so formatting followed
+the translation language) traded one bug for another: `resolvedLanguage` is always a base code
+(`en`), so an operator on an `en-GB` browser lost their day-first date format and got US-style
+dates instead, and decimal numbers (material weight, print hours) always used a dot regardless of
+locale, even once a comma-decimal language is added.
+
+Fixed by splitting these into two concerns that were previously conflated. Translation lookup
+keeps using the resolved base language, unchanged: `supportedLngs` still constrains which
+languages get selected or cached, so nothing about that regressed. A new formatting locale,
+computed by `getFormattingLocale()` in `client/src/i18n.js` and exposed to components via the
+`useFormattingLocale()` hook, keeps the browser's regional variant (`en-GB`, `en-US`) whenever it
+matches the active translation language, and only falls back to the bare resolved language when it
+doesn't (e.g. the operator explicitly picked a language the browser itself doesn't report).
+
+Every `Intl.DateTimeFormat`/`toLocaleString` call site across Printer Detail, Jobs, Decommissioned,
+Fleet's ETA, Settings, and Dashboard now uses this formatting locale instead of the translation
+language. Two decimal-formatting sites, `Dashboard.jsx`'s `formatMaterial` and `PrinterDetail.jsx`'s
+`formatHours`, moved from `toFixed()` (always a dot) to `Intl.NumberFormat` with the same formatting
+locale, preserving their existing precision (2 decimals for kilograms, 1 for hours, trailing zeros
+trimmed either way) while using the locale's own decimal separator. A third `toFixed()` site,
+`Projects.jsx`'s `formatMaterialForInput`, was deliberately left dot-decimal: it pre-fills an
+editable input whose value round-trips to `server/routes/gcodes.js`'s material parser, which only
+accepts a literal dot, so locale-formatting it would produce a value the server rejects.
+
+Verified against a browser context forced to `en-GB`: Printer Detail, Jobs, and Fleet's ETA all
+show day-first dates (`15 Jul 2026, 07:39`, `done 9:59`) while every UI label stays English.
+Verified the `Intl.NumberFormat` calls directly for comma-decimal locales (`pl`, `de`): `1250` grams
+formats as `1,25` kg, `1500` grams as `1,5` kg (trailing zero trimmed), and `1.5` print hours as
+`1,5`, with English output unchanged.
+
+### Changes
+- `client/src/i18n.js`: added `getFormattingLocale()`.
+- `client/src/useFormattingLocale.js` (new): hook wrapping `getFormattingLocale()` for components.
+- `client/src/pages/{Dashboard,PrinterDetail,Jobs,Fleet,Decommissioned,Settings}.jsx`: every date/time
+  `Intl` call site now uses the formatting locale instead of the translation language.
+- `client/src/pages/Dashboard.jsx` (`formatMaterial`), `client/src/pages/PrinterDetail.jsx`
+  (`formatHours`): decimal formatting moved to `Intl.NumberFormat` with the formatting locale.
+- `client/src/pages/Projects.jsx`: documented why `formatMaterialForInput` stays dot-decimal.
+- `docs/web-app.md`: new "Internationalization" section explaining the formatting-locale versus
+  translation-language split; corrected the Printer Detail section's stale `resolvedLanguage` claim.
+- `docs/TRANSLATING.md`: noted that adding a language affects both translated strings and, once an
+  operator's regional browser variant matches it, date/number formatting.
+
+---
+
+## 2026-07-13: i18n locale formatters: use resolvedLanguage, not the raw detected language
+
+Manual testing surfaced a real bug in the locale-aware formatting just added: every formatter
+passed `i18n.language` to `toLocaleString`/`toLocaleDateString`/`toLocaleTimeString`. That property
+reflects whatever `i18next-browser-languagedetector` detected (from `localStorage`, then the
+browser's own language), even when no translation resource exists for it. On a browser set to
+Polish, with only `en` registered in `SUPPORTED_LANGUAGES`, `t()` correctly falls back to English
+text (via `fallbackLng`), but `i18n.language` still reported `pl`, so `Intl` happily formatted
+dates and numbers in Polish (native browser behavior, independent of i18next's own fallback) while
+every label around them stayed in English. The Settings language `<select>` already had the fix
+for this exact class of bug: `i18n.resolvedLanguage`, the language whose resources are actually
+being rendered after fallback is applied. Replaced every `i18n.language` passed to a formatter
+with `i18n.resolvedLanguage || i18n.language || 'en'` across the pages touched by the prior entry.
+
+Verified against a browser context forced to `pl-PL` locale with only `en` registered: the
+Dashboard clock date now reads "Mon, Jul 13, 2026" instead of the Polish "pon., 13 lip 2026" seen
+before the fix, with no other change in behavior.
+
+### Changes
+- `client/src/pages/Dashboard.jsx`, `client/src/pages/Jobs.jsx`, `client/src/pages/Fleet.jsx`, `client/src/pages/Decommissioned.jsx`, `client/src/pages/Settings.jsx`, `client/src/pages/PrinterDetail.jsx`: derive `language = i18n.resolvedLanguage || i18n.language || 'en'` once per component and pass it to every formatter, instead of `i18n.language` directly.
+
+---
+
+## 2026-07-13: i18n PR follow-up review: missing states, locale-aware formatting everywhere, dash cleanup
+
+A second review round on the i18n PR (#19) found seven issues, split between genuine gaps this
+branch introduced and pre-existing bugs in the original i18n commit that hadn't been touched yet.
+
+**Bugs this branch introduced:**
+- **Real states silently downgraded to "Unknown".** `Printers.jsx` and `PrinterDetail.jsx` never had color-map entries for `STOPPED`, `READY`, `ATTENTION`, or `UPLOADING` (a pre-existing gap), but before this PR the badge still rendered the raw status text, so an operator could read "STOPPED" even with the wrong color. Once the badge started rendering `t(labelKey)` with `UNKNOWN` as the fallback, that same printer displayed "Unknown", losing real information about an operator-actionable state (Klipper/Bambu printers do return `STOPPED`, and the scheduler treats an unheld stopped printer as eligible for redispatch). Fixed by adding every canonical state used by the drivers/poller to both maps, matching Fleet.jsx's full set.
+- **Legacy `done` job status untranslated in Jobs.jsx.** The same `'done'` alias fix already applied to `PrinterDetail.jsx`'s job history wasn't carried over to `Jobs.jsx`'s own `JOB_STATUS` map, so existing databases with `jobs.status = 'done'` (see `DONE_STATUSES` in `server/routes/dashboard.js`) fell back to displaying the raw word "done". Added the same `done` to `common.statusFinished` mapping.
+- **57 em/en dashes added by this PR's own commits**, in violation of the repository's dash-free prose rule (see CLAUDE.md), across `en.json` UI strings, JSX comments, and CHANGELOG/README/TRANSLATING prose. None of the checks in prior rounds ran the required `grep -P '[\x{2013}\x{2014}]'` against changed files. All 57 replaced with commas, colons, parentheses, or plain hyphens; pre-existing dashes in code this PR doesn't touch (the thousands of them in older CHANGELOG entries, the repo-wide ASCII no-value placeholder convention) were deliberately left alone.
+
+**Pre-existing bugs in the original i18n commit, not touched by prior review rounds:**
+- **Date/time/number formatters ignored the selected language everywhere except Printer Detail.** `Dashboard.jsx` hardcoded `'en-US'` for the clock and date; `Jobs.jsx`, `Fleet.jsx`, `Decommissioned.jsx`, and `Settings.jsx` passed `undefined`/`[]` (browser default) to `toLocaleString`/`toLocaleDateString`/`toLocaleTimeString`; and `Dashboard.jsx`/`Jobs.jsx` built duration strings (`${h}h ${m}m`, `${w}wk ${d}d`, etc.) directly in English instead of through translation keys. Fixed by threading `i18n.language` (or `t`, for duration text) through every formatter and its call sites, and moving all duration unit templates into a shared `common.duration*` family (`durationWeeksDays`, `durationWeeks`, `durationDaysHours`, `durationDays`, `durationHoursMinutes`, `durationHours`, `durationMinutes`) that `Dashboard.jsx`, `Jobs.jsx`, and `PrinterDetail.jsx` now all share instead of each having its own copy (`PrinterDetail.jsx`'s previous `printerDetail.durationMinutes`/`durationHoursMinutes`/`hoursShort` keys were folded into the new `common.*` ones).
+- **Farm name fallback didn't follow a language switch.** `App.jsx` captured `t('app.defaultFarmName')` once into `useState`, so on the common case where no custom farm name is set, switching languages left both nav bars showing the initial-language default until a full reload. Fixed by keeping only the *custom* name (or empty) in state and deriving the displayed name at render time as `customFarmName || t('app.defaultFarmName')`. This also required fixing `Settings.jsx`'s post-restore dispatch of the `farmNameChanged` event, which was pre-resolving the fallback text itself (`settingsData.farm_name || t('app.defaultFarmName')`) and would have permanently baked in whichever language was active at restore time; it now dispatches the raw value and lets `App.jsx` do the one canonical fallback resolution.
+- **Memoized group labels missing the translation dependency.** The `useMemo` in `Printers.jsx` that builds the "Other" and "Decommissioned" group labels via `t(...)` didn't list `t`/`i18n.language` in its dependency array, so a language switch left it showing stale labels until printer data, models, or the search box changed. Added `t, i18n.language` to the dependency array.
+- **`docs/TRANSLATING.md` paths didn't exist.** The guide's copy-and-edit instructions referenced `src/locales/en.json` and `src/i18n.js`, neither of which resolves from the repo root or `docs/`; both are under `client/src/`. Fixed all path references to be `client/src/...`-relative.
+
+Verified: `npm run build` clean, all 430 server tests pass, and a live Playwright pass against
+seeded demo data (with one printer manually set to `STOPPED` and the seed script's usual `'done'`
+legacy jobs) confirmed the Printers/PrinterDetail/Jobs/Dashboard/Settings pages all render the
+correct translated text with no `i18next::missingKey` warnings and no console errors.
+
+### Changes
+- `client/src/pages/Printers.jsx`, `client/src/pages/PrinterDetail.jsx`: added `STOPPED`/`READY`/`ATTENTION`/`UPLOADING` to the status-color maps.
+- `client/src/pages/Jobs.jsx`: added `done` to `JOB_STATUS`, mapped to the same entry as `finished`.
+- `client/src/pages/Dashboard.jsx`, `client/src/pages/Jobs.jsx`, `client/src/pages/Fleet.jsx`, `client/src/pages/Decommissioned.jsx`, `client/src/pages/Settings.jsx`, `client/src/pages/PrinterDetail.jsx`: threaded `i18n.language` through every date/time/number formatter and its call sites.
+- `client/src/locales/en.json`: added shared `common.duration*` keys; removed the now-redundant `printerDetail.duration*`/`hoursShort` keys; removed all 57 em/en dashes added by this PR.
+- `client/src/App.jsx`, `client/src/pages/Settings.jsx`: farm name fallback now derived at render time instead of captured once; restore-path event dispatch no longer pre-resolves the fallback text.
+- `client/src/pages/Printers.jsx`: added `t, i18n.language` to the group-label `useMemo`'s dependency array.
+- `docs/TRANSLATING.md`: fixed `src/...` paths to `client/src/...`.
+
+---
+
+## 2026-07-13: i18n PR rebase: recovered group-targeting feature, finished status/date localization
+
+The i18n PR (#19) had gone stale against `main`: an earlier attempt to reconcile it with upstream used merge commits instead of a rebase, and in resolving those merges the entire "project-level group targeting" feature (`fix(groups)`, 2026-07-11) got silently dropped (`server/routes/groups.js`, the `printer_groups` table, and the `COALESCE(gcodes.allowed_groups, projects.allowed_groups)` dispatch predicate were all gone, replaced with a gcodes-only check that would route jobs to printer groups an operator had explicitly excluded). `docs/api.md` had also lost documentation for `allowed_groups`/`required_material`/`required_color`, and GitHub reported the PR as `dirty`/unmergeable due to real conflicts in `PrinterDetail.jsx`, `Projects.jsx`, and `Settings.jsx` against `main`'s newer commits (the group-targeting feature and the `dispatch_batch_size` concurrency-target fix).
+
+Fixed by discarding the merge commits and rebasing the PR's 7 original commits directly onto current `main` (`git rebase --onto`), resolving each conflict by hand rather than accepting either side wholesale:
+
+- `Jobs.jsx`: merged the `awaiting` job-status entry (added upstream for the missed-finish-hold fix) into the translated `JOB_STATUS` map, reusing the existing `dashboard.awaitingSignoff` key instead of adding a new one.
+- `PrinterDetail.jsx` / `Settings.jsx`: kept upstream's group-autocomplete `<datalist>` wiring alongside the translated placeholders.
+- `Projects.jsx`: three components (`GcodeUploadPanel`, `GcodeEstimateRow`, `PartDetailsPanel`) had diverged on the same prop rename: upstream replaced each component's local `useState([])`-fetched `availableGroups` with a single `groups` prop sourced from the new registry, while the i18n commit's diff still referenced the pre-rename `availableGroups` name. Resolved by keeping upstream's `groups` prop (the newer, non-duplicating source of truth) and layering the translations on top; added `projects.inheritsProjectGroups` for the "(inherits project: …)" cascade-fallback text that didn't exist when the i18n branch forked.
+- `Settings.jsx`: also updated `settings.importRegistryHint` and `settings.dispatchHint`/`printersPerBatchLabel` to match upstream's rewritten CSV-help and dispatch-concurrency copy (both changed after the i18n branch forked), and added a `chipPrinterGroups` restore-count chip. Translated the entire new Groups management section (title, hint, empty state, add-group form) and the project-detail page's project-level group-targeting row, which had no i18n coverage yet since they postdate the i18n branch.
+
+Restoring the dropped feature and its regression tests (`server/tests/groups.test.js`, `dispatch-status.test.js`, `projects-groups.test.js`) was just a side effect of rebasing correctly instead of merging: no server-side logic was hand-written to recover it.
+
+Separately, per review, extended status-catalogue translation to two places that still rendered raw internal codes: `Printers.jsx`'s list badges and `PrinterDetail.jsx`'s header badge and job-history status column (both now use a `labelKey`-mirrored map, matching the Fleet.jsx/Dashboard.jsx convention). The job-history fix surfaced a real gap: the printer-jobs endpoint returns the legacy `'done'` status alias unnormalized (see `DONE_STATUSES` in `server/routes/dashboard.js`), which would have silently rendered as "Unknown" once translated (mapped `done` to the same `common.statusFinished` key as `finished`, and fixed the adjacent status-color ternary that had the same gap). Also made `PrinterDetail.jsx`'s date/duration formatting language-aware: `formatTimestamp` now takes `i18n.language` instead of the browser default, and `formatDuration`/`formatHours`' hardcoded `h`/`m` units moved into translation keys.
+
+Verified: full rebase reproduces zero conflicts against a fresh `git merge-tree`, `npm run build` succeeds, all 430 server tests pass, and a live Playwright pass against seeded demo data confirmed Printers/PrinterDetail/Settings/Projects all render translated status text and the new Groups UI with no `i18next::missingKey` warnings.
+
+### Changes
+- Rebased `client/src/i18n.js`, `client/src/pages/{App,Dashboard,Decommissioned,Fleet,Jobs,PrinterDetail,Printers,Projects,Settings}.jsx`, `client/src/locales/en.json`, `client/src/main.jsx`, `client/src/components/PollTimer.jsx`, `client/src/useConfirm.jsx`, `client/package.json`, `docs/TRANSLATING.md` onto current `main`; no server-side files touched by the rebase itself.
+- `client/src/pages/Printers.jsx`, `client/src/pages/PrinterDetail.jsx`: status badges/job-history column translated via `common.status*`/`jobs.status*`; `PrinterDetail.jsx` date/duration formatting now locale-aware.
+- `client/src/locales/en.json`: added `projects.inheritsProjectGroups`, `settings.chipPrinterGroups`, `settings.groups*` (new Groups section), `printerDetail.durationMinutes`/`durationHoursMinutes`/`hoursShort`; updated `settings.importRegistryHint` and `settings.dispatchHint`/`printersPerBatchLabel` to match upstream's rewritten copy.
+
+---
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."
@@ -95,6 +221,18 @@ CLAUDE.md still described the Phase 1 scaffold ("no migration system", "do not i
 - `.claude/skills/add-connector/SKILL.md`: end-to-end printer driver scaffold: contract, six registration touchpoints, mocked test minimums, honest hardware-validation reporting.
 - `.claude/skills/pr-review/SKILL.md`: community PR review process (adjacent-code audit, part-count scrutiny, driver contract checks, severity-tagged findings).
 - `.gitignore`: `.claude/` narrowed to `.claude/*` with `!.claude/skills/` so skills ship with the repo.
+## 2026-07-07 - i18n fixes: base-code language switcher, translated Dashboard status text
+
+PR review on the i18next rollout found two issues:
+
+- **[P2] Settings language `<select>` could render blank.** `i18next-browser-languagedetector` can report a region code like `en-US` from the browser, but `SUPPORTED_LANGUAGES` only lists base codes (`en`). The `<select>` was controlled by `i18n.language`, which then matched no `<option>` and rendered blank/out of sync on a stock US-English browser even though translations still resolved correctly. Fixed both ends: `i18n.js` now sets `load: 'languageOnly'` so i18next itself collapses region codes to base codes for detection/resolution, and the `<select>` in `Settings.jsx` binds to `(i18n.resolvedLanguage || i18n.language || 'en').split('-')[0]` as a second line of defense.
+- **[P2] Dashboard TV view showed raw internal status codes.** The per-model row summary badges and the printer-cell tooltip in `Dashboard.jsx` rendered `printer.status` / `ROW_STATUSES` values (`PRINTING`, `STOPPED`, `OFFLINE`, …) straight to the screen instead of going through the same `common.status*` translation keys the Fleet page and dashboard legend already use. Added a `STATUS_LABEL_KEYS` map mirroring Fleet.jsx's inlined `STATUS_COLORS` to `labelKey` convention (no shared export exists between the two pages, so it's mirrored rather than imported) and a `statusLabel(t, status)` helper; both render sites now call it. The special "awaiting sign-off" case (held FINISHED/IDLE printers) is unchanged: it already used `common.statusAwaitingShort`. No new translation keys were needed; every status code that reaches the Dashboard already had a `common.status*` entry.
+
+### Changes
+- `client/src/i18n.js`: added `load: 'languageOnly'` to the i18next config.
+- `client/src/pages/Settings.jsx`: language switcher `<select>` value now resolves to the base language code.
+- `client/src/pages/Dashboard.jsx`: added `STATUS_LABEL_KEYS`/`statusLabel()`; row summary badges and the printer-cell tooltip now render translated status text via existing `common.status*` keys.
+- `docs/TRANSLATING.md`, `docs/web-app.md`: documented the base-code normalization and the Dashboard's reuse of `common.status*` keys.
 
 ---
 

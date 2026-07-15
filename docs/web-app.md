@@ -68,7 +68,7 @@ TV-optimized command center intended to be shown full-screen on a large monitor 
 |---|---|
 | Header | Branding, fleet utilization % (printing / total), live HH:MM:SS clock and date |
 | Hero stat cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) — large tabular numerals |
-| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend |
+| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend. Badge text and the per-cell hover tooltip are translated via `common.status*` keys (`STATUS_LABEL_KEYS`/`statusLabel()` in `Dashboard.jsx`, mirroring Fleet.jsx's `STATUS_COLORS.labelKey` convention) rather than the raw internal status code. |
 | Active Projects | All active projects with **all parts** listed — per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
 | Needs Attention | Every printer requiring a human, sorted by priority: AWAITING → ERROR → STOPPED → PAUSED → OFFLINE, then longest-waiting first. Each row shows a reason badge, printer name, and wait time derived from `last_event_at`. Empty state renders a green "✓ All clear" badge. |
 
@@ -154,7 +154,7 @@ Searchable directory of every active printer registered in the farm, grouped by 
 
 **Search behavior:** when a query is active, collapse state is overridden — groups with matches expand, groups with zero matches are hidden, and a "N of M match" hint appears above the list.
 
-**Columns within a group:** Name, Group, IP, Status badge. (Model is implied by the group header.)
+**Columns within a group:** Name, Group, IP, Status badge. (Model is implied by the group header.) Badge text is translated via `common.status*` keys, mirroring Fleet.jsx/Dashboard.jsx's `labelKey` convention.
 
 **Bulk edit:** selecting one or more printers (row checkboxes / select-all) reveals a bulk-edit bar. It can set **Material** and **Color** (dropdowns from the filament library) and **Group** (free-text input with a `<datalist>` autocomplete, now sourced from the persisted group registry, `GET /api/groups`, rather than derived from currently-loaded printers, so a registered group still autocompletes even if no printer currently carries it; typing a new name still works and registers it). "Apply to selected" loops `PUT /api/printers/:id` for each selected printer; only non-empty fields are sent, so empty fields are left unchanged. Each changed field is recorded as an `info_changed` event on the printer. Common use: funnel small prints to low-spool machines by bulk-assigning them a group, then targeting that group from the G-code's `allowed_groups` (or the project's, see the Projects page).
 
@@ -166,7 +166,7 @@ Click any row to navigate to `/printers/:id` (the Printer Detail view).
 
 Per-machine history and annotation screen. Reached by clicking a printer card in the Fleet page, clicking a row in the Printers page, or via the "View History" button in the Decommissioned page.
 
-**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable.
+**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable. Status badge and the job-history status column are translated via `common.status*`/`jobs.status*` keys (the job-history column also maps the legacy `done` job status alias to `common.statusFinished`); dates, durations, and numbers use the formatting locale (see "Formatting locale vs translation language" below) and translated `h`/`m` duration units, so a future non-English language doesn't mix translated labels with English-only formatting.
 
 **Rename:** a **Rename** button next to the printer name swaps the header into an inline edit form. Save sends `PUT /api/printers/:id` with the new `name`; the server's UNIQUE-name 409 is surfaced inline. Escape or the Cancel button closes the form without saving.
 
@@ -212,7 +212,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 5. Clicking Save calls `POST /api/printers` with the operator-selected model
 6. Saved rows are removed from the flagged list and the imported count increments
 
-**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
+**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Language → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
 
 **Groups section:** lists every registered group (`GET /api/groups`) with a Delete button per row and a name-only add form (`POST /api/groups`). Modeled on the Printer Models section, minus the type/color hierarchy Filament Library has. Deleting a group is blocked with an inline error naming the printer/G-code/project count still referencing it (`DELETE /api/groups/:name`, `409`). A group doesn't have to be created here first: typing a new name on a printer (Add Printer form, Printers bulk-edit, PrinterDetail, or CSV import) registers it automatically; this section exists for pre-creating a group before any printer uses it, and for cleanup.
 
@@ -291,6 +291,17 @@ useEffect(() => {
 
 This matches the server's 15-second poll interval. In practice, the UI is never more than ~30 seconds behind reality (server poll + client poll worst case).
 
+## Internationalization
+
+`client/src/i18n.js` wires up react-i18next. `SUPPORTED_LANGUAGES` and `supportedLngs` constrain which languages the app will actually select or cache, so a browser reporting an unregistered language (e.g. `pl` before that translation file exists) falls back to English text rather than getting stuck showing no translations. See `docs/TRANSLATING.md` for how to add a language.
+
+**Formatting locale vs translation language:** these are two different things and the app tracks them separately.
+
+- **Translation language** (`i18n.resolvedLanguage`) picks which strings `t()` returns. It's always collapsed to a base code (`en`, not `en-US`) and constrained to `SUPPORTED_LANGUAGES`.
+- **Formatting locale** (`getFormattingLocale()` in `i18n.js`, or the `useFormattingLocale()` hook) picks how `Intl.DateTimeFormat`/`Intl.NumberFormat`/`toLocaleString` render dates and numbers. This keeps the browser's *regional* variant (e.g. `en-GB`) when it matches the active translation language, so a UK operator sees day-first dates (`14 Jul 2026`) and a US operator sees month-first (`Jul 14, 2026`) even though both see the same English UI text. If the operator explicitly picks a different language from the Settings switcher, that choice wins over any regional guessing.
+
+Every page that formats a date, duration, or decimal number calls `useFormattingLocale()` and threads the result into its formatter functions, mirroring how `t` itself is threaded through `formatDuration`/`formatMaterial`. One exception: `Projects.jsx`'s `formatMaterialForInput` pre-fills an editable text input whose value round-trips to `server/routes/gcodes.js`'s dot-only material parser, so it deliberately stays dot-decimal regardless of locale.
+
 ## Configuration
 
 | Setting | Value | Location |
@@ -305,8 +316,11 @@ This matches the server's 15-second poll interval. In practice, the UI is never 
 | `react` | ^18.3.1 | UI framework |
 | `react-dom` | ^18.3.1 | DOM renderer |
 | `react-router-dom` | ^6.24.0 | Client-side routing |
-| `vite` | ^5.3.1 | Dev server and bundler |
-| `@vitejs/plugin-react` | ^4.3.1 | JSX transform + Fast Refresh |
+| `i18next` | ^26.0.0 | i18n core (resources, interpolation, pluralization) |
+| `i18next-browser-languagedetector` | ^8.0.0 | Detects/caches the visitor's language (localStorage, then browser) |
+| `react-i18next` | ^17.0.0 | React bindings (`useTranslation`, `Trans`) for i18next |
+| `vite` | ^8.0.16 | Dev server and bundler |
+| `@vitejs/plugin-react` | ^5.2.0 | JSX transform + Fast Refresh |
 
 ## Quick Start (client only)
 
