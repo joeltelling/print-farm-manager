@@ -1,5 +1,6 @@
 const express = require('express');
 const router  = express.Router();
+const { publicPrinter } = require('../printer-public');
 
 // Completed job statuses — 'done' is a legacy alias retained for backward compat with older data.
 const DONE_STATUSES = "('finished', 'done')";
@@ -123,7 +124,7 @@ module.exports = (db) => {
         awaiting,
         parts_today: partsToday,
       },
-      printers,
+      printers: printers.map(publicPrinter),
       active_projects: projectsWithParts,
       recent_activity: recentActivity,
     });

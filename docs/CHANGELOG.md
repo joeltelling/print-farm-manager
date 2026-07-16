@@ -153,6 +153,18 @@ With the repo now public, printer manufacturers and community members may want t
 Covers: the four-function driver interface with exact return shapes and error contracts (`UPLOAD_CONFLICT`, never-throw `getStatus`, resolve-only-when-started `uploadAndPrint`), the `printer` row fields drivers may use, the canonical status table with what the poller/scheduler do on each transition, the no-double-credit rules for `FINISHED` (reconnect flapping, cold start, STOPPED vs ERROR disambiguation, synthesized FINISHED), the stateless vs persistent-connection patterns with named reference drivers, a six-step registration checklist (including every `Settings.jsx` touch point), a real-hardware test matrix, and dev-without-a-fleet tips.
 
 No code changes. `docs/README.md` gained an index row; `CONTRIBUTING.md`'s Printer Drivers section now links to the guide.
+## 2026-07-05 - Printers: stop returning the stored api_key
+
+`GET /api/printers`, `GET /api/printers/:id`, the backup-adjacent printer reads, and the create/update/action responses all returned the full printer row including `api_key` (the PrusaLink key, Bambu access code, or OctoPrint key). That is a reusable credential for the printer itself, so any client that could read the printer list could harvest every key.
+
+Printer responses now go through a serializer that drops `api_key` and adds a boolean `has_api_key`. `PUT /api/printers/:id` treats a blank or absent `api_key` as no change, so the key is write-only. The printer edit form no longer pre-fills the key field (it renders as a password input with a "leave blank to keep current" placeholder) and only sends a key when the operator types a new one. The scheduler and drivers still read the real key from the DB row, which is unchanged.
+
+### Changes
+- `server/printer-public.js` (new): `publicPrinter()` serializer that strips `api_key` and adds `has_api_key`.
+- `server/routes/printers.js`, `server/routes/dashboard.js`, `server/index.js`: route all printer responses through it; `PUT` keeps the stored key when none is supplied.
+- `client/src/pages/PrinterDetail.jsx`: write-only key field.
+- `server/tests/printers-api-key.test.js`, `server/tests/dashboard-api-key.test.js` (new): responses omit `api_key`; blank `PUT` keeps the key; a new key updates it; the dashboard payload omits the key.
+- `docs/api.md`: documented `has_api_key` and the write-only key.
 
 ---
 

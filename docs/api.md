@@ -30,7 +30,7 @@ Returns all active printers (`is_active = 1`) ordered by name.
     "id": 1,
     "name": "MK4S_01",
     "ip": "192.168.1.100",
-    "api_key": "aK3jR7xQ2pLm9vN",
+    "has_api_key": true,
     "group_name": "MK4S Farm",
     "type": "prusa",
     "model": "mk4s",
@@ -44,6 +44,8 @@ Returns all active printers (`is_active = 1`) ordered by name.
   }
 ]
 ```
+
+The stored `api_key` is not returned by the printer or dashboard endpoints. Responses include `has_api_key` (a boolean) instead, and `api_key` is accepted on write only. The one exception is the farm backup export (`GET /api/backup`), which includes full printer rows so a restore can recreate working credentials — see that endpoint for the caveat.
 
 `job_name`, `job_progress`, and `job_time_remaining` are non-null only while `status = "PRINTING"`, and are cleared to `null` when the printer leaves that state.
 
@@ -101,6 +103,8 @@ Returns `201` with the created printer object. Returns `409` if `name` already e
 ### `PUT /api/printers/:id`
 
 Partial update — only fields provided are changed (uses `COALESCE`). All fields from POST are accepted, plus `is_held` (`0` or `1`).
+
+`api_key` is write-only: send it to set a new key; omit it or send an empty string to keep the stored key unchanged.
 
 Returns `404` if not found, `409` on name conflict.
 
@@ -592,7 +596,7 @@ Single endpoint that returns all data required by the TV dashboard in one call. 
 - `awaiting` — printers held (`is_held = 1`) in `FINISHED` or `IDLE` state, waiting for operator sign-off
 - `parts_today` — sum of `parts_per_plate` on `finished` jobs in the rolling 24-hour window (`finished_at >= now - 86400000`)
 
-`printers` is the same shape as `GET /api/printers` (includes `last_parts_per_plate`) plus `last_event_at` — the timestamp of the most recent `printer_events` row for that printer.
+`printers` is the same shape as `GET /api/printers` (includes `last_parts_per_plate`, omits `api_key`, includes `has_api_key`) plus `last_event_at` — the timestamp of the most recent `printer_events` row for that printer.
 
 `active_projects` includes only `status = 'active'` projects, each with a nested `parts` array ordered by `sort_order`, plus three computed stats fields:
 
@@ -625,6 +629,8 @@ All error responses use this shape:
 ### `GET /api/backup`
 
 Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
+
+The exported printer rows include the stored `api_key` for each printer, so a restore can bring the fleet back with working credentials. Unlike the printer and dashboard endpoints, this file contains those keys in plaintext — treat a downloaded backup as secret and store it accordingly.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
