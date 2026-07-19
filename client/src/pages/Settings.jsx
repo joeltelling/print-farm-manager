@@ -38,7 +38,7 @@ const CREDENTIAL_HELP = {
   'elegoo-centauri':  'No API key needed — just the printer\'s IP address, shown on the printer\'s network settings screen.',
   'elegoo-centauri2': 'Enable LAN mode on the printer. The Access Code and Serial Number are shown on the printer\'s network settings screen.',
   'bambu':            'Enable LAN Mode on the printer first. The Access Code is on the printer screen under Settings → WLAN; the Serial Number is under Settings → Device.',
-  'klipper':          'No API key needed — just the IP of the machine running Moonraker. Port 7125 is used automatically.',
+  'klipper':          'No API key needed, just the IP of the machine running Moonraker. Defaults to port 7125; if you\'re running multiple Klipper/Moonraker instances on one host, include the port in the IP field, e.g. 192.168.1.50:7126.',
   'octoprint':        'API Key: in OctoPrint under Settings → API. If OctoPrint isn\'t on port 80 (commonly :5000), include the port in the IP field, e.g. 192.168.1.50:5000.',
 };
 

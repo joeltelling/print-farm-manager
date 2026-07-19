@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-07-16: configurable Moonraker port for the Klipper connector
+
+The Klipper driver hardcoded Moonraker's port as 7125 for every printer, so an operator running multiple Klipper/Moonraker instances behind one host (for example several mainboards bridged through a single Raspberry Pi) had no way to reach any instance but the one on the default port.
+
+Fixed by letting the printer's IP field optionally carry a `host:port` suffix, exactly like the existing OctoPrint driver already does. If no port is given, the driver still defaults to 7125, so every existing Klipper printer and G-code keeps working unchanged with no action required.
+
+Driver-only change: the Moonraker query, upload, and cancel request logic are untouched, only how the target URL is assembled. Implemented from the existing driver contract and covered by mocked tests (default port, custom port, and custom port combined with a stray `http://` prefix); not separately re-validated against real Klipper hardware beyond the existing mocked suite, since the underlying protocol calls did not change.
+
+### Changes
+- `server/drivers/klipper.js`: renamed `PORT` to `DEFAULT_PORT`; `base()` now parses an optional `:port` suffix off the cleaned `ip` field and falls back to `DEFAULT_PORT` when absent.
+- `server/tests/klipper-driver.test.js`: added tests for a custom port and for a custom port combined with a stripped `http://` prefix.
+- `client/src/pages/Settings.jsx`: reworded the Klipper `CREDENTIAL_HELP` text to document the default port and the host:port override.
+- `docs/installation.md`: updated the Klipper credentials table row to mention the host:port override.
+- `docs/driver-authoring.md`: updated the `printer.ip` contract row and the Klipper reference-implementation row to describe the default-plus-override pattern instead of a purely fixed port.
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."

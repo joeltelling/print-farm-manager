@@ -1,4 +1,4 @@
-// Klipper driver — Moonraker REST API (HTTP polling, port 7125)
+// Klipper driver, Moonraker REST API (HTTP polling, default port 7125)
 // Implements the shared driver interface: getStatus, uploadAndPrint, cancelJob, checkIfPrinting
 //
 // Moonraker is the standard API layer for Klipper firmware (Voron, etc.).
@@ -9,12 +9,16 @@ const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 
-const PORT = 7125;
+const DEFAULT_PORT = 7125;
 
 function base(printer) {
   // Strip any accidental protocol prefix or trailing slashes — field expects bare IP.
-  const ip = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  return `http://${ip}:${PORT}`;
+  const cleaned = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  // Optional ":port" suffix lets multiple Moonraker instances share one host.
+  const match = cleaned.match(/^(.+):(\d+)$/);
+  const host = match ? match[1] : cleaned;
+  const port = match ? match[2] : DEFAULT_PORT;
+  return `http://${host}:${port}`;
 }
 
 // ─── Status ─────────────────────────────────────────────────────────────────
