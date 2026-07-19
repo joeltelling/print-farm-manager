@@ -147,6 +147,26 @@ describe('getStatus', () => {
       expect.anything()
     );
   });
+
+  test('uses a custom port when the ip field includes host:port', async () => {
+    const customPortPrinter = { ...fakePrinter, ip: '192.168.1.250:7126' };
+    axios.get.mockResolvedValueOnce(moonrakerResponse('standby'));
+    await klipper.getStatus(customPortPrinter);
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://192.168.1.250:7126/printer/objects/query',
+      expect.anything()
+    );
+  });
+
+  test('strips http:// prefix and honors a custom port together', async () => {
+    const messyCustomPortPrinter = { ...fakePrinter, ip: 'http://192.168.1.250:7126/' };
+    axios.get.mockResolvedValueOnce(moonrakerResponse('standby'));
+    await klipper.getStatus(messyCustomPortPrinter);
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://192.168.1.250:7126/printer/objects/query',
+      expect.anything()
+    );
+  });
 });
 
 // ─── uploadAndPrint ───────────────────────────────────────────────────────────

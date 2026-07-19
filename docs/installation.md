@@ -99,7 +99,7 @@ Before adding printers to the app, gather the following credentials. The app wil
 | **Bambu Lab** | IP address + serial number + access code | Enable **LAN Mode** on the printer first. The access code is on the printer screen under **Settings → WLAN**; the serial number is under **Settings → Device**. The access code changes every time LAN Mode is toggled. |
 | **Elegoo Centauri Carbon** | IP address only | Printer touchscreen: **Settings → Network**. No access code required. |
 | **Elegoo Centauri Carbon 2** | IP address + serial number + access code | Enable LAN mode on the printer. The access code and serial number are shown on the printer's network settings screen. |
-| **Klipper (Voron, etc.)** | IP address of the Klipper host | The IP of the machine running Moonraker (same machine as Klipper). Port 7125 is used automatically. No API key required. |
+| **Klipper (Voron, etc.)** | IP address of the Klipper host | The IP of the machine running Moonraker (same machine as Klipper). Defaults to port 7125; if you run multiple Moonraker instances on one host, include the port in the IP field, e.g. `192.168.1.50:7126`. No API key required. |
 | **OctoPrint** | IP address (with port) + API key | In OctoPrint: **Settings → API** shows the key. If OctoPrint is not on port 80, include the port in the IP field — e.g. `192.168.1.50:5000` (OctoPi commonly uses `:5000`). |
 
 ---

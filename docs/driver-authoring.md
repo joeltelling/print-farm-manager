@@ -56,7 +56,7 @@ Fields your driver can rely on:
 | Field | Meaning |
 |---|---|
 | `printer.id` | Stable numeric ID. Use as the key for any module-level connection Map. |
-| `printer.ip` | Host, possibly with a port (`192.168.1.50:5000`). Never assume port 80 is implied if your protocol uses another port; either document a fixed port (Klipper uses 7125) or accept host:port in this field (OctoPrint pattern). |
+| `printer.ip` | Host, possibly with a port (`192.168.1.50:5000`). Never assume port 80 is implied if your protocol uses another port; either document a fixed port or accept an optional host:port in this field with a sensible default (Klipper defaults to 7125, OctoPrint has no default and always expects the port in the field when it isn't 80). |
 | `printer.api_key` | Whatever secret your protocol needs. The column name is historical: Bambu stores its LAN access code here, Elegoo SDCP and Klipper store `''`. |
 | `printer.serial_number` | Used by protocols that need a device ID (Bambu MQTT topics, CC2). `''` otherwise. |
 | `printer.name` | Operator-facing display name. Use it in log lines. |
@@ -202,7 +202,7 @@ Automated tests with mocked networks catch mapping bugs; they cannot catch a pro
 |---|---|---|
 | `octoprint.js` | Stateless HTTP | The cleanest recent example; synthesized FINISHED detection |
 | `prusa.js` | Stateless HTTP | UPLOAD_CONFLICT handling, pre-delete before upload |
-| `klipper.js` | Stateless HTTP | Fixed non-80 port convention |
+| `klipper.js` | Stateless HTTP | Default non-80 port with host:port override in the ip field |
 | `bambu.js` | Persistent (MQTT) | Connection Map, cached push state, partial-update merging, STOPPED/ERROR disambiguation, optional `deleteFile` |
 | `elegoo-centauri.js` | Persistent (WebSocket) | Request/response correlation over a socket |
 | `elegoo-centauri2.js` | Persistent (MQTT) + chunked HTTP upload | Mixed-transport protocols |
