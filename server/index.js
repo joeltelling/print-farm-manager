@@ -13,6 +13,8 @@ const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
 
+const applySecurityHeaders = require('./security-headers');
+
 const db             = require('./db');
 const PrinterPoller  = require('./poller');
 const JobScheduler   = require('./scheduler');
@@ -34,6 +36,11 @@ const printerJobsRouter  = require('./routes/printer-jobs')(db);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// Security headers (CSP, Permissions-Policy, no X-Powered-By, etc.) — see
+// server/security-headers.js for the directive-by-directive rationale, and
+// server/tests/security-headers.test.js for the regression coverage.
+applySecurityHeaders(app);
 
 app.use(express.json());
 
