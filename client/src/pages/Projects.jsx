@@ -144,7 +144,7 @@ const uploadLabelSx = {
   marginBottom: 3,
 };
 
-function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, projectMaterial, projectColor }) {
+function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, projectMaterial, projectColor, projectGroups, groups }) {
   const [file, setFile]             = useState(null);
   const [partsPerPlate, setPPP]     = useState('');
   const [model, setModel]           = useState('');
@@ -155,22 +155,13 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
   const [modelOptions, setModelOptions] = useState([]);
   const [amsSlots, setAmsSlots]     = useState([]);
   const [amsSlot, setAmsSlot]       = useState('');
-  const [availableGroups, setAvailableGroups] = useState([]);
-  const [selectedGroups, setSelectedGroups]   = useState([]);  // [] = all groups
+  const [selectedGroups, setSelectedGroups]   = useState([]);  // [] = all groups (or inherits project)
   const [requiredMaterial, setRequiredMaterial] = useState('');
   const [requiredColor, setRequiredColor]       = useState('');
 
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(setModelOptions).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!model) { setAvailableGroups([]); setSelectedGroups([]); return; }
-    fetch(`/api/printers/groups?model=${encodeURIComponent(model)}`)
-      .then(r => r.json())
-      .then(groups => { setAvailableGroups(groups); setSelectedGroups([]); })
-      .catch(() => {});
-  }, [model]);
 
   useEffect(() => {
     if (!model) { setAmsSlots([]); setAmsSlot(''); return; }
@@ -394,10 +385,10 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
             </select>
           );
         })()}
-        {availableGroups.length > 0 && (
+        {groups.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: '#475569' }}>Groups:</span>
-            {availableGroups.map(g => (
+            {groups.map(g => (
               <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: selectedGroups.includes(g) ? '#7dd3fc' : '#64748b' }}>
                 <input
                   type="checkbox"
@@ -408,7 +399,11 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
                 {g}
               </label>
             ))}
-            {selectedGroups.length === 0 && <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>all groups</span>}
+            {selectedGroups.length === 0 && (
+              <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
+                {projectGroups?.length > 0 ? `(inherits project: ${projectGroups.join(', ')})` : 'all groups'}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -418,13 +413,12 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
   );
 }
 
-function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors, projectMaterial, projectColor }) {
+function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors, projectMaterial, projectColor, projectGroups, groups }) {
   const [timeDraft, setTimeDraft]         = useState(formatDurationForInput(gc.est_print_secs));
   const [materialDraft, setMaterialDraft] = useState(formatMaterialForInput(gc.material_grams));
   const [parsing, setParsing]             = useState(false);
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState(null);
-  const [availableGroups, setAvailableGroups] = useState([]);
   const [selectedGroups, setSelectedGroups]   = useState(() => {
     try { return gc.allowed_groups ? JSON.parse(gc.allowed_groups) : []; } catch (_) { return []; }
   });
@@ -438,11 +432,6 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
     setReqColor(gc.required_color || '');
     try { setSelectedGroups(gc.allowed_groups ? JSON.parse(gc.allowed_groups) : []); } catch (_) { setSelectedGroups([]); }
   }, [gc.est_print_secs, gc.material_grams, gc.required_material, gc.required_color, gc.allowed_groups]);
-
-  useEffect(() => {
-    fetch(`/api/printers/groups?model=${encodeURIComponent(gc.printer_model)}`)
-      .then(r => r.json()).then(setAvailableGroups).catch(() => {});
-  }, [gc.printer_model]);
 
   function toggleGroup(g) {
     setSelectedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
@@ -596,10 +585,10 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
             </select>
           );
         })()}
-        {availableGroups.length > 0 && (
+        {groups.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: '#475569' }}>Groups:</span>
-            {availableGroups.map(g => (
+            {groups.map(g => (
               <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: selectedGroups.includes(g) ? '#7dd3fc' : '#64748b' }}>
                 <input
                   type="checkbox"
@@ -610,7 +599,11 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
                 {g}
               </label>
             ))}
-            {selectedGroups.length === 0 && <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>all groups</span>}
+            {selectedGroups.length === 0 && (
+              <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
+                {projectGroups?.length > 0 ? `(inherits project: ${projectGroups.join(', ')})` : 'all groups'}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -620,7 +613,7 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
   );
 }
 
-function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamentTypes, filamentColors, projectMaterial, projectColor }) {
+function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamentTypes, filamentColors, projectMaterial, projectColor, projectGroups, groups }) {
   const [have, setHave] = useState(String(part.completed_qty));
   const [need, setNeed] = useState(String(part.target_qty));
   const [saving, setSaving] = useState(false);
@@ -811,6 +804,8 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
               filamentColors={filamentColors}
               projectMaterial={projectMaterial}
               projectColor={projectColor}
+              projectGroups={projectGroups}
+              groups={groups}
             />
           ))}
         </div>
@@ -826,6 +821,8 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
           filamentColors={filamentColors}
           projectMaterial={projectMaterial}
           projectColor={projectColor}
+          projectGroups={projectGroups}
+          groups={groups}
         />
       </div>
 
@@ -905,13 +902,19 @@ export default function Projects() {
   const [dupName,       setDupName]       = useState('');
   const [duplicating,   setDuplicating]   = useState(false);
 
-  // Filament library — fetched once here, passed down to avoid per-gcode-row fetches
+  // Filament library and group registry: fetched once here, passed down to
+  // avoid per-gcode-row fetches. The group registry is model-independent (a
+  // group is a persisted entity, not derived from which printers currently
+  // carry it), so unlike the old per-model /api/printers/groups call this
+  // never needs to re-fetch when a gcode's target model changes.
   const [filamentTypes,  setFilamentTypes]  = useState([]);
   const [filamentColors, setFilamentColors] = useState([]);
+  const [allGroups,      setAllGroups]      = useState([]);
 
   useEffect(() => {
     fetch('/api/filaments/types').then(r => r.json()).then(setFilamentTypes).catch(() => {});
     fetch('/api/filaments/colors').then(r => r.json()).then(setFilamentColors).catch(() => {});
+    fetch('/api/groups').then(r => r.json()).then(groups => setAllGroups(groups.map(g => g.name))).catch(() => {});
   }, []);
 
   // Drag-and-drop reorder state
@@ -1189,6 +1192,15 @@ export default function Projects() {
     await fetchDetail(detailProject.id);
   }
 
+  async function saveProjectGroups(groups) {
+    await fetch(`/api/projects/${detailProject.id}/groups`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowed_groups: groups }),
+    });
+    await fetchDetail(detailProject.id);
+  }
+
   async function saveProjectName() {
     if (renameEscapedRef.current) { renameEscapedRef.current = false; return; }
     const trimmed = projectNameDraft.trim();
@@ -1418,6 +1430,9 @@ export default function Projects() {
   // ─── Detail view ─────────────────────────────────────────────────────────────
   if (!detailProject) return <p style={{ color: '#64748b' }}>Loading…</p>;
 
+  let projectGroups = [];
+  try { projectGroups = detailProject.allowed_groups ? JSON.parse(detailProject.allowed_groups) : []; } catch (_) {}
+
   return (
     <div>
       {toastEl}
@@ -1483,6 +1498,35 @@ export default function Projects() {
               .map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
           </select>
           {(detailProject.required_material || detailProject.required_color) && (
+            <span style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>
+              applies to all gcodes in this project unless overridden per-gcode
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Project-level group defaults */}
+      {allGroups.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Groups:</span>
+          {allGroups.map(g => (
+            <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: projectGroups.includes(g) ? '#7dd3fc' : '#64748b' }}>
+              <input
+                type="checkbox"
+                checked={projectGroups.includes(g)}
+                onChange={() => {
+                  const next = projectGroups.includes(g)
+                    ? projectGroups.filter(x => x !== g)
+                    : [...projectGroups, g];
+                  saveProjectGroups(next);
+                }}
+                style={{ accentColor: '#3b82f6' }}
+              />
+              {g}
+            </label>
+          ))}
+          {projectGroups.length === 0 && <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>all groups</span>}
+          {projectGroups.length > 0 && (
             <span style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>
               applies to all gcodes in this project unless overridden per-gcode
             </span>
@@ -1641,6 +1685,8 @@ export default function Projects() {
                 filamentColors={filamentColors}
                 projectMaterial={detailProject.required_material || ''}
                 projectColor={detailProject.required_color || ''}
+                projectGroups={projectGroups}
+                groups={allGroups}
               />
             )}
           </div>

@@ -29,8 +29,9 @@ module.exports = (db) => {
     // Derive fleet stats from the live printer list
     const printing = printers.filter(p => p.status === 'PRINTING').length;
     const idle     = printers.filter(p => p.status === 'IDLE' && !p.is_held).length;
+    // Keep this condition identical to Fleet.jsx, Dashboard.jsx, Printers.jsx (see CLAUDE.md sync pairs).
     const awaiting = printers.filter(
-      p => p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE')
+      p => p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE' || p.status === 'STOPPED')
     ).length;
 
     // Parts completed in the last 24 hours (sum of parts_per_plate on finished jobs)

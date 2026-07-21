@@ -59,6 +59,24 @@ module.exports = (db, scheduler = null) => {
     res.json(db.prepare('SELECT * FROM projects WHERE id = ?').get(project.id));
   });
 
+  // Set project-level group defaults: cascades to every gcode in this project
+  // that doesn't set its own allowed_groups override (see scheduler.js's
+  // COALESCE(gcodes.allowed_groups, projects.allowed_groups)). Empty selection
+  // stores NULL, never '[]': COALESCE(...) = '[]' would be non-NULL and match
+  // zero printers, silently freezing dispatch for the whole project.
+  router.put('/:id/groups', (req, res) => {
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+    const arr = Array.isArray(req.body?.allowed_groups)
+      ? req.body.allowed_groups.map(s => String(s).trim()).filter(Boolean)
+      : [];
+    const value = arr.length > 0 ? JSON.stringify(arr) : null;
+    db.prepare(`
+      UPDATE projects SET allowed_groups = ?, updated_at = ? WHERE id = ?
+    `).run(value, Date.now(), project.id);
+    res.json(db.prepare('SELECT * FROM projects WHERE id = ?').get(project.id));
+  });
+
   router.put('/:id', (req, res) => {
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
