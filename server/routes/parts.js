@@ -35,7 +35,8 @@ module.exports = (db) => {
       SELECT parts.*, ${ACTIVE_QTY_SQL},
              projects.status            AS project_status,
              projects.required_material AS project_material,
-             projects.required_color    AS project_color
+             projects.required_color    AS project_color,
+             projects.allowed_groups    AS project_allowed_groups
       FROM parts JOIN projects ON projects.id = parts.project_id
       WHERE parts.id = ?
     `).get(req.params.id);
@@ -69,7 +70,9 @@ module.exports = (db) => {
     for (const gc of gcodes) {
       const requiredMaterial = gc.required_material || part.project_material || null;
       const requiredColor    = gc.required_color    || part.project_color    || null;
-      const allowedGroups    = gc.allowed_groups ? JSON.parse(gc.allowed_groups) : null;
+      const allowedGroups    = gc.allowed_groups
+        ? JSON.parse(gc.allowed_groups)
+        : (part.project_allowed_groups ? JSON.parse(part.project_allowed_groups) : null);
 
       const modelPrinters = db.prepare(
         'SELECT * FROM printers WHERE model = ? AND is_active = 1'

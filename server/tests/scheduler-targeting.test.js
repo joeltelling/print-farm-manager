@@ -49,9 +49,11 @@ beforeEach(() => {
  * @param {string|null} opts.gcodeGroups      - JSON string for allowed_groups (null = all)
  * @param {string|null} opts.gcodeMaterial    - required_material on the gcode (null = any)
  * @param {string|null} opts.gcodeColor       - required_color on the gcode (null = any)
+ * @param {string|null} opts.projectGroups    - JSON string for projects.allowed_groups (null = none), used as the fallback when gcodeGroups is null
  */
 function makeDb({ printerGroup = null, printerMaterial = null, printerColor = null,
-                   gcodeGroups = null, gcodeMaterial = null, gcodeColor = null } = {}) {
+                   gcodeGroups = null, gcodeMaterial = null, gcodeColor = null,
+                   projectGroups = null } = {}) {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE printers (
@@ -66,6 +68,7 @@ function makeDb({ printerGroup = null, printerMaterial = null, printerColor = nu
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, status TEXT DEFAULT 'active',
       priority INTEGER DEFAULT 0, required_material TEXT, required_color TEXT,
+      allowed_groups TEXT,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE parts (
@@ -98,8 +101,8 @@ function makeDb({ printerGroup = null, printerMaterial = null, printerColor = nu
   db.prepare(`INSERT INTO printers (name, ip, api_key, model, type, group_name, loaded_material, loaded_color, status, is_held, is_active, created_at)
               VALUES ('P1', '192.168.1.1', 'key', 'mk4s', 'prusa', ?, ?, ?, 'IDLE', 0, 1, ?)`)
     .run(printerGroup, printerMaterial, printerColor, now);
-  db.prepare(`INSERT INTO projects (name, status, priority, created_at, updated_at) VALUES ('Proj', 'active', 0, ?, ?)`)
-    .run(now, now);
+  db.prepare(`INSERT INTO projects (name, status, priority, allowed_groups, created_at, updated_at) VALUES ('Proj', 'active', 0, ?, ?, ?)`)
+    .run(projectGroups, now, now);
   db.prepare(`INSERT INTO parts (project_id, name, target_qty, completed_qty, status, sort_order, created_at, updated_at)
               VALUES (1, 'Part A', 10, 0, 'open', 0, ?, ?)`)
     .run(now, now);
@@ -272,6 +275,60 @@ describe('scheduler — combined group + material + color filtering', () => {
     const jobId = await scheduler._dispatchToPrinter({
       ...printer, group_name: null, loaded_material: null, loaded_color: null,
     });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+});
+
+// ── Project-level group cascade ───────────────────────────────────────────────
+// projects.allowed_groups is the fallback a gcode with no allowed_groups of its
+// own inherits, mirroring the existing required_material/required_color cascade.
+// COALESCE(gcodes.allowed_groups, projects.allowed_groups) means a gcode-level
+// value always wins when present, regardless of what the project has set.
+
+describe('scheduler: project-level group cascade', () => {
+  test('gcode with no allowed_groups inherits the project restriction', async () => {
+    const db = makeDb({ printerGroup: 'Rack A', gcodeGroups: null, projectGroups: JSON.stringify(['Rack A']) });
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, group_name: 'Rack A' });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('printer outside the inherited project restriction is skipped', async () => {
+    const db = makeDb({ printerGroup: 'Rack B', gcodeGroups: null, projectGroups: JSON.stringify(['Rack A']) });
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, group_name: 'Rack B' });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('a gcode-level allowed_groups overrides the project default entirely', async () => {
+    // Printer is in the project's restricted group but NOT in the gcode's:
+    // the gcode-level value must win, not be unioned with the project's.
+    const db = makeDb({
+      printerGroup: 'Rack B', gcodeGroups: JSON.stringify(['Rack B']), projectGroups: JSON.stringify(['Rack A']),
+    });
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, group_name: 'Rack B' });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('a gcode-level allowed_groups excludes a printer the project default would have allowed', async () => {
+    const db = makeDb({
+      printerGroup: 'Rack A', gcodeGroups: JSON.stringify(['Rack B']), projectGroups: JSON.stringify(['Rack A']),
+    });
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, group_name: 'Rack A' });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('neither gcode nor project restricts groups: dispatches to any printer', async () => {
+    const db = makeDb({ printerGroup: 'Rack Z', gcodeGroups: null, projectGroups: null });
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, group_name: 'Rack Z' });
     expect(jobId).not.toBeNull();
     expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
   });

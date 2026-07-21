@@ -58,8 +58,11 @@ class JobScheduler extends EventEmitter {
     });
   }
 
-  // Sweep all currently idle non-held active printers, dispatching in batches of 10.
-  // Each batch waits for all jobs to reach printing (or terminal) before the next batch fires.
+  // Sweep all currently idle non-held active printers. Dispatches in waves that keep
+  // drawing from the ready queue until dispatch_batch_size printers actually have a
+  // job reserved (or the queue runs out): see _sweepInBatches. A printer with no
+  // dispatchable candidate right now doesn't count against the target; the wave
+  // reaches past it to find enough real work to hit the configured concurrency.
   // Called when a project is activated or the server starts.
   sweepIdlePrinters() {
     // Include FINISHED printers with is_held = 0 — this state means the operator
@@ -102,31 +105,58 @@ class JobScheduler extends EventEmitter {
         const setting = this.db.prepare("SELECT value FROM settings WHERE key = 'dispatch_batch_size'").get();
         const batchSize = setting ? Math.max(1, parseInt(setting.value, 10) || 10) : 10;
 
-        for (let i = 0; i < toDispatch.length; i += batchSize) {
-          const batch = toDispatch.slice(i, i + batchSize);
-          console.log(`[scheduler] Dispatching batch ${Math.floor(i / batchSize) + 1} — ${batch.length} printer(s)`);
-
-          // Fire all dispatches in this batch concurrently, collect job IDs
-          const jobIds = (await Promise.all(
-            batch.map(printer =>
-              this._dispatchToPrinter(printer).catch(err => {
+        // Keep drawing from the queue, cheaply skipping any printer with no
+        // dispatchable candidate right now, until batchSize printers actually
+        // have a job reserved, or the queue runs out. _reserveJob is fully
+        // synchronous, so this scan never yields control mid-way: no new
+        // interleaving risk for the per-part ceiling check, which already
+        // relies on that same synchronous-reservation guarantee.
+        const activeJobIds = [];
+        const uploadPromises = [];
+        let consideredCount = 0;
+        while (activeJobIds.length < batchSize && toDispatch.length > 0) {
+          const printer = toDispatch.shift();
+          consideredCount++;
+          let reservation;
+          try {
+            reservation = this._reserveJob(printer);
+          } catch (err) {
+            console.error(`[scheduler] Reservation error for ${printer.name}:`, err);
+            reservation = null;
+          }
+          if (reservation) {
+            activeJobIds.push(reservation.jobId);
+            uploadPromises.push(
+              this._executeUpload(printer, reservation).catch(err => {
                 console.error(`[scheduler] Sweep dispatch error for ${printer.name}:`, err);
                 return null;
               })
-            )
-          )).filter(id => id != null);
-
-          if (jobIds.length > 0) {
-            await this._waitForBatch(jobIds);
+            );
           }
-
-          console.log(`[scheduler] Batch ${Math.floor(i / batchSize) + 1} complete — proceeding to next`);
         }
 
-        // Pick up any printers that were deferred while we were sweeping
-        toDispatch = this._pendingPrinters.splice(0);
-        if (toDispatch.length > 0) {
-          console.log(`[scheduler] Processing ${toDispatch.length} deferred printer(s)`);
+        if (activeJobIds.length > 0) {
+          console.log(`[scheduler] Wave: ${activeJobIds.length}/${batchSize} printer(s) actually dispatching (considered ${consideredCount})`);
+          await this._waitForBatch(activeJobIds);
+        } else if (consideredCount > 0) {
+          console.log(`[scheduler] Wave: none of ${consideredCount} considered printer(s) had a dispatchable candidate`);
+        }
+
+        // Make sure every upload this wave started has settled before starting
+        // the next wave, even if _waitForBatch's own poll already returned:
+        // this just guards against leaving a promise dangling.
+        await Promise.all(uploadPromises);
+
+        // Append, don't replace: toDispatch may still hold printers left over
+        // from this pass that didn't fit because the wave already hit
+        // batchSize. Unlike the old fixed-chunk loop (which always drained
+        // toDispatch fully before reaching this line), this wave can stop
+        // early, so reassigning here would silently drop and starve those
+        // leftover printers.
+        const deferredCount = this._pendingPrinters.length;
+        toDispatch.push(...this._pendingPrinters.splice(0));
+        if (deferredCount > 0) {
+          console.log(`[scheduler] Picked up ${deferredCount} deferred printer(s)`);
         }
       }
     } finally {
@@ -184,7 +214,20 @@ class JobScheduler extends EventEmitter {
 
   // ─── Dispatch ───────────────────────────────────────────────────────────────
 
-  async _dispatchToPrinter(printer) {
+  // Find a dispatchable candidate for this printer and reserve it, synchronously.
+  // Everything here (the held/active-job/upload-lock guards, driver resolution,
+  // candidate selection, the per-part ceiling check, and the file-existence check)
+  // is synchronous (better-sqlite3, fs.existsSync, a synchronous driver-registry
+  // lookup): no network I/O, no await. That is what makes the ceiling check safe to
+  // call for many printers back to back in a tight loop (see _sweepInBatches's wave
+  // loop): each reservation, including its job INSERT, fully completes before the
+  // next one begins, so a concurrent reservation for the same part always sees this
+  // one's already-committed probe when it sums in-progress quantity.
+  //
+  // Returns null if nothing was reserved (nothing to wait on, nothing to upload).
+  // Returns { jobId, candidate, driver, gcodeFullPath } if a job was created as
+  // 'uploading': that INSERT is the dispatch lock; _executeUpload takes it from here.
+  _reserveJob(printer) {
     // Re-read is_held and status from DB — the printer object passed in may be stale
     const fresh = this.db.prepare('SELECT is_held, status FROM printers WHERE id = ?').get(printer.id);
     if (!fresh || fresh.is_held) {
@@ -286,8 +329,8 @@ class JobScheduler extends EventEmitter {
         WHERE parts.status    = 'open'
           AND projects.status = 'active'
           AND gcodes.printer_model = ?
-          AND (gcodes.allowed_groups IS NULL OR EXISTS (
-            SELECT 1 FROM json_each(gcodes.allowed_groups) WHERE value = ?
+          AND (COALESCE(gcodes.allowed_groups, projects.allowed_groups) IS NULL OR EXISTS (
+            SELECT 1 FROM json_each(COALESCE(gcodes.allowed_groups, projects.allowed_groups)) WHERE value = ?
           ))
           AND (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR COALESCE(gcodes.required_material, projects.required_material) = ?)
           AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR COALESCE(gcodes.required_color, projects.required_color) = ?)
@@ -357,6 +400,14 @@ class JobScheduler extends EventEmitter {
       break;
     }
 
+    return { jobId, candidate, driver, gcodeFullPath };
+  }
+
+  // Perform the actual upload for an already-reserved job (see _reserveJob). This is
+  // the only async part of dispatch: real network I/O to the printer.
+  async _executeUpload(printer, reservation) {
+    const { jobId, candidate, driver, gcodeFullPath } = reservation;
+
     // Upload with retries. A transient network timeout (common when many printers
     // start simultaneously) will self-heal. Only after all attempts are exhausted
     // does the printer get held for operator attention.
@@ -422,6 +473,17 @@ class JobScheduler extends EventEmitter {
 
     console.log(`[scheduler] ${printer.name} ← ${candidate.filename}`);
     return jobId;
+  }
+
+  // Reserve-then-upload for a single printer, used by callers that dispatch one
+  // printer at a time outside the wave-fill loop (the organic printerIdle listener,
+  // and _handleFinished's fallback dispatch). Kept async so a synchronous throw
+  // inside _reserveJob still surfaces as a rejected promise, same as before this
+  // method was split; callers here use .catch(...) and rely on that.
+  async _dispatchToPrinter(printer) {
+    const reservation = this._reserveJob(printer);
+    if (!reservation) return null;
+    return this._executeUpload(printer, reservation);
   }
 
   // ─── Finished handling ───────────────────────────────────────────────────────

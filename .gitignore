@@ -5,6 +5,7 @@ server/data/
 dist/
 .env
 *.csv
-.claude/
+.claude/*
+!.claude/skills/
 *.docx
 server/data/backups/

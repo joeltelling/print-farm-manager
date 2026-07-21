@@ -107,6 +107,7 @@ try { db.exec('ALTER TABLE gcodes ADD COLUMN required_material TEXT'); } catch (
 try { db.exec('ALTER TABLE gcodes ADD COLUMN required_color TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE projects ADD COLUMN required_material TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE projects ADD COLUMN required_color TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE projects ADD COLUMN allowed_groups TEXT'); } catch (_) {}
 
 // Printer models — source of truth for which models this farm supports.
 // New installs start empty; operator adds models in Settings.
@@ -146,6 +147,61 @@ try {
   for (const modelId of inUse) {
     const meta = KNOWN_MODEL_META[modelId];
     insertModel.run(modelId, meta?.label || modelId, meta?.connector || 'prusa');
+  }
+} catch (_) {}
+
+// Printer groups: persisted registry, independent of which printers currently
+// carry a given group_name. Without this, a group referenced only by a gcode's
+// or project's allowed_groups (every printer since reassigned elsewhere) used
+// to vanish from every picker with no UI trace, while the scheduler kept
+// silently enforcing the now-unfillable restriction forever. New installs
+// start empty; operator adds groups in Settings, or one is auto-registered the
+// moment it's typed on a printer. Existing installs auto-seed below from every
+// group name already referenced anywhere in the live DB.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS printer_groups (
+    name        TEXT PRIMARY KEY,
+    created_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+
+try {
+  const now = Date.now();
+  const insertGroup = db.prepare(
+    'INSERT OR IGNORE INTO printer_groups (name, created_at) VALUES (?, ?)'
+  );
+
+  for (const row of db.prepare(
+    "SELECT DISTINCT group_name AS g FROM printers WHERE group_name IS NOT NULL AND group_name != ''"
+  ).all()) {
+    insertGroup.run(row.g, now);
+  }
+
+  // Recover any group name that only survives inside a JSON allowed_groups
+  // array (gcodes and, once the ALTER above has run, projects). This is the
+  // exact scenario that used to leave a restriction with no visible name
+  // anywhere to reassign a printer back into. Parsed per row in JS, not one
+  // big SQL json_each UNION: a single malformed value must not abort the
+  // whole seed and silently leave every other row unrecovered.
+  for (const table of ['gcodes', 'projects']) {
+    const hasColumn = db.prepare(`PRAGMA table_info(${table})`).all()
+      .some((c) => c.name === 'allowed_groups');
+    if (!hasColumn) continue;
+
+    for (const row of db.prepare(
+      `SELECT allowed_groups AS ag FROM ${table} WHERE allowed_groups IS NOT NULL`
+    ).all()) {
+      try {
+        const names = JSON.parse(row.ag);
+        if (Array.isArray(names)) {
+          for (const name of names) {
+            if (name) insertGroup.run(name, now);
+          }
+        }
+      } catch (_) {
+        // One row's malformed JSON doesn't block recovering the rest.
+      }
+    }
   }
 } catch (_) {}
 

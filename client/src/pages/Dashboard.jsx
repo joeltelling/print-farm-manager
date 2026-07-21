@@ -35,8 +35,9 @@ const LEGEND_ITEMS = [
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function cellColors(printer) {
-  // Held printer (awaiting operator sign-off) renders as green regardless of status
-  if (printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE')) {
+  // Held printer (awaiting operator sign-off) renders as green regardless of status.
+  // Keep this condition identical to Fleet.jsx and Printers.jsx (see CLAUDE.md sync pairs).
+  if (printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE' || printer.status === 'STOPPED')) {
     return CELL_COLORS.FINISHED;
   }
   return CELL_COLORS[printer.status] || CELL_COLORS.IDLE;
@@ -85,7 +86,7 @@ function RowSummary({ group }) {
     <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
       {ROW_STATUSES.map(s => {
         const count = group.filter(p => {
-          const isAwaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE');
+          const isAwaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE' || p.status === 'STOPPED');
           if (s === 'FINISHED') return isAwaiting;
           return p.status === s && !isAwaiting;
         }).length;
