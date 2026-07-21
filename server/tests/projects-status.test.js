@@ -236,4 +236,21 @@ describe('POST /api/projects/:id/reactivate', () => {
     const open = db.prepare("SELECT * FROM parts WHERE id = ? AND status = 'open'").get(openPartId);
     expect(open).toBeDefined();
   });
+
+  test('reactivates when only an already-open part has remaining qty (no closed part qualifies)', async () => {
+    // Simulate: every closed part is already at target, but a part is open (e.g. newly
+    // added after completion) and still has remaining qty. Reactivate must not report
+    // nothing_to_reopen here — this was the bug where adding a part to a completed
+    // project left the project stuck reporting "all parts at target".
+    db.prepare('UPDATE parts SET completed_qty = target_qty WHERE id = ?').run(closedFullPartId);
+    db.prepare('UPDATE parts SET completed_qty = target_qty WHERE id = ?').run(closedPartialId);
+    // openPartId stays open at 40/100 — real remaining work
+
+    const res = await request(app).post(`/api/projects/${projectId}/reactivate`);
+    expect(res.status).toBe(200);
+    expect(res.body.nothing_to_reopen).toBeFalsy();
+
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
+    expect(project.status).toBe('active');
+  });
 });

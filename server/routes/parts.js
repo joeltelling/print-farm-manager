@@ -5,7 +5,9 @@ const router  = express.Router();
 
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
-module.exports = (db) => {
+// scheduler is optional — only needed at runtime for sweepIdlePrinters when adding a part
+// reactivates a completed project. Tests pass null so there is no live scheduler dependency.
+module.exports = (db, scheduler = null) => {
   const ACTIVE_QTY_SQL = `
     COALESCE((
       SELECT SUM(j.parts_per_plate) FROM jobs j
@@ -137,6 +139,22 @@ module.exports = (db) => {
       INSERT INTO parts (project_id, name, target_qty, sort_order, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(project_id, name, parseInt(target_qty, 10), sortOrder, now, now);
+
+    // A new part always starts open and unmet — reopen a completed project immediately
+    // so it's active by the time the operator uploads G-code for the part, rather than
+    // requiring a separate manual reactivate step. This new part itself is NOT yet
+    // dispatchable — the scheduler's candidate query joins on gcodes, and a brand-new
+    // part has none — so the sweep here can't pick it up. It's still worth doing: other
+    // parts already in this project (or elsewhere) may become dispatchable now that the
+    // project is active again. The part becomes dispatchable, and gets its own sweep,
+    // once G-code is uploaded for it (see POST /api/gcodes/upload).
+    const project = db.prepare('SELECT id, status FROM projects WHERE id = ?').get(project_id);
+    if (project && project.status === 'completed') {
+      db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
+      console.log(`[server] Project ${project.id} reactivated — new part added after completion`);
+      if (scheduler) scheduler.sweepIdlePrinters();
+    }
+
     res.status(201).json(db.prepare('SELECT * FROM parts WHERE id = ?').get(result.lastInsertRowid));
   });
 
@@ -199,6 +217,7 @@ module.exports = (db) => {
       if (project && project.status === 'completed') {
         db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
         console.log(`[parts] Project ${project.id} reopened — part ${part.id} target_qty raised above completed_qty`);
+        if (scheduler) scheduler.sweepIdlePrinters();
       }
     }
 

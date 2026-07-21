@@ -21,8 +21,6 @@ const events         = require('./events');
 const backup         = require('./backup');
 
 const printersRouter     = require('./routes/printers')(db);
-const partsRouter        = require('./routes/parts')(db);
-const gcodesRouter       = require('./routes/gcodes')(db);
 const jobsRouter         = require('./routes/jobs')(db);
 const backupRouter       = require('./routes/backup')(db);
 const dashboardRouter    = require('./routes/dashboard')(db);
@@ -40,8 +38,6 @@ app.use(express.json());
 // API routes
 app.use('/api/printers',        printersRouter);
 app.use('/api/printers/:id/jobs', printerJobsRouter);
-app.use('/api/parts',           partsRouter);
-app.use('/api/gcodes',          gcodesRouter);
 app.use('/api/jobs',            jobsRouter);
 app.use('/api/backup',          backupRouter);
 app.use('/api/dashboard',       dashboardRouter);
@@ -90,8 +86,13 @@ const server = app.listen(PORT, () => {
   const poller    = new PrinterPoller(db);
   const scheduler = new JobScheduler(db, poller);
 
-  // Mount projects router here so it has access to the scheduler for complete/reactivate
+  // Mount projects, parts, and gcodes routers here so they have access to the
+  // scheduler — projects for complete/reactivate, parts for the sweep after adding a
+  // part (or raising target_qty) reactivates a completed project, gcodes for the sweep
+  // after an upload gives a part its first matching G-code.
   app.use('/api/projects', require('./routes/projects')(db, scheduler));
+  app.use('/api/parts',    require('./routes/parts')(db, scheduler));
+  app.use('/api/gcodes',   require('./routes/gcodes')(db, scheduler));
 
   scheduler.start();
   poller.start();

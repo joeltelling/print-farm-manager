@@ -2,6 +2,43 @@
 
 ---
 
+## 2026-07-04 — Fix: adding a part to a completed project couldn't be reactivated
+
+Reported: adding a new part to a project that had already completed left the project stuck — clicking Re-activate returned "All parts are at target qty — adjust quantities first" even though the new part clearly had remaining qty (0/1).
+
+Root cause: `POST /api/parts` never checked the parent project's status when inserting a new part, unlike `PUT /api/parts/:id` which already reactivates a completed project when a part transitions from closed back to open. A brand-new part always starts `open` with `completed_qty = 0`, so it never goes through that transition — the project was left `completed` with a genuinely unmet part sitting in it. `POST /api/projects/:id/reactivate` then only checked for *closed* parts with remaining qty, so it saw nothing eligible and reported `nothing_to_reopen`.
+
+Fixed both ends: `POST /api/parts` now reactivates a `completed` parent project the same way the PUT handler does, and `POST /api/projects/:id/reactivate` now also counts already-open parts with remaining qty (not just closed ones) so it can't wrongly report nothing-to-reopen in any similar situation.
+
+**Follow-up (PR review, round 1):** the initial version reactivated the project but never triggered a dispatch sweep — `POST /api/projects/:id/reactivate` calls `scheduler.sweepIdlePrinters()` after changing project status, but `POST /api/parts` didn't, so a printer already idle when the new part was added would sit unused until some later manual dispatch or unrelated status change. `parts.js` now takes an optional `scheduler` argument (same `(db, scheduler = null)` pattern already used by `projects.js`) and calls `sweepIdlePrinters()` right after reactivating. Since `scheduler` is only constructed inside the `app.listen()` callback, `parts.js` is now mounted there too (alongside `projects.js`) instead of at module load time.
+
+**Follow-up (PR review, round 2):** two more sweep gaps in the same family:
+- A brand-new part's sweep from `POST /api/parts` fires before any G-code exists for it — the scheduler's candidate query joins on `gcodes`, so a part with no G-code yet is never actually dispatchable regardless of the sweep. The real trigger point is the G-code upload, not the part creation. `gcodes.js` now also takes an optional `scheduler` argument and sweeps after a successful `POST /upload`, so an idle printer picks up the part as soon as it has a matching G-code rather than waiting for a manual dispatch or later printer status transition. `gcodes.js` is now mounted inside `app.listen()` too.
+- `PUT /api/parts/:id` has its own, older reactivation branch (raising `target_qty` above `completed_qty` flips a `closed` part back to `open`, and reopens a `completed` parent project) that had the exact same sweep gap the first round fixed for `POST /api/parts`. It now calls `scheduler.sweepIdlePrinters()` too.
+
+Verified live against a running instance for all three trigger points: adding a part, uploading its first G-code, and reopening an existing closed part via raised `target_qty` — each produces a fresh `[scheduler] Sweeping N eligible printer(s)...` log line immediately, distinct from the periodic 15s poll-driven sweep.
+
+**Follow-up (PR review, round 3):**
+- The Add Part flow in the client (`addPart()` in `Projects.jsx`) only called `fetchDetail(selectedId)` after `POST /api/parts`, not `fetchProjects()` — unlike every other status-changing action in this file, which refreshes both. Since adding a part can now flip the parent project from `completed` back to `active` server-side, the cached projects list kept showing "Completed" (with the Re-activate action still available) until some unrelated refresh happened. Fixed to refresh both, matching the existing pattern.
+- The `POST /api/parts` wording in `docs/api.md` and the route comment in `parts.js` said the new part gets "picked up" / is "schedulable immediately" — true of the *project* reactivation, not the *part*, since (per round 2) the scheduler can't dispatch a part with no G-code yet. Reworded both to say the project reactivates immediately, but the part itself only becomes dispatchable once G-code is uploaded for it. The `PUT /api/parts/:id` reopen-existing-part wording was left as-is — that part necessarily already has G-code from before it was closed, so an immediate sweep genuinely can dispatch it.
+
+**Follow-up (re-audit of the whole flow):** re-traced the client end to end and found the identical list-staleness bug on a second, sibling code path: `saveQtys()` (the Details panel's Have/Need editor, used to raise `target_qty` and reopen a closed part) shares the same `onRefresh` prop as `addPart()`, and that prop only ever called `fetchDetail`, never `fetchProjects` — same gap, just reached via a different UI action. Fixed the shared `onRefresh` to refresh both. Also found `docs/web-app.md`'s Projects page section was stale independent of this PR — it described the header status control as a single "context-sensitive action button" and claimed `completed` has "no button", when it's actually a dropdown (`STATUS_MENU` in `Projects.jsx`) with a `Re-activate` option for `completed`, plus `Delete project`/`Mark complete` options the doc didn't mention at all for the other statuses. Corrected, and expanded the Quantities/Upload G-code/Add Part descriptions to reflect the reactivation and sweep behavior from all three rounds above.
+
+Verified all three trigger points again, this time driven through the actual browser UI rather than the API directly: adding a part, uploading its first G-code, and raising `target_qty` via the Details panel's Save button on a `completed` project. Each correctly reactivated the project, produced a fresh sweep log line, and updated the projects list immediately without a manual reload.
+
+### Changes
+- `server/routes/parts.js`: `POST /` reactivates the parent project if it's `completed` and sweeps; `PUT /:id` now also sweeps when its existing reactivation branch fires; reworded the `POST /` comment for accuracy.
+- `server/routes/gcodes.js`: `POST /upload` sweeps for idle printers after a successful upload, via an optional `scheduler` argument.
+- `server/index.js`: `partsRouter` and `gcodesRouter` moved from module-load-time instantiation to inside the `app.listen()` callback, passed `scheduler` like `projectsRouter` already was.
+- `server/routes/projects.js`: `POST /:id/reactivate` also checks for open parts with `completed_qty < target_qty`.
+- `client/src/pages/Projects.jsx`: `addPart()` refreshes `fetchProjects()` alongside `fetchDetail()`; `PartDetailsPanel`'s shared `onRefresh` prop (used by `saveQtys()`, `saveName()`, `deleteGcode()`) does too.
+- `server/tests/parts-sort.test.js`, `server/tests/projects-status.test.js`: added coverage for the reactivation logic.
+- `server/tests/parts-reactivate-sweep.test.js` (new, extended): covers `sweepIdlePrinters()` for both `POST /` and `PUT /:id` in `parts.js`.
+- `server/tests/gcodes-upload-sweep.test.js` (new): covers `sweepIdlePrinters()` for `POST /api/gcodes/upload`.
+- `docs/server.md`: documented the `(db, scheduler)` factory pattern (now covering `gcodes.js` too), why these routers are mounted inside `app.listen()`, and the module-scoped-router testing gotcha.
+- `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
+
+---
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."

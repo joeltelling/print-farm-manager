@@ -97,3 +97,36 @@ describe('POST /api/parts — sort_order assignment', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST /api/parts — reactivates a completed project', () => {
+  test('adding a part to a completed project flips it back to active', async () => {
+    const now = Date.now();
+    const projRow = db.prepare(
+      "INSERT INTO projects (name, status, created_at, updated_at) VALUES ('Done Project', 'completed', ?, ?)"
+    ).run(now, now);
+    const projectId = projRow.lastInsertRowid;
+
+    const res = await request(app)
+      .post('/api/parts')
+      .send({ project_id: projectId, name: 'New Part', target_qty: 1 });
+    expect(res.status).toBe(201);
+
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
+    expect(project.status).toBe('active');
+  });
+
+  test('adding a part to an already-active project leaves it active', async () => {
+    const now = Date.now();
+    const projRow = db.prepare(
+      "INSERT INTO projects (name, status, created_at, updated_at) VALUES ('Active Project', 'active', ?, ?)"
+    ).run(now, now);
+    const projectId = projRow.lastInsertRowid;
+
+    await request(app)
+      .post('/api/parts')
+      .send({ project_id: projectId, name: 'Another Part', target_qty: 1 });
+
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId);
+    expect(project.status).toBe('active');
+  });
+});

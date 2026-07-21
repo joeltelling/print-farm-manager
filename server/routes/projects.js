@@ -165,13 +165,24 @@ module.exports = (db, scheduler = null) => {
       WHERE project_id = ? AND status = 'closed' AND completed_qty < target_qty
     `).all(project.id);
 
-    if (eligible.length === 0) {
+    // Parts that are already open with remaining qty don't need a status flip, but they
+    // do mean there's real work left — e.g. a part added (or reopened by an edit) after
+    // the project completed. Without this, reactivate would wrongly report
+    // nothing_to_reopen and leave the project (and that part's jobs) stuck uncompleted.
+    const openRemaining = db.prepare(`
+      SELECT COUNT(*) AS count FROM parts
+      WHERE project_id = ? AND status = 'open' AND completed_qty < target_qty
+    `).get(project.id).count;
+
+    if (eligible.length === 0 && openRemaining === 0) {
       return res.json({ nothing_to_reopen: true, project });
     }
 
-    const placeholders = eligible.map(() => '?').join(',');
-    db.prepare(`UPDATE parts SET status = 'open', updated_at = ? WHERE id IN (${placeholders})`)
-      .run(now, ...eligible.map(p => p.id));
+    if (eligible.length > 0) {
+      const placeholders = eligible.map(() => '?').join(',');
+      db.prepare(`UPDATE parts SET status = 'open', updated_at = ? WHERE id IN (${placeholders})`)
+        .run(now, ...eligible.map(p => p.id));
+    }
 
     db.prepare("UPDATE projects SET status = 'active', updated_at = ? WHERE id = ?").run(now, project.id);
     console.log(`[server] Project ${project.id} "${project.name}" re-activated — ${eligible.length} part(s) reopened`);

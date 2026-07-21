@@ -1163,7 +1163,10 @@ export default function Projects() {
     });
     setNewPartName(''); setNewPartQty('');
     setAddingPart(false);
-    await fetchDetail(selectedId);
+    // Adding a part can flip the parent project from completed back to active (server-side) —
+    // refresh the list too, same as every other status-changing action, so the cached
+    // projects array doesn't keep showing "Completed" until some unrelated refresh happens.
+    await Promise.all([fetchDetail(selectedId), fetchProjects()]);
     showToast('Part added');
   }
 
@@ -1669,7 +1672,13 @@ export default function Projects() {
               <PartDetailsPanel
                 part={part}
                 gcodes={partGs}
-                onRefresh={() => fetchDetail(selectedId)}
+                // saveQtys() below can reopen a closed part and, server-side, reactivate a
+                // completed project (raising target_qty above completed_qty) — same as
+                // addPart(). Refresh the list too so it doesn't keep showing "Completed"
+                // until some unrelated refresh happens. saveName()/deleteGcode() share this
+                // same onRefresh and never change project status, so the extra fetchProjects()
+                // call there is just a harmless no-op refresh.
+                onRefresh={() => { fetchDetail(selectedId); fetchProjects(); }}
                 onSaved={showToast}
                 onConfirm={confirm}
                 filamentTypes={filamentTypes}

@@ -356,11 +356,15 @@ Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirro
 
 Required: `project_id`, `name`, `target_qty`.
 
+A new part always starts `open` with `completed_qty: 0`. If the parent project's status is `completed`, it's reactivated to `active` immediately (same as `POST /api/projects/:id/reactivate`) without a separate manual reactivate step. A scheduler sweep also runs at this point, but it can't dispatch the new part itself yet — the scheduler's candidate query requires a matching G-code, and a brand-new part has none. The part becomes an actual dispatch candidate once G-code is uploaded for it (see `POST /api/gcodes/upload`, which triggers its own sweep).
+
 ### `PUT /api/parts/:id`
 
 Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`.
 
 **`completed_qty` auto-status:** when `completed_qty` is included in the request body, `status` is recalculated server-side — `closed` if `completed_qty >= target_qty`, `open` otherwise. An explicit `status` field in the body is ignored when `completed_qty` is also present.
+
+**Reactivation:** if this update flips the part from `closed` back to `open` (e.g. raising `target_qty` above `completed_qty`) and the parent project's status is `completed`, the project is reactivated to `active` and the scheduler sweeps for idle printers immediately — same behavior as `POST /api/parts` and `POST /api/projects/:id/reactivate`.
 
 ### `PUT /api/parts/reorder`
 
@@ -441,6 +445,8 @@ Upload a G-code file and create a DB record. `Content-Type: multipart/form-data`
 - `required_material` / `required_color` (optional): overrides the project's defaults for this G-code specifically
 
 Returns `201` with created G-code record. Returns `409` if a G-code for this `(part_id, printer_model)` combination already exists.
+
+A part only becomes a real dispatch candidate once it has at least one matching G-code — the scheduler's candidate query joins on `gcodes`. A successful upload triggers a scheduler sweep immediately, so an idle printer can pick up the part right away instead of waiting for a manual dispatch or the next printer status transition.
 
 ### `PUT /api/gcodes/:id`
 
