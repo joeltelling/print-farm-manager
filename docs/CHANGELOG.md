@@ -23,6 +23,19 @@ Fixed by adding `priority ASC` to the dashboard's active-projects query, matchin
 - `server/tests/dashboard.test.js` (new): covers priority ordering, the `created_at` tiebreaker, and exclusion of non-active projects.
 - `docs/api.md`, `docs/web-app.md`: documented that `active_projects` and the Dashboard's Active Projects panel are ordered by priority, matching the Projects page.
 
+## 2026-07-24: unsliced .3mf uploads are rejected at upload time
+
+Three prints in one day "didn't run" on a live two-P1S farm: dispatch uploaded the file and published the print-start command, the printer sat at Ready to Print, and the job hung in `printing` forever. The files turned out to be project .3mfs saved without slicing: no `Metadata/plate_1.gcode` inside, which is the exact archive entry the Bambu driver's `project_file` command points at. The printer accepts the upload, finds no G-code to print, and ignores the command with no error anywhere. Nothing in the farm could tell the operator why.
+
+The upload endpoint now inspects `.3mf` files (a `.3mf` is a ZIP; the route walks the central directory with ~30 lines of buffer parsing, no new dependency, nothing extracted) and rejects with a `400` unless `Metadata/plate_1.gcode` is present. Two distinct messages: a file with no plate G-code at all gets "Slice Plate first, then File > Export > Export plate sliced file", and a file whose only sliced plate is not plate 1 gets told to export just that plate. The Projects upload form already renders upload errors inline, so the operator sees the explanation at the moment of upload instead of a silent zombie job an hour later. Non-`.3mf` uploads (Prusa/Klipper `.gcode`/`.bgcode`) are not inspected.
+
+### Changes
+- `server/routes/gcodes.js`: `listZipEntryNames` (EOCD + central directory walk, ZIP64 detected and treated as unparseable) and `validateSliced3mf`; POST /upload rejects invalid `.3mf` files with an instructive `400` and deletes the file from disk, extension check case-insensitive.
+- `server/tests/gcodes-3mf-validation.test.js`: new suite: sliced accepted, unsliced rejected, wrong-plate rejected, non-ZIP rejected, disk cleanup on rejection, non-.3mf uploads unaffected, case-insensitivity.
+- `server/tests/helpers/build-zip.js`: minimal stored-ZIP builder shared by test suites.
+- `server/tests/gcodes.test.js`: `makeTempGcode` now writes a valid sliced archive for `.3mf` names so the ams_slot tests pass the new validation.
+- `docs/api.md`, `docs/web-app.md`: validation documented on the upload endpoint and the Projects upload form.
+
 ## 2026-07-04: fix adding a part to a completed project couldn't be reactivated
 
 Reported: adding a new part to a project that had already completed left the project stuck, clicking Re-activate returned "All parts are at target qty, adjust quantities first" even though the new part clearly had remaining qty (0/1).
@@ -60,6 +73,7 @@ Verified all three trigger points again, this time driven through the actual bro
 - `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
 
 ---
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."
