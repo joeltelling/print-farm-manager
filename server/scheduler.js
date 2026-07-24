@@ -449,7 +449,16 @@ class JobScheduler extends EventEmitter {
       // the upload as a success so the job is tracked correctly.
       const isActuallyPrinting = await driver.checkIfPrinting(printer);
       if (isActuallyPrinting) {
-        this.db.prepare(`UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ?`).run(Date.now(), jobId);
+        // Guard on 'uploading': the operator may have force-cancelled this job while
+        // the upload retried. A cancelled job must stay cancelled, not come back as
+        // 'printing' from a stale in-flight dispatch.
+        const recovered = this.db.prepare(
+          `UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ? AND status = 'uploading'`
+        ).run(Date.now(), jobId);
+        if (recovered.changes === 0) {
+          console.log(`[scheduler] ${printer.name} job ${jobId} was cancelled during upload, leaving it cancelled`);
+          return null;
+        }
         console.log(`[scheduler] ${printer.name} upload appeared to fail but printer is printing — job ${jobId} recovered`);
         return jobId;
       }
@@ -467,9 +476,15 @@ class JobScheduler extends EventEmitter {
       return null;
     }
 
-    this.db.prepare(`
-      UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ?
+    // Same guard as the recovery path above: if the operator force-cancelled the
+    // job while the file was transferring, do not resurrect it to 'printing'.
+    const started = this.db.prepare(`
+      UPDATE jobs SET status = 'printing', started_at = ? WHERE id = ? AND status = 'uploading'
     `).run(Date.now(), jobId);
+    if (started.changes === 0) {
+      console.log(`[scheduler] ${printer.name} job ${jobId} was cancelled during upload, leaving it cancelled`);
+      return null;
+    }
 
     console.log(`[scheduler] ${printer.name} ← ${candidate.filename}`);
     return jobId;
