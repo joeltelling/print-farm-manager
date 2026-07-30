@@ -1,4 +1,4 @@
-// Unit tests for the scheduler sweep triggered by POST /api/gcodes/upload — a part only
+// Unit tests for the scheduler sweep triggered by POST /api/gcodes/upload. A part only
 // becomes a real dispatch candidate once it has a matching gcodes row (the scheduler's
 // candidate query joins on it), so the sweep on the part/project reactivation paths alone
 // can't pick up a brand-new part until its first G-code is uploaded.
@@ -80,7 +80,7 @@ afterAll(() => {
   }
 });
 
-describe('POST /api/gcodes/upload — sweeps for idle printers', () => {
+describe('POST /api/gcodes/upload: sweeps for idle printers', () => {
   test('calls sweepIdlePrinters after a successful upload', async () => {
     const sweepIdlePrinters = jest.fn();
     const app = buildApp({ sweepIdlePrinters });
@@ -106,7 +106,7 @@ describe('POST /api/gcodes/upload — sweeps for idle printers', () => {
     const res = await request(app)
       .post('/api/gcodes/upload')
       .field('part_id', '1')
-      // parts_per_plate omitted — should 400 before ever reaching the sweep
+      // parts_per_plate omitted, should 400 before ever reaching the sweep
       .field('printer_model', 'mk4s')
       .attach('file', tmp);
 

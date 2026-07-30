@@ -98,7 +98,7 @@ describe('POST /api/parts — sort_order assignment', () => {
   });
 });
 
-describe('POST /api/parts — reactivates a completed project', () => {
+describe('POST /api/parts: reactivates a completed project', () => {
   test('adding a part to a completed project flips it back to active', async () => {
     const now = Date.now();
     const projRow = db.prepare(

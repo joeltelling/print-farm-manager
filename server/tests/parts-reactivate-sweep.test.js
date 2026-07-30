@@ -24,7 +24,7 @@ function seedProject(status) {
   return row.lastInsertRowid;
 }
 
-// A closed part at target, belonging to the given project — the fixture for PUT
+// A closed part at target, belonging to the given project: the fixture for PUT
 // /api/parts/:id reopen tests (raising target_qty above completed_qty).
 function seedClosedPart(projectId) {
   const now = Date.now();
@@ -83,7 +83,7 @@ beforeEach(() => {
   `);
 });
 
-describe('POST /api/parts — sweeps for idle printers on reactivation', () => {
+describe('POST /api/parts: sweeps for idle printers on reactivation', () => {
   test('calls sweepIdlePrinters when adding a part reactivates a completed project', async () => {
     const sweepIdlePrinters = jest.fn();
     const app = buildApp({ sweepIdlePrinters });
@@ -124,14 +124,14 @@ describe('POST /api/parts — sweeps for idle printers on reactivation', () => {
   });
 });
 
-describe('PUT /api/parts/:id — sweeps for idle printers when reopening reactivates a project', () => {
+describe('PUT /api/parts/:id: sweeps for idle printers when reopening reactivates a project', () => {
   test('calls sweepIdlePrinters when raising target_qty reactivates a completed project', async () => {
     const sweepIdlePrinters = jest.fn();
     const app = buildApp({ sweepIdlePrinters });
     const projectId = seedProject('completed');
     const partId = seedClosedPart(projectId);
 
-    // Operator raises target_qty above completed_qty — the client sends both fields
+    // Operator raises target_qty above completed_qty; the client sends both fields
     // together (see saveQtys() in client/src/pages/Projects.jsx).
     const res = await request(app)
       .put(`/api/parts/${partId}`)
@@ -150,7 +150,7 @@ describe('PUT /api/parts/:id — sweeps for idle printers when reopening reactiv
     const projectId = seedProject('completed');
     const partId = seedClosedPart(projectId);
 
-    // completed_qty still meets target — part stays closed, project stays completed.
+    // completed_qty still meets target, part stays closed, project stays completed.
     const res = await request(app)
       .put(`/api/parts/${partId}`)
       .send({ name: 'Renamed, still closed' });

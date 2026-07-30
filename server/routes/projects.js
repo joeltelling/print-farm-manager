@@ -166,7 +166,7 @@ module.exports = (db, scheduler = null) => {
     `).all(project.id);
 
     // Parts that are already open with remaining qty don't need a status flip, but they
-    // do mean there's real work left — e.g. a part added (or reopened by an edit) after
+    // do mean there's real work left: e.g. a part added (or reopened by an edit) after
     // the project completed. Without this, reactivate would wrongly report
     // nothing_to_reopen and leave the project (and that part's jobs) stuck uncompleted.
     const openRemaining = db.prepare(`

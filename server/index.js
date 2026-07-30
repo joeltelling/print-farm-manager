@@ -87,7 +87,7 @@ const server = app.listen(PORT, () => {
   const scheduler = new JobScheduler(db, poller);
 
   // Mount projects, parts, and gcodes routers here so they have access to the
-  // scheduler — projects for complete/reactivate, parts for the sweep after adding a
+  // scheduler: projects for complete/reactivate, parts for the sweep after adding a
   // part (or raising target_qty) reactivates a completed project, gcodes for the sweep
   // after an upload gives a part its first matching G-code.
   app.use('/api/projects', require('./routes/projects')(db, scheduler));

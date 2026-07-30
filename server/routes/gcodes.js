@@ -90,7 +90,7 @@ function normalizeMaterialGrams(raw) {
   return null;
 }
 
-// scheduler is optional — only needed at runtime for sweepIdlePrinters after an upload
+// scheduler is optional, only needed at runtime for sweepIdlePrinters after an upload
 // makes a part schedulable. Tests pass null so there is no live scheduler dependency.
 module.exports = (db, scheduler = null) => {
   // GET /api/gcodes — list, optionally filtered by part_id
@@ -175,7 +175,7 @@ module.exports = (db, scheduler = null) => {
       Date.now()
     );
 
-    // A part only becomes a real dispatch candidate once it has a matching G-code — the
+    // A part only becomes a real dispatch candidate once it has a matching G-code: the
     // scheduler's candidate query joins on gcodes. Sweep now so an idle printer picks up
     // work immediately instead of waiting for a manual dispatch or the next printer status
     // transition. Safe to call unconditionally: sweepIdlePrinters already filters to active
