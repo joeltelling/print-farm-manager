@@ -78,6 +78,68 @@ function normalizePrintTime(raw) {
   return found ? total : null;
 }
 
+// List the entry names of a ZIP archive (a .3mf is a ZIP) by walking the central
+// directory. Plain buffer parsing, no dependency. Returns an array of names,
+// or null when the buffer is not a parseable ZIP.
+// ZIP layout reference: APPNOTE.TXT (PKWARE), sections 4.3.12 and 4.3.16.
+const ZIP_EOCD_SIG    = 0x06054b50; // end of central directory
+const ZIP_CENTRAL_SIG = 0x02014b50; // central directory file header
+function listZipEntryNames(buf) {
+  // EOCD is at the very end, preceded by a comment of up to 65535 bytes.
+  const scanFloor = Math.max(0, buf.length - 22 - 65535);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= scanFloor; i--) {
+    if (buf.readUInt32LE(i) === ZIP_EOCD_SIG) { eocd = i; break; }
+  }
+  if (eocd === -1) return null;
+
+  const totalEntries = buf.readUInt16LE(eocd + 10);
+  const cdOffset     = buf.readUInt32LE(eocd + 16);
+  // ZIP64 markers: no 3MF slicer output comes close to these limits, but if one
+  // ever does, report "unparseable" rather than misreading offsets.
+  if (totalEntries === 0xffff || cdOffset === 0xffffffff) return null;
+
+  const names = [];
+  let pos = cdOffset;
+  for (let n = 0; n < totalEntries; n++) {
+    if (pos + 46 > buf.length || buf.readUInt32LE(pos) !== ZIP_CENTRAL_SIG) return null;
+    const nameLen    = buf.readUInt16LE(pos + 28);
+    const extraLen   = buf.readUInt16LE(pos + 30);
+    const commentLen = buf.readUInt16LE(pos + 32);
+    if (pos + 46 + nameLen > buf.length) return null;
+    names.push(buf.toString('utf8', pos + 46, pos + 46 + nameLen));
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return names;
+}
+
+// The Bambu driver prints exactly Metadata/plate_1.gcode from the uploaded .3mf
+// (see server/drivers/bambu.js, project_file payload). A project file saved
+// without slicing has no gcode entry at all, and the printer ignores the print
+// command silently: the job sits in 'printing' forever against an idle machine.
+// Catch that at upload time with an instructive error instead.
+// Returns null when the file is fine, or an error string.
+function validateSliced3mf(filePath) {
+  let names;
+  try {
+    names = listZipEntryNames(fs.readFileSync(filePath));
+  } catch (_) {
+    names = null;
+  }
+  if (names === null) {
+    return 'This file is not a readable .3mf archive. Export it again from your slicer.';
+  }
+  if (names.includes('Metadata/plate_1.gcode')) return null;
+
+  const otherPlate = names.find(n => /^Metadata\/plate_\d+\.gcode$/.test(n));
+  if (otherPlate) {
+    return `This .3mf contains ${otherPlate.replace('Metadata/', '')} but the farm prints plate_1. ` +
+           'In your slicer, export just the sliced plate (it becomes plate 1 in the exported file).';
+  }
+  return 'This .3mf contains no sliced G-code, so the printer would silently ignore it. ' +
+         'In Bambu Studio / Orca Slicer: Slice Plate first, then File > Export > Export plate sliced file.';
+}
+
 // Accepts: bare number (grams), "45g", "45.5 grams", "1.2kg", "1.2 kilograms"
 function normalizeMaterialGrams(raw) {
   if (!raw && raw !== 0) return null;
@@ -135,6 +197,14 @@ module.exports = (db, scheduler = null) => {
     if (!db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(printer_model)) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: `Unknown model "${printer_model}". Add it in Settings → Printer Models first.` });
+    }
+
+    if (path.extname(req.file.originalname).toLowerCase() === '.3mf') {
+      const sliceError = validateSliced3mf(req.file.path);
+      if (sliceError) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: sliceError });
+      }
     }
 
     // Enforce uniqueness on (part_id, printer_model) at app layer
