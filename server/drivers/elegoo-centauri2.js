@@ -392,4 +392,4 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, dropConnection };

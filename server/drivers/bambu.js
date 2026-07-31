@@ -101,6 +101,10 @@ function getOrCreateConnection(printer) {
   return conn;
 }
 
+// Close and forget the cached MQTT connection for a printer. The next getStatus
+// call recreates it from the printer row it is given, so credential or address
+// edits take effect without a server restart. Also the only way to stop the
+// client's auto-reconnect loop once a printer row is deleted or decommissioned.
 function dropConnection(printerId) {
   const conn = connections.get(printerId);
   if (conn) {
@@ -382,4 +386,4 @@ async function checkIfPrinting(printer) {
   return status === 'PRINTING' || status === 'PAUSED';
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile, dropConnection };

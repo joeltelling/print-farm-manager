@@ -23,6 +23,24 @@ Fixed by adding `priority ASC` to the dashboard's active-projects query, matchin
 - `server/tests/dashboard.test.js` (new): covers priority ordering, the `created_at` tiebreaker, and exclusion of non-active projects.
 - `docs/api.md`, `docs/web-app.md`: documented that `active_projects` and the Dashboard's Active Projects panel are ordered by priority, matching the Projects page.
 
+## 2026-07-24: printer edits now reach the driver without a server restart
+
+Reported from a live two-printer Bambu farm. The operator added a P1S with a mistyped access code, then corrected the code on the Settings page, and the printer stayed OFFLINE anyway: the Bambu driver's cached MQTT client kept retrying auth with the original wrong code, because nothing ever told the driver the row had changed. Connection-relevant edits only took effect after a full server restart. The same gap had a second, sneakier symptom on the same farm: a duplicate printer row that was decommissioned (and could have been deleted) left behind a ghost MQTT client that reconnected forever, and since a Bambu printer accepts a single LAN client, the ghost and the real entry kicked each other offline in a loop that looked like a flaky printer.
+
+Persistent-connection drivers (bambu, elegoo-centauri, elegoo-centauri2) keep a module-level Map of `printer.id` to a live client that auto-reconnects with the credentials it was created with. The fix is a `dropConnection` contract: each persistent driver exports its existing internal drop helper, the registry exposes `dropConnection(type, printerId)` (a no-op for stateless drivers and never force-loads a lazy driver), and the printer routes call it whenever `ip`, `api_key`, `serial_number`, or `type` changes on PUT, and on DELETE and all three decommission paths. The next poll recreates the connection from the current row.
+
+Validated on hardware: reproduced the wrong-access-code symptom on a real P1S, applied the fix, and confirmed the corrected code connected on the next poll with no restart.
+
+### Changes
+- `server/drivers/bambu.js`: export `dropConnection` (already implemented, previously unreachable).
+- `server/drivers/elegoo-centauri.js`, `server/drivers/elegoo-centauri2.js`: export their existing `dropConnection` helpers.
+- `server/drivers/index.js`: registry-level `dropConnection(type, printerId)`; tracks loaded drivers so dropping never triggers a lazy require.
+- `server/routes/printers.js`: PUT drops the cached connection when a connection-relevant field changes (api_key compared against the request body, since it is deliberately excluded from event logging); DELETE, `decommission`, `complete-and-decommission`, and `mark-job-failure` always drop it.
+- `server/tests/bambu-driver.test.js`: 3 new tests (client ended, reconnect uses fresh credentials, no-op for unknown id).
+- `server/tests/printers-connection-drop.test.js`: new suite covering every route path that must (and must not) drop, plus the registry helper's no-op guarantees.
+- `docs/driver-authoring.md`: `dropConnection` added to the optional exports contract.
+- `docs/api.md`: connection-drop behavior noted on PUT and DELETE.
+
 ## 2026-07-04: fix adding a part to a completed project couldn't be reactivated
 
 Reported: adding a new part to a project that had already completed left the project stuck, clicking Re-activate returned "All parts are at target qty, adjust quantities first" even though the new part clearly had remaining qty (0/1).
@@ -60,6 +78,7 @@ Verified all three trigger points again, this time driven through the actual bro
 - `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
 
 ---
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."

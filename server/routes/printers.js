@@ -4,6 +4,7 @@ const Papa = require('papaparse');
 const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
+const { dropConnection } = require('../drivers');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -218,6 +219,23 @@ module.exports = (db) => {
         }
       }
 
+      // If anything the driver connects with changed, drop the cached connection so
+      // the next poll reconnects with the new settings. Persistent drivers otherwise
+      // keep retrying with the values they were created with until a server restart.
+      // api_key is checked from the body (COALESCE semantics: null/omitted keeps the
+      // old value) because it is deliberately absent from FIELD_LABELS: logging an
+      // access code change would write the secret into the event history.
+      const connectionChanged =
+        after.ip            !== printer.ip ||
+        after.serial_number !== printer.serial_number ||
+        after.type          !== printer.type ||
+        (api_key != null && api_key !== printer.api_key);
+      if (connectionChanged) {
+        // printer.type, not after.type: the cached connection lives under the old driver.
+        dropConnection(printer.type, printer.id);
+        console.log(`[printers] ${after.name} connection settings changed, dropped cached driver connection`);
+      }
+
       res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id));
     } catch (err) {
       if (err.message.includes('UNIQUE')) {
@@ -232,6 +250,8 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     db.prepare('DELETE FROM printers WHERE id = ?').run(req.params.id);
+    // The row is gone; without this the driver's client would auto-reconnect forever.
+    dropConnection(printer.type, printer.id);
     res.json({ success: true });
   });
 
@@ -242,6 +262,10 @@ module.exports = (db) => {
     const now = Date.now();
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ? WHERE id = ?').run(now, printer.id);
     events.insert(printer.id, 'decommission', req.body?.note ?? null);
+    // The poller skips inactive printers, but a persistent driver client would keep
+    // auto-reconnecting on its own. On Bambu that steals the printer's single LAN
+    // slot from any replacement row pointed at the same machine.
+    dropConnection(printer.type, printer.id);
     console.log(`[printers] ${printer.name} decommissioned`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
   });
@@ -323,6 +347,7 @@ module.exports = (db) => {
     const decommNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, is_held = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, decommNote, printer.id);
     events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print — taken offline for maintenance');
+    dropConnection(printer.type, printer.id);
     console.log(`[printers] ${printer.name} decommissioned after confirmed good print`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
   });
@@ -378,6 +403,7 @@ module.exports = (db) => {
       const noJobNote = req.body?.note ?? null;
       db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, noJobNote, printer.id);
       events.insert(printer.id, 'job_failed', noJobNote ?? 'No tracked job — printer decommissioned for investigation');
+      dropConnection(printer.type, printer.id);
       console.log(`[printers] ${printer.name} decommissioned (no tracked job to mark failed)`);
       return res.json({ success: true, job_id: null });
     }
@@ -418,6 +444,7 @@ module.exports = (db) => {
       ? `Job ${job.id} — part: ${failedPart?.name ?? 'unknown'} — ${failNote}`
       : `Job ${job.id} — part: ${failedPart?.name ?? 'unknown'}`;
     events.insert(printer.id, 'job_failed', eventNote);
+    dropConnection(printer.type, printer.id);
 
     console.log(`[printers] Job ${job.id} marked failed — ${printer.name} decommissioned pending investigation`);
     res.json({ success: true, job_id: job.id });
