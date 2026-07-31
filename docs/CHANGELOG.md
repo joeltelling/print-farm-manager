@@ -23,6 +23,22 @@ Fixed by adding `priority ASC` to the dashboard's active-projects query, matchin
 - `server/tests/dashboard.test.js` (new): covers priority ordering, the `created_at` tiebreaker, and exclusion of non-active projects.
 - `docs/api.md`, `docs/web-app.md`: documented that `active_projects` and the Dashboard's Active Projects panel are ordered by priority, matching the Projects page.
 
+## 2026-07-24: stuck uploading/printing jobs can be force-cancelled from the Jobs page
+
+Reported from a live two-printer Bambu farm. A dispatch uploaded a file and published the print-start command, but the printer (latched on a previous FINISH state) silently never started it. The job row sat in `printing` forever against a machine that was not printing anything. That zombie row blocked part deletion (parts refuse to delete with an active job) and had no exit: the Jobs page cancel action only accepted `queued` jobs, and the only endpoint that could touch an active job, `mark-job-failure`, decommissions the printer as a side effect. The operator's actual fix was hand-editing the database.
+
+`DELETE /api/jobs/:id` now accepts `?force=true` to cancel an `uploading` or `printing` job. The scope is deliberately tiny: the job row becomes `cancelled` with `finished_at` stamped, and nothing else happens. No `completed_qty` credit (an active job has credited nothing yet), no hold release (holds are resolved through Fleet's Set Ready / Bad Print), no printer contact (a physically running print is stopped at the printer or from Fleet). The Jobs page shows a "Force Cancel" button on uploading/printing rows, with a danger confirm that says exactly that. Rows displaying as "Awaiting Sign-off" keep no cancel button: resolving a held printer by cancelling its job would bypass the operator sign-off flow.
+
+One interaction needed guarding: the scheduler marks a job `printing` after its upload settles. If the operator force-cancelled during the transfer (uploads retry for many seconds), that write would have resurrected the cancelled job. Both post-upload writes (normal completion and the checkIfPrinting recovery path) now update only `WHERE status = 'uploading'` and treat zero changed rows as "leave it cancelled".
+
+### Changes
+- `server/routes/jobs.js`: `force` query param on DELETE; `uploading`/`printing` become cancellable with `finished_at` stamped; the 409 for other statuses hints at force; queued path byte-for-byte unchanged.
+- `server/scheduler.js` (`_executeUpload`): both status-to-printing writes guard on `status = 'uploading'` and return null when the job was cancelled mid-upload; the recovery path no longer holds the printer in that case.
+- `client/src/pages/Jobs.jsx`: "Force Cancel" on uploading/printing rows (hidden for Awaiting Sign-off), distinct danger confirm, error toast on failed cancels.
+- `server/tests/jobs-cancel.test.js`: new suite covering both modes, part-count and hold invariants, and 409/404 semantics.
+- `server/tests/scheduler-file.test.js`: 2 new tests proving a mid-upload cancel survives both post-upload write paths.
+- `docs/api.md`, `docs/web-app.md`: endpoint and Jobs page behavior documented.
+
 ## 2026-07-04: fix adding a part to a completed project couldn't be reactivated
 
 Reported: adding a new part to a project that had already completed left the project stuck, clicking Re-activate returned "All parts are at target qty, adjust quantities first" even though the new part clearly had remaining qty (0/1).
@@ -60,6 +76,7 @@ Verified all three trigger points again, this time driven through the actual bro
 - `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
 
 ---
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."
