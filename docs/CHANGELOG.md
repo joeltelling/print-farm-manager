@@ -23,6 +23,37 @@ Fixed by adding `priority ASC` to the dashboard's active-projects query, matchin
 - `server/tests/dashboard.test.js` (new): covers priority ordering, the `created_at` tiebreaker, and exclusion of non-active projects.
 - `docs/api.md`, `docs/web-app.md`: documented that `active_projects` and the Dashboard's Active Projects panel are ordered by priority, matching the Projects page.
 
+---
+
+## 2026-07-04 — Add security response headers via helmet
+
+Ran an OWASP ZAP baseline scan against the running container (0 High findings, but 2 Medium: missing CSP, missing anti-clickjacking header) plus several Low findings (`X-Content-Type-Options` missing, `X-Powered-By` leaking Express, `Permissions-Policy` missing).
+
+Added `helmet` and configured it deliberately rather than taking its defaults, since this app relies on patterns helmet's strict defaults would otherwise break:
+- `style-src` allows `'unsafe-inline'` — every page in `client/src` uses React's `style={{...}}` prop, which renders as inline `style=""` attributes. Blocking that would break the entire UI's styling, not a few components.
+- `style-src`/`font-src` allow `fonts.googleapis.com`/`fonts.gstatic.com` for the Inter/Fira Code font import in `client/src/index.css`.
+- `crossOriginEmbedderPolicy` is disabled — Google Fonts doesn't send the CORP header `COEP: require-corp` needs, so leaving helmet's default on would have silently broken font loading. This app has no need for cross-origin isolation (no `SharedArrayBuffer` usage).
+- `hsts` is disabled — this app is served over plain HTTP on the LAN (see README); browsers ignore `Strict-Transport-Security` entirely when it's not delivered over HTTPS, so sending it is just misleading noise.
+- `upgradeInsecureRequests` is explicitly disabled (`null`) — Helmet's CSP defaults include this directive unless told otherwise. Left on, a browser enforcing it could try to upgrade same-origin asset/API requests to HTTPS on the documented plain-HTTP LAN deployment, which nothing here serves, breaking the app. (Caught in PR review — the initial version of this change missed it.)
+- `Permissions-Policy` isn't part of helmet's maintained defaults (removed for spec churn), so it's set directly via a small custom middleware, denying geolocation/camera/microphone/payment/usb — none of which this app uses.
+
+Re-scanned after the change: 0 Fail, down from 9 to 5 Warn. The remaining 5 are either informational, the deliberate `style-src unsafe-inline`/COEP tradeoffs documented above, or a pre-existing false positive (ZAP flags the placeholder example IPs `192.168.1.50:5000`/`192.168.1.100` in the Add Printer form's help text as a "private IP disclosure" — they're placeholder text, not real infrastructure).
+
+### Changes
+- `package.json`: added `helmet` (`^8.2.0`).
+- `server/index.js`: `app.use(helmet({...}))` with the CSP/COEP/HSTS/upgrade-insecure-requests configuration above, mounted first; a small custom middleware sets `Permissions-Policy`.
+
+Verified in a `node:22-bookworm-slim` container: full suite still 381/381 passing. Verified in a rebuilt Docker container via the browser: no console errors, Inter/Fira Code fonts confirmed loaded (`document.fonts`), all inline-styled UI intact, `upgrade-insecure-requests` confirmed absent from the emitted CSP header.
+
+**Follow-up (PR review):** none of the emitted headers had regression coverage — the existing supertest tests all build route-local `express()` apps, and `server/index.js` can't be required directly in a test (it calls `app.listen()` and exits if `client/dist` isn't built). Moved the Helmet/CSP/Permissions-Policy setup out of `server/index.js` into `server/security-headers.js` (exports `(app) => { ... }`, same factory-style pattern used elsewhere in `server/`), so it can be mounted on a bare `express()` app in a test without booting the whole server. Added `server/tests/security-headers.test.js` asserting: `upgrade-insecure-requests` is absent from the CSP, the CSP's `default-src`/`style-src`/`font-src`/`frame-ancestors` match the documented directives, `Strict-Transport-Security` and `X-Powered-By` are both absent, and `Permissions-Policy` denies geolocation/camera/microphone/payment/usb.
+
+### Changes (follow-up)
+- `server/security-headers.js` (new): the Helmet/CSP config and the `Permissions-Policy` middleware, extracted from `server/index.js` into an exported `(app) => void` factory.
+- `server/index.js`: now calls `applySecurityHeaders(app)` instead of inlining the config.
+- `server/tests/security-headers.test.js` (new): regression coverage for the emitted headers, per the discussion above.
+
+---
+
 ## 2026-07-04: fix adding a part to a completed project couldn't be reactivated
 
 Reported: adding a new part to a project that had already completed left the project stuck, clicking Re-activate returned "All parts are at target qty, adjust quantities first" even though the new part clearly had remaining qty (0/1).
