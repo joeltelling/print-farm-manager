@@ -69,7 +69,7 @@ TV-optimized command center intended to be shown full-screen on a large monitor 
 | Header | Branding, fleet utilization % (printing / total), live HH:MM:SS clock and date |
 | Hero stat cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) — large tabular numerals |
 | Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend |
-| Active Projects | All active projects with **all parts** listed — per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
+| Active Projects | All active projects, ordered by dispatch priority (same order as the Projects page), with **all parts** listed: per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
 | Needs Attention | Every printer requiring a human, sorted by priority: AWAITING → ERROR → STOPPED → PAUSED → OFFLINE, then longest-waiting first. Each row shows a reason badge, printer name, and wait time derived from `last_event_at`. Empty state renders a green "✓ All clear" badge. |
 
 The bottom row is a 2-column grid (`2fr 1fr`): Active Projects takes two-thirds, Needs Attention takes one-third on the right. Recent Activity is no longer rendered on the dashboard — finished/failed jobs are listed in detail on the Jobs page.
@@ -231,15 +231,16 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 Primary operator screen for setting up and launching print runs.
 
 **List view (default):**
-- All projects with name and status badge, click to open detail
+- Only `active` projects show by default, ordered by dispatch priority (drag the ⠿ handle to reorder → `PUT /api/projects/reorder`). `draft`, `paused`, and `completed` projects are each hidden behind their own "Show X (count)" checkbox above the list, so a farm with a long project history doesn't bury the in-flight work; a checkbox only appears when at least one project has that status. State persists per browser (`localStorage`), same pattern as the Printers page's "Show decommissioned". If every project is filtered out, an empty-state prompts to check a box rather than showing the first-run "create your first project" message.
+- Each row shows name and status badge, click to open detail
 - "New Project" inline form: name + optional description → `POST /api/projects`
 
 **Detail view:**
-- Header with project name (click ✎ to rename inline → `PUT /api/projects/:id { name }`), status badge, and context-sensitive action button:
-  - `draft` → "Activate" → `PUT /api/projects/:id { status: 'active' }` + `POST /api/scheduler/dispatch`
-  - `active` → "Pause" → `PUT /api/projects/:id { status: 'paused' }`
-  - `paused` → "Resume" → same as Activate
-  - `completed` → no button
+- Header with project name (click ✎ to rename inline → `PUT /api/projects/:id { name }`), status badge, and a status dropdown with context-sensitive options:
+  - `draft` → "Activate" (`PUT /api/projects/:id { status: 'active' }` + `POST /api/scheduler/dispatch`) or "Delete project" (`DELETE /api/projects/:id`)
+  - `active` → "Pause project" (`PUT /api/projects/:id { status: 'paused' }`) or "Mark complete" (`POST /api/projects/:id/complete`)
+  - `paused` → "Resume project" (same as Activate) or "Mark complete"
+  - `completed` → "Re-activate" (`POST /api/projects/:id/reactivate`): reopens any closed parts that still have remaining qty and sweeps for idle printers immediately. Shows a warning toast instead of transitioning if every part is already at target qty (`nothing_to_reopen` in the response).
 - **Project-level targeting defaults:** two rows shown when a filament library or a group registry exists. *Filament*: Material/Color dropdowns → `PUT /api/projects/:id/filament`. *Groups*: checkboxes sourced from `GET /api/groups` → `PUT /api/projects/:id/groups`. Both apply to every G-code in the project that doesn't set its own override, and both are visible again in the per-gcode Targeting row below (Upload G-code and each G-code file's estimate row): a per-gcode value always wins over the project default, and the per-gcode picker's empty state reads "inherits project: X" instead of "all groups"/"any material" when a project default is set. See the "Targeting cascade" note in [database.md](database.md).
 - **Parts list:** each row shows name (with ▲/▼ priority buttons), a 3-segment progress bar, a fixed-width status badge (Open/Closed), and a Details toggle. A red `×` delete button appears at the far right — clicking it confirms then calls `DELETE /api/parts/:id`, which cascades to all jobs and G-code files for that part. Deletion is blocked (with an alert) if the part has an active uploading or printing job. All other editing is behind the Details button.
 
@@ -247,10 +248,10 @@ Primary operator screen for setting up and launching print runs.
 - **▲/▼ ordering buttons:** move a part up or down in dispatch priority. Updates `sort_order` via `PUT /api/parts/reorder`. Optimistic — local state reorders immediately.
 - **Details panel** (per part, toggle with "Details" button): four sections:
   - *Part Name* — current name displayed with a ✎ pencil button. Click to edit inline; Enter or blur saves, Escape cancels → `PUT /api/parts/:id { name }`
-  - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status.
+  - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status. If raising Need above Have reopens a part that was `closed` and the parent project had already `completed`, the project is reactivated to `active` server-side and swept for idle printers immediately, the same behavior as the Add Part form below and the header's Re-activate action. Since this part necessarily already has G-code from before it was closed, the sweep can genuinely dispatch it right away.
   - *G-code Files* — lists each uploaded file with filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
-  - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline.
-- **Add Part form:** name + target quantity → `POST /api/parts`
+  - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline. A successful upload also triggers a scheduler sweep: this is what actually makes a brand-new part (added via the form below) dispatchable, since the scheduler requires a matching G-code.
+- **Add Part form:** name + target quantity → `POST /api/parts`. If the parent project had `completed`, it's reactivated to `active` immediately, no separate manual reactivate step needed. The new part itself isn't dispatchable yet, though: it has no G-code, so uploading one (above) is what actually triggers dispatch.
 
 ## Jobs Page
 

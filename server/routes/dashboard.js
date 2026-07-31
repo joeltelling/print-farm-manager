@@ -42,8 +42,10 @@ module.exports = (db) => {
     `).get(since).total;
 
     // ── Active projects with their parts ──────────────────────────────────────
+    // Same order as GET /api/projects and the scheduler's dispatch query (see CLAUDE.md
+    // sync pairs) so the dashboard's project order matches what actually dispatches next.
     const activeProjects = db.prepare(`
-      SELECT * FROM projects WHERE status = 'active' ORDER BY created_at ASC
+      SELECT * FROM projects WHERE status = 'active' ORDER BY priority ASC, created_at ASC
     `).all();
 
     const elapsedFinishedStmt = db.prepare(`
