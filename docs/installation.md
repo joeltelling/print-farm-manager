@@ -41,10 +41,12 @@ npm --version
 
 ### Native Build Dependencies
 
-`better-sqlite3` compiles a native binary during `npm install`. Each platform needs the right build tools available or the install will fail.
+`better-sqlite3` (12.x) ships **prebuilt binaries** for common platforms, including Node 22 on Windows x64, macOS, and Linux x64/arm64. On the recommended stack (Node 22 LTS), `npm install` downloads the matching prebuilt binary and **no C++ compiler is needed** — this is the normal path.
 
-**Windows**
-`better-sqlite3` requires a C++ compiler. The easiest way to get one is during the Node.js install itself:
+You only need the build tools below if you're on a platform or Node version with no matching prebuilt binary, in which case `npm install` falls back to compiling from source. (If you'd rather skip Node and the toolchain entirely on Windows, use the portable `.exe` bundle instead — see [packaging.md](packaging.md).)
+
+**Windows (fallback only — compiling from source)**
+Compiling `better-sqlite3` requires a C++ compiler. The easiest way to get one is during the Node.js install itself:
 
 When running the Node.js installer, you will see a screen titled **"Tools for Native Modules"**. Check the box labelled **"Automatically install the necessary tools"** and complete the installer. A separate PowerShell window will open after Node finishes and install Python and Visual Studio Build Tools — let it run to completion.
 
