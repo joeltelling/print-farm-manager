@@ -4,6 +4,7 @@ const Papa = require('papaparse');
 const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
+const { publicPrinter } = require('../printer-public');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -70,7 +71,7 @@ module.exports = (db) => {
       WHERE p.is_active = 1
       ORDER BY p.name
     `).all();
-    res.json(printers);
+    res.json(printers.map(publicPrinter));
   });
 
   // GET /api/printers/filaments — distinct loaded_material and loaded_color values across all printers
@@ -87,7 +88,7 @@ module.exports = (db) => {
   // GET /api/printers/decommissioned — list decommissioned printers
   router.get('/decommissioned', (req, res) => {
     const printers = db.prepare('SELECT * FROM printers WHERE is_active = 0 ORDER BY decommissioned_at DESC').all();
-    res.json(printers);
+    res.json(printers.map(publicPrinter));
   });
 
   // GET /api/printers/ams?model=x1c — returns AMS slot list from any connected
@@ -111,7 +112,7 @@ module.exports = (db) => {
   router.get('/:id', (req, res) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
-    res.json(printer);
+    res.json(publicPrinter(printer));
   });
 
   // POST /api/printers — add single printer
@@ -139,7 +140,7 @@ module.exports = (db) => {
       if (group_name && group_name.trim()) {
         try { registerGroup.run(group_name.trim(), Date.now()); } catch (_) {}
       }
-      res.status(201).json(db.prepare('SELECT * FROM printers WHERE id = ?').get(result.lastInsertRowid));
+      res.status(201).json(publicPrinter(db.prepare('SELECT * FROM printers WHERE id = ?').get(result.lastInsertRowid)));
     } catch (err) {
       if (err.message.includes('UNIQUE')) {
         return res.status(409).json({ error: `Printer name "${name}" already exists` });
@@ -199,7 +200,7 @@ module.exports = (db) => {
             loaded_material = ?,
             loaded_color = ?
         WHERE id = ?
-      `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
+      `).run(name, ip, api_key || null, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
              newMaterial, newColor, req.params.id);
 
       // Best-effort convenience: a failure here must never turn an already-
@@ -218,7 +219,7 @@ module.exports = (db) => {
         }
       }
 
-      res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id));
+      res.json(publicPrinter(db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id)));
     } catch (err) {
       if (err.message.includes('UNIQUE')) {
         return res.status(409).json({ error: `Printer name "${name}" already exists` });
@@ -243,7 +244,7 @@ module.exports = (db) => {
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ? WHERE id = ?').run(now, printer.id);
     events.insert(printer.id, 'decommission', req.body?.note ?? null);
     console.log(`[printers] ${printer.name} decommissioned`);
-    res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
+    res.json(publicPrinter(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id)));
   });
 
   // POST /api/printers/:id/complete-and-decommission — operator confirmed print was good; credit if
@@ -324,7 +325,7 @@ module.exports = (db) => {
     db.prepare('UPDATE printers SET is_active = 0, is_held = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, decommNote, printer.id);
     events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print — taken offline for maintenance');
     console.log(`[printers] ${printer.name} decommissioned after confirmed good print`);
-    res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
+    res.json(publicPrinter(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id)));
   });
 
   // POST /api/printers/:id/recommission — handled in server/index.js (needs scheduler access)
@@ -563,7 +564,7 @@ module.exports = (db) => {
     db.prepare('UPDATE printers SET is_held = 0 WHERE id = ?').run(printer.id);
 
     console.log(`[printers] Job ${job.id} manually linked to ${printer.name} by operator`);
-    res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
+    res.json(publicPrinter(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id)));
   });
 
   // Mount events sub-router — GET/POST /api/printers/:id/events
