@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-08-02: stop a decommissioned printer's driver from reconnecting forever (issue #45)
+
+Issue #45 reported that a decommissioned Bambu printer kept flooding the logs with "connected, reconnected, etc" every few seconds. Root cause: Bambu (MQTT) and Elegoo Centauri/Centauri 2 (websocket) drivers each hold a persistent connection per printer in a module-level `Map`, and nothing ever removed the entry when a printer was decommissioned. The poller stops calling `getStatus` for a decommissioned printer (it only queries `is_active = 1`), but the underlying MQTT/websocket client library keeps retrying on its own reconnect timer regardless, since the connection object itself was never told to close.
+
+Every code path that sets `is_active = 0` now drops the printer's cached connection immediately: `decommission`, `complete-and-decommission`, and both branches of `mark-job-failure`. Stateless request/response drivers (Prusa, Klipper, OctoPrint) have nothing to drop and are unaffected. Driver code was exercised against mocks only; not yet validated against real Bambu or Elegoo hardware.
+
+### Changes
+- `server/drivers/bambu.js`, `server/drivers/elegoo-centauri.js`, `server/drivers/elegoo-centauri2.js`: exported the existing internal `dropConnection` function so it can be called from outside the driver.
+- `server/drivers/index.js`: added a `dropConnection(printer)` registry helper that looks up the printer's driver and calls its `dropConnection` if it has one; a no-op for stateless drivers and safe against an unknown printer type.
+- `server/routes/printers.js`: all four code paths that set `is_active = 0` (`decommission`, `complete-and-decommission`, `mark-job-failure`'s two branches) now call the new `dropConnection` helper.
+- `docs/api.md`: noted the connection-drop side effect on the three decommission endpoints.
+- `docs/driver-authoring.md`: added `dropConnection(printerId)` to the documented optional driver exports.
+- `server/tests/printers-connection-cleanup.test.js` (new): regression test for issue #45, asserting all four decommission code paths drop the driver connection cache.
+
 ## 2026-07-30: Projects page only shows Active projects by default
 
 Joel noticed the Projects page listed every project regardless of status, so a farm with a long history of finished and shelved work buried the projects actually in flight. Now only `active` projects show by default; `draft`, `paused`, and `completed` are each hidden behind their own "Show X (count)" checkbox above the list, and a checkbox only appears when at least one project has that status. State persists per browser via `localStorage`, matching the existing "Show decommissioned" pattern on the Printers page. If every project ends up filtered out, an empty-state prompts to check a box instead of showing the misleading first-run "create your first project" message.
