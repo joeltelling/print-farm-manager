@@ -21,4 +21,15 @@ function getDriver(type) {
   return load();
 }
 
-module.exports = { getDriver };
+// Closes and forgets any persistent connection (Bambu MQTT, Elegoo Centauri
+// websocket) held for this printer. Stateless request/response drivers
+// (Prusa, Klipper, OctoPrint) have no dropConnection export, so this is a
+// no-op for them. Best-effort: an unregistered or unknown printer type must
+// never block the decommission or delete flow that calls this.
+function dropConnection(printer) {
+  try {
+    getDriver(printer.type).dropConnection?.(printer.id);
+  } catch (_) {}
+}
+
+module.exports = { getDriver, dropConnection };

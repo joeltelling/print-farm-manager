@@ -47,6 +47,15 @@ deleteFile(printer, filename)
   → if exported, the scheduler calls it after a job finishes to clean the
     file off the printer's storage (see bambu.js). Fire-and-forget: errors
     are swallowed by the caller.
+
+dropConnection(printerId)
+  → if your driver holds a persistent connection (see the pattern below),
+    export this to close it and remove it from your module-level Map. The
+    registry (server/drivers/index.js) calls it through printers.js whenever
+    a printer is decommissioned or deleted, so a stateful driver doesn't
+    keep reconnecting to hardware nobody expects to answer. Stateless
+    request/response drivers (Prusa, Klipper, OctoPrint) have no connection
+    to drop and should not export this.
 ```
 
 ### The `printer` row

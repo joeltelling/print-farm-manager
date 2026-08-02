@@ -382,4 +382,4 @@ async function checkIfPrinting(printer) {
   return status === 'PRINTING' || status === 'PAUSED';
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile, dropConnection };
