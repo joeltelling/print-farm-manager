@@ -130,6 +130,28 @@ beforeEach(() => {
       UNIQUE(type_id, name)
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL, password_salt TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'viewer', is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL, last_login_at INTEGER,
+      email TEXT, display_name TEXT, sso_subject TEXT, sso_provider TEXT,
+      must_change_password INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE api_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+      token_prefix TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'device', printer_ids TEXT,
+      created_at INTEGER NOT NULL, last_used_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0, created_by INTEGER
+    );
+    CREATE TABLE sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
+      token_hash TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
+    );
+    CREATE TABLE webauthn_credentials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
+      credential_id TEXT NOT NULL UNIQUE, public_key TEXT NOT NULL, counter INTEGER NOT NULL DEFAULT 0,
+      transports TEXT, name TEXT, created_at INTEGER NOT NULL, last_used_at INTEGER
+    );
   `);
 
   const now = Date.now();
@@ -172,6 +194,13 @@ beforeEach(() => {
   db.prepare(`INSERT INTO filament_colors (type_id, name, hex_color) VALUES (2, 'Signal Red', '#cc0000')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('farm_name', 'Test Farm')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('dispatch_batch_size', '5')`).run();
+
+  // Auth data: an admin account and a printer-scoped device token, to prove both
+  // (hashes and the printer_ids binding) survive a backup round-trip.
+  db.prepare(`INSERT INTO users (username, password_hash, password_salt, role, is_active, created_at, must_change_password)
+              VALUES ('admin', 'HASH', 'SALT', 'admin', 1, ?, 0)`).run(now);
+  db.prepare(`INSERT INTO api_tokens (name, token_hash, token_prefix, role, printer_ids, created_at, revoked, created_by)
+              VALUES ('CYD-1', 'THASH', 'pfm_abc123', 'device', '[1]', ?, 0, 1)`).run(now);
 
   // server/routes/backup.js declares its Express router at module scope, like every
   // route file in this codebase. Node's require() cache means a second require() in the
@@ -257,6 +286,31 @@ describe('Backup export/restore — column round-trip regression', () => {
       expect(gcode.allowed_groups).toBe('["Bambu Farm"]');
       expect(gcode.required_material).toBe('PETG');
       expect(gcode.required_color).toBe('Red');
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('users and api tokens (incl printer binding) survive a round-trip; sessions are not exported', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    expect(exportRes.status).toBe(200);
+    expect(exportRes.body.users[0]).toMatchObject({ username: 'admin', role: 'admin', password_hash: 'HASH' });
+    expect(exportRes.body.api_tokens[0]).toMatchObject({ name: 'CYD-1', role: 'device', printer_ids: '[1]' });
+    expect(exportRes.body).not.toHaveProperty('sessions'); // ephemeral, never exported
+
+    const backupFile = writeTempBackupFile(exportRes.body);
+    try {
+      // Wipe auth data so only restore can put it back.
+      db.prepare('DELETE FROM api_tokens').run();
+      db.prepare('DELETE FROM users').run();
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+
+      const user = db.prepare("SELECT * FROM users WHERE username = 'admin'").get();
+      expect(user).toMatchObject({ role: 'admin', password_hash: 'HASH', password_salt: 'SALT' });
+      const token = db.prepare("SELECT * FROM api_tokens WHERE name = 'CYD-1'").get();
+      expect(token).toMatchObject({ role: 'device', token_hash: 'THASH', printer_ids: '[1]' });
     } finally {
       fs.unlinkSync(backupFile);
     }

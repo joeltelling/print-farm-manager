@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-08-06: Authentication, roles, and device tokens (opt-in)
+
+Print Farm Manager has always shipped with no authentication: any device that can reach the server can drive printers. That is fine for an air-gapped farm, but once the app is exposed through a reverse proxy it needs real access control. This adds authentication, role-based access control, API tokens, and SSO, all opt-in and off by default so existing installs are unchanged after an update.
+
+Identities: a password session cookie for people, a Bearer API token for machines, an SSO forward-auth header (trusted only from a configured reverse proxy, so an IdP behind Traefik provides single sign-on with no embedded OIDC client), and a read-only dashboard IP allowlist for appliance browsers. Roles are viewer, operator, and admin, plus two token-only roles: device (a CYD wall box that confirms and fails plates, optionally bound to specific printers) and display (a read-only dashboard viewport for an Apple TV or Android app, adopted as a device rather than a user). Passwords use scrypt; tokens and session tokens are stored only as hashes.
+
+Upgrade and recovery paths avoid any lockout: enabling auth with no admin present mints a one-time admin password printed once to the console and flagged must-change; `npm run set-password` creates or resets an admin over SSH; and a fresh install prompts to create the first admin. All three funnel through a forced password change on first login.
+
+Everything is dependency-free (Node crypto, better-sqlite3). WebAuthn passkeys are scaffolded (schema and settings) with the ceremonies to follow.
+
+### Changes
+- `server/db.js`: additive users, api_tokens, sessions, webauthn_credentials tables plus the auth_enabled / dashboard_ip_allowlist / trusted_proxies / sso_* / passkey_* settings, all off or empty by default.
+- `server/auth.js`: new module. scrypt password hashing, sha256 token hashing, the role hierarchy and the device/display allowlists, per-printer device binding, dashboard IP allowlist (IPv4/CIDR) with trusted-proxy X-Forwarded-For handling, SSO header identity with group-to-role mapping and auto-provisioning, the request middleware, and the bootstrap-admin helper.
+- `server/routes/auth.js`: login, logout, me, first-run setup, and change-password.
+- `server/routes/users.js`, `server/routes/tokens.js`: admin-only account and token management (token secret shown once; device tokens accept a printer_ids binding).
+- `server/routes/settings.js`: the new keys with validation, the anti-lockout guard on auth_enabled, and sensitive settings hidden from non-admins on GET.
+- `server/set-password.js`: CLI to create or reset an admin password headless.
+- `server/index.js`: mounts the auth endpoints before the guard, applies the RBAC middleware, sets trust proxy, and prints the one-time bootstrap password.
+- `server/routes/backup.js`: users, api_tokens, and webauthn_credentials now round-trip through export and restore (sessions excluded).
+- `server/tests/auth.test.js`, `server/tests/backup-restore.test.js`: coverage for every identity, role, the device and display allowlists, the dashboard IP allowlist, SSO header, bootstrap and change-password, and the auth-table backup round-trip.
+- `docs/auth.md`: the design and behavior.
+
 ## 2026-07-30: Projects page only shows Active projects by default
 
 Joel noticed the Projects page listed every project regardless of status, so a farm with a long history of finished and shelved work buried the projects actually in flight. Now only `active` projects show by default; `draft`, `paused`, and `completed` are each hidden behind their own "Show X (count)" checkbox above the list, and a checkbox only appears when at least one project has that status. State persists per browser via `localStorage`, matching the existing "Show decommissioned" pattern on the Printers page. If every project ends up filtered out, an empty-state prompts to check a box instead of showing the misleading first-run "create your first project" message.

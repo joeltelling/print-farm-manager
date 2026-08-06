@@ -253,6 +253,100 @@ try {
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('dispatch_batch_size', '10')").run();
 } catch (_) {}
 
+// Authentication, API tokens, and sessions (feat/auth-rbac). All additive:
+// existing installs gain these tables empty and, with auth_enabled defaulting
+// to '0', behave exactly as before until an admin account is created and auth
+// is switched on. Passwords and tokens are stored only as hashes. See docs/auth.md.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    username       TEXT NOT NULL UNIQUE,
+    password_hash  TEXT NOT NULL,
+    password_salt  TEXT NOT NULL,
+    role           TEXT NOT NULL DEFAULT 'viewer',
+    is_active      INTEGER NOT NULL DEFAULT 1,
+    created_at     INTEGER NOT NULL,
+    last_login_at  INTEGER
+  )`);
+} catch (_) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS api_tokens (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    token_hash    TEXT NOT NULL UNIQUE,
+    token_prefix  TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'device',
+    created_at    INTEGER NOT NULL,
+    last_used_at  INTEGER,
+    revoked       INTEGER NOT NULL DEFAULT 0,
+    created_by    INTEGER REFERENCES users(id)
+  )`);
+} catch (_) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id),
+    token_hash    TEXT NOT NULL UNIQUE,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    last_seen_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)'); } catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash)'); } catch (_) {}
+
+// Auth-related settings (INSERT OR IGNORE so operator values are never overwritten).
+// auth_enabled: master switch, off by default for backward compatibility.
+// dashboard_ip_allowlist: comma-separated IPs/CIDRs allowed to view the dashboard with no login.
+// trusted_proxies: comma-separated IPs/CIDRs whose X-Forwarded-For is trusted (e.g. the Traefik IP).
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('auth_enabled', '0')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('dashboard_ip_allowlist', '')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('trusted_proxies', '')").run(); } catch (_) {}
+
+// SSO (proxy forward-auth header) and passkey (WebAuthn) support.
+// SSO is done at the reverse proxy: an IdP behind Traefik injects an identity
+// header that PFM trusts only from a trusted proxy. Header names are configurable
+// so any provider works. Passkeys use @simplewebauthn; rp_id/origin default to
+// the request host when blank. Users gain optional external-identity columns and
+// a credentials child table (all additive). See docs/auth.md.
+try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN display_name TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN sso_subject TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN sso_provider TEXT'); } catch (_) {}
+// A one-time bootstrap/recovery password forces a change on first login.
+try { db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+// A device token may be bound to specific printers (JSON array of ids); null = all.
+try { db.exec('ALTER TABLE api_tokens ADD COLUMN printer_ids TEXT'); } catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_sso ON users(sso_provider, sso_subject)'); } catch (_) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS webauthn_credentials (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL REFERENCES users(id),
+    credential_id  TEXT NOT NULL UNIQUE,
+    public_key     TEXT NOT NULL,
+    counter        INTEGER NOT NULL DEFAULT 0,
+    transports     TEXT,
+    name           TEXT,
+    created_at     INTEGER NOT NULL,
+    last_used_at   INTEGER
+  )`);
+} catch (_) {}
+
+// SSO header auth (off by default; header names match common IdP/forward-auth setups)
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_header_enabled', '0')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_header_user', 'Remote-User')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_header_email', 'Remote-Email')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_header_name', 'Remote-Name')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_header_groups', 'Remote-Groups')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_group_role_map', '')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sso_default_role', 'viewer')").run(); } catch (_) {}
+// Passkey (WebAuthn) relying-party config; blank means derive from the request host
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('passkey_rp_id', '')").run(); } catch (_) {}
+try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('passkey_origin', '')").run(); } catch (_) {}
+
 // Make jobs.gcode_id nullable so gcodes can be deleted after jobs have run
 const gcodeIdCol = db.prepare("PRAGMA table_info(jobs)").all().find(c => c.name === 'gcode_id');
 if (gcodeIdCol && gcodeIdCol.notnull === 1) {

@@ -27,6 +27,8 @@
     "build": "npm run build --prefix client",
     "start": "node server/index.js",
     "test": "jest --testPathPatterns=server/tests",
+    "set-password": "node server/set-password.js",
+    "create-admin": "node server/set-password.js",
     "postinstall": "patch-package"
   },
   "dependencies": {
