@@ -31,6 +31,7 @@ const groupsRouter       = require('./routes/groups')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
 const authRouter         = require('./routes/auth')(db);
+const webauthnRouter     = require('./routes/webauthn')(db);
 const usersRouter        = require('./routes/users')(db);
 const tokensRouter       = require('./routes/tokens')(db);
 
@@ -48,6 +49,7 @@ app.use(express.json());
 // guard is a pass-through, so existing installs are unaffected. A change to
 // trusted_proxies takes effect on restart.
 app.set('trust proxy', auth.trustProxyValue(db));
+app.use('/api/auth/passkey', webauthnRouter);
 app.use('/api/auth', authRouter);
 app.use(auth.createAuthMiddleware(db));
 

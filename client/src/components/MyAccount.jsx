@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { startRegistration } from '@simplewebauthn/browser';
 import { useToast } from '../useToast';
 
 // The signed-in user's own account settings: profile details (username, display
@@ -23,14 +24,40 @@ export default function MyAccount() {
   const [me, setMe] = useState(null);
   const [profile, setProfile] = useState({ username: '', display_name: '', email: '' });
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
+  const [passkeys, setPasskeys] = useState([]);
+  const [pkName, setPkName] = useState('');
 
+  function loadPasskeys() {
+    fetch('/api/auth/passkey').then(r => r.ok ? r.json() : []).then(setPasskeys).catch(() => setPasskeys([]));
+  }
   function load() {
     fetch('/api/auth/me').then(r => r.json()).then(m => {
       setMe(m);
       setProfile({ username: m.username || '', display_name: m.display_name || '', email: m.email || '' });
     }).catch(() => {});
+    loadPasskeys();
   }
   useEffect(load, []);
+
+  async function addPasskey() {
+    try {
+      const optRes = await fetch('/api/auth/passkey/register/options', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!optRes.ok) { const b = await optRes.json().catch(() => ({})); showToast('Failed: ' + (b.error || 'error'), 'error'); return; }
+      const optionsJSON = await optRes.json();
+      const credential = await startRegistration({ optionsJSON });
+      const { ok, body } = await postJson('/api/auth/passkey/register/verify', { credential, name: pkName || 'Passkey' });
+      if (ok) { showToast('Passkey added'); setPkName(''); loadPasskeys(); }
+      else showToast('Failed: ' + (body.error || 'error'), 'error');
+    } catch (e) {
+      showToast(e.message || 'Passkey registration cancelled', 'error');
+    }
+  }
+
+  async function removePasskey(id) {
+    const res = await fetch('/api/auth/passkey/' + id, { method: 'DELETE' });
+    if (res.ok) { showToast('Passkey removed'); loadPasskeys(); }
+    else { const b = await res.json().catch(() => ({})); showToast('Failed: ' + (b.error || 'error'), 'error'); }
+  }
 
   if (!me || !me.authenticated || !me.username) return null; // not signed in (or auth off)
   const editable = !!me.can_edit_profile;
@@ -86,6 +113,36 @@ export default function MyAccount() {
             <input style={INPUT} type="password" autoComplete="new-password" value={pw.confirm} onChange={e => setPw({ ...pw, confirm: e.target.value })} />
             <div><button type="submit" style={BTN}>Change password</button></div>
           </form>
+        </section>
+      )}
+      {editable && (
+        <section style={SECTION}>
+          <h2 style={H2}>Passkeys</h2>
+          <div style={HELP}>Sign in without a password using Touch ID, Windows Hello, or a security key.</div>
+          {passkeys.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+              <thead><tr>
+                <th style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', fontSize: 12 }}>Name</th>
+                <th style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', fontSize: 12 }}>Last used</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {passkeys.map(p => (
+                  <tr key={p.id} style={{ borderBottom: '1px solid #1a2030' }}>
+                    <td style={{ padding: '6px 8px', color: '#e2e8f0', fontSize: 13 }}>{p.name}</td>
+                    <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 13 }}>{p.last_used_at ? new Date(p.last_used_at).toLocaleDateString() : 'never'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                      <button onClick={() => removePasskey(p.id)} style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input style={INPUT} placeholder="name (e.g. MacBook Touch ID)" value={pkName} onChange={e => setPkName(e.target.value)} />
+            <button type="button" onClick={addPasskey} style={{ ...BTN, marginTop: 0 }}>Add passkey</button>
+          </div>
         </section>
       )}
       {toastEl}

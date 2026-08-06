@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-08-07: Passkeys (WebAuthn)
+
+Adds passkey sign-in (Touch ID, Windows Hello, security keys) via `@simplewebauthn`. Signed-in users register passkeys from My Account, and the login screen gains a "Sign in with a passkey" option. Implemented from the `@simplewebauthn` v13 API; not yet validated against a physical authenticator.
+
+Adds runtime dependencies `@simplewebauthn/server` and `@simplewebauthn/browser`, a deliberate exception to the project's minimal-dependency norm for this fork (hand-rolling WebAuthn attestation and signature verification is exactly where subtle security bugs appear).
+
+### Changes
+- `server/routes/webauthn.js`: registration and authentication ceremonies, an in-memory challenge store, and passkey management, mounted at `/api/auth/passkey` before the RBAC guard.
+- `server/auth.js`: extracted a shared `issueSession` helper used by both password and passkey login.
+- `server/index.js`: mounts the passkey router.
+- `client/src/AuthScreens.jsx`: "Sign in with a passkey" on the login screen.
+- `client/src/components/MyAccount.jsx`: a Passkeys section to add and remove passkeys.
+- `server/tests/auth.test.js`: passkey plumbing tests (full ceremony needs a real authenticator).
+- `package.json`, `client/package.json`: add the `@simplewebauthn` packages.
+
 ## 2026-08-07: Authentication is mandatory; My Account page; tabbed Settings
 
 Following the initial auth work, authentication is now mandatory on this build: always on, no off switch, and the auth_enabled setting is no longer writable. A fresh or migrated install with no users is stepped through creating the primary admin in a browser setup wizard. The earlier auto-generated one-time console password is removed (it conflicted with the wizard); `npm run set-password <username>` remains for headless recovery.

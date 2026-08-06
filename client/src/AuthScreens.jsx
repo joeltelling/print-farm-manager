@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { startAuthentication } from '@simplewebauthn/browser';
 
 // Full-screen authentication screens shown by the App gate: first-run Setup,
 // Login, and a forced Change Password (one-time / recovery passwords). Dark
@@ -10,6 +11,7 @@ const LABEL = { display: 'block', fontSize: 12, color: '#94a3b8', margin: '14px 
 const INPUT = { width: '100%', boxSizing: 'border-box', padding: '9px 11px', background: '#0a0f1a', border: '1px solid #2d3748', borderRadius: 6, color: '#e2e8f0', fontSize: 14, outline: 'none' };
 const BTN = { width: '100%', marginTop: 18, padding: '10px 14px', background: '#2563eb', border: 'none', borderRadius: 6, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' };
 const BTN_DISABLED = { ...BTN, background: '#1e293b', color: '#64748b', cursor: 'not-allowed' };
+const BTN_SECONDARY = { ...BTN, background: 'transparent', border: '1px solid #2d3748', color: '#94a3b8', marginTop: 10 };
 const ERR = { marginTop: 14, padding: '8px 11px', background: '#3f1d1d', border: '1px solid #7f1d1d', borderRadius: 6, color: '#fca5a5', fontSize: 13 };
 const TITLE = { fontWeight: 800, fontSize: 18, color: '#e2e8f0' };
 const SUB = { fontSize: 13, color: '#64748b', marginTop: 4, marginBottom: 6 };
@@ -49,6 +51,22 @@ export function Login({ onDone }) {
     if (ok) onDone(); else setError(data.error || 'Login failed');
   }
 
+  async function passkeyLogin() {
+    setError(''); setBusy(true);
+    try {
+      const optRes = await fetch('/api/auth/passkey/login/options', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      if (!optRes.ok) throw new Error('Passkey sign-in is not available');
+      const optionsJSON = await optRes.json();
+      const credential = await startAuthentication({ optionsJSON });
+      const { ok, data } = await postJson('/api/auth/passkey/login/verify', { credential });
+      if (ok) onDone(); else setError(data.error || 'Passkey sign-in failed');
+    } catch (e) {
+      setError(e.message || 'Passkey sign-in cancelled');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Shell title="Sign in" subtitle="Print Farm Manager">
       <label style={LABEL}>Username</label>
@@ -61,6 +79,9 @@ export function Login({ onDone }) {
       <button style={busy || !username || !password ? BTN_DISABLED : BTN}
         disabled={busy || !username || !password} onClick={submit}>
         {busy ? 'Signing in...' : 'Sign in'}
+      </button>
+      <button type="button" style={BTN_SECONDARY} onClick={passkeyLogin} disabled={busy}>
+        Sign in with a passkey
       </button>
     </Shell>
   );

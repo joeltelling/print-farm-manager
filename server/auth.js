@@ -415,11 +415,28 @@ function trustProxyValue(db) {
   return list.length ? list : false;
 }
 
+// Create a session for `user` and set the session cookie on `res`. Shared by
+// password login/setup/change-password (routes/auth.js) and passkey login
+// (routes/webauthn.js). Secure is set only over https so a direct-LAN http
+// install still works.
+function issueSession(db, req, res, user) {
+  const now = Date.now();
+  const raw = generateSecret('pfms_');
+  db.prepare('INSERT INTO sessions (user_id, token_hash, created_at, expires_at, last_seen_at) VALUES (?, ?, ?, ?, ?)')
+    .run(user.id, hashToken(raw), now, now + SESSION_TTL_MS, now);
+  db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(now, user.id);
+  const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const attrs = [`${SESSION_COOKIE}=${raw}`, 'HttpOnly', 'SameSite=Lax', 'Path=/', `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`];
+  if (isHttps) attrs.push('Secure');
+  res.setHeader('Set-Cookie', attrs.join('; '));
+}
+
 module.exports = {
   hashPassword,
   verifyPassword,
   generateSecret,
   hashToken,
+  issueSession,
   ROLE_RANK,
   ROLES,
   roleAtLeast,

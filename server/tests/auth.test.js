@@ -26,6 +26,11 @@ function freshDb() {
       created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE webauthn_credentials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, credential_id TEXT NOT NULL UNIQUE,
+      public_key TEXT NOT NULL, counter INTEGER NOT NULL DEFAULT 0, transports TEXT, name TEXT,
+      created_at INTEGER NOT NULL, last_used_at INTEGER
+    );
   `);
   const seed = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
   const defaults = {
@@ -44,6 +49,7 @@ function makeApp(db) {
   const app = express();
   app.use(express.json());
   app.set('trust proxy', auth.trustProxyValue(db));
+  app.use('/api/auth/passkey', require('../routes/webauthn')(db));
   app.use('/api/auth', require('../routes/auth')(db));
   app.use(auth.createAuthMiddleware(db));
   app.use('/api/users', require('../routes/users')(db));
@@ -293,6 +299,28 @@ describe('forced password change (one-time / recovery passwords)', () => {
     const c2 = cookie(chg);
     expect((await request(app).get('/api/printers').set('Cookie', c2)).status).toBe(200);
     expect((await request(app).get('/api/printers').set('Cookie', c)).status).toBe(401);
+  });
+});
+
+describe('passkeys (WebAuthn) plumbing', () => {
+  test('login options are public and carry a challenge; register/list require a session', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const opt = await request(app).post('/api/auth/passkey/login/options').send({});
+    expect(opt.status).toBe(200);
+    expect(opt.body.challenge).toBeTruthy();
+    expect(opt.headers['set-cookie'][0]).toMatch(/pfm_pk_chal=/);
+    expect((await request(app).post('/api/auth/passkey/register/options').send({})).status).toBe(401);
+    expect((await request(app).get('/api/auth/passkey')).status).toBe(401);
+  });
+
+  test('login verify rejects an unknown credential', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const opt = await request(app).post('/api/auth/passkey/login/options').send({});
+    const res = await request(app).post('/api/auth/passkey/login/verify').set('Cookie', cookie(opt))
+      .send({ credential: { id: 'does-not-exist', response: {} } });
+    expect([400, 401]).toContain(res.status);
   });
 });
 

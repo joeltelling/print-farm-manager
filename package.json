@@ -32,6 +32,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
     "axios": "^1.7.2",
     "basic-ftp": "^5.2.1",
     "better-sqlite3": "^9.6.0",
