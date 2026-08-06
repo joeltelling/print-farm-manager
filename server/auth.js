@@ -201,8 +201,12 @@ function getSetting(db, key) {
   return row ? row.value : null;
 }
 
-function authEnabled(db) {
-  return getSetting(db, 'auth_enabled') === '1';
+// Authentication is mandatory in this build: always on, no off switch. A fresh
+// or migrated install with no users is stepped through creating the primary
+// admin (the setup flow). The auth_enabled setting is retained for backward
+// compatibility but no longer gates anything.
+function authEnabled(_db) {
+  return true;
 }
 
 // The immediate TCP peer (the box directly connected to us). For SSO header
@@ -411,39 +415,11 @@ function trustProxyValue(db) {
   return list.length ? list : false;
 }
 
-// Upgrade / recovery path: when auth is enabled but no active admin exists,
-// create one with a random one-time password (flagged must_change_password) and
-// return { username, password } so the caller can print it once to the console.
-// Returns null when nothing was done. Idempotent: a second call with an admin
-// present does nothing.
-function ensureBootstrapAdmin(db) {
-  if (!authEnabled(db)) return null;
-  const admin = db.prepare("SELECT 1 FROM users WHERE role = 'admin' AND is_active = 1 LIMIT 1").get();
-  if (admin) return null;
-
-  let username = 'admin';
-  if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) {
-    username = 'admin_' + crypto.randomBytes(3).toString('hex');
-  }
-  const password = crypto.randomBytes(12).toString('base64url'); // ~16 chars, copyable
-  const { hash, salt } = hashPassword(password);
-  try {
-    const info = db.prepare(
-      `INSERT INTO users (username, password_hash, password_salt, role, is_active, created_at, must_change_password)
-       VALUES (?, ?, ?, 'admin', 1, ?, 1)`
-    ).run(username, hash, salt, Date.now());
-    return { id: info.lastInsertRowid, username, password };
-  } catch (_) {
-    return null;
-  }
-}
-
 module.exports = {
   hashPassword,
   verifyPassword,
   generateSecret,
   hashToken,
-  ensureBootstrapAdmin,
   ROLE_RANK,
   ROLES,
   roleAtLeast,

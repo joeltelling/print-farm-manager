@@ -86,8 +86,8 @@ export function Setup({ onDone }) {
   }
 
   return (
-    <Shell title="Create the first admin" subtitle="No accounts exist yet. This becomes the administrator.">
-      <label style={LABEL}>Username</label>
+    <Shell title="Welcome to Print Farm Manager" subtitle="No accounts exist yet. Create the primary administrator to get started. You can add more people and set their roles afterwards.">
+      <label style={LABEL}>Admin username</label>
       <input style={INPUT} value={username} autoFocus autoComplete="username"
         onChange={(e) => setUsername(e.target.value)} />
       <label style={LABEL}>Password (at least 8 characters)</label>

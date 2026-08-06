@@ -2,9 +2,11 @@ const express = require('express');
 const router = express.Router();
 
 // Auth-related keys (feat/auth-rbac) join the original operator settings. See docs/auth.md.
+// Note: auth_enabled is intentionally NOT writable. Authentication is mandatory
+// (always on) in this build, so there is no toggle. See docs/auth.md.
 const ALLOWED_KEYS = new Set([
   'dispatch_batch_size', 'farm_name',
-  'auth_enabled', 'dashboard_ip_allowlist', 'trusted_proxies',
+  'dashboard_ip_allowlist', 'trusted_proxies',
   'sso_header_enabled', 'sso_header_user', 'sso_header_email', 'sso_header_name',
   'sso_header_groups', 'sso_group_role_map', 'sso_default_role',
   'passkey_rp_id', 'passkey_origin',
@@ -18,7 +20,7 @@ const EMPTY_OK = new Set([
   'sso_group_role_map', 'passkey_rp_id', 'passkey_origin',
 ]);
 
-const BOOL_KEYS = new Set(['auth_enabled', 'sso_header_enabled']);
+const BOOL_KEYS = new Set(['sso_header_enabled']);
 
 // Non-sensitive settings any logged-in user may read (the UI needs them, e.g.
 // farm_name for the sidebar). Everything else (auth toggles, trusted proxies,
@@ -63,14 +65,6 @@ module.exports = (db) => {
 
     if (BOOL_KEYS.has(key) && val !== '0' && val !== '1') {
       return res.status(400).json({ error: `${key} must be '0' or '1'` });
-    }
-
-    // Anti-lockout: never enable auth unless a real admin exists to log back in.
-    if (key === 'auth_enabled' && val === '1') {
-      const admin = db.prepare("SELECT 1 FROM users WHERE role = 'admin' AND is_active = 1 LIMIT 1").get();
-      if (!admin) {
-        return res.status(409).json({ error: 'Create an admin account before enabling authentication' });
-      }
     }
 
     // Trusting a forwarded identity header is only safe behind a trusted proxy;

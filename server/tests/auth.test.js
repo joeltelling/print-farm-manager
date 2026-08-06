@@ -70,13 +70,13 @@ async function bootstrapAdmin(app, db) {
   return cookie(res);
 }
 
-describe('auth disabled (backward compatible)', () => {
-  test('every request passes through with no credentials', async () => {
+describe('auth is mandatory (always on)', () => {
+  test('a fresh install requires setup, and unauthenticated requests are blocked', async () => {
     const db = freshDb();
     const app = makeApp(db);
-    expect((await request(app).get('/api/printers')).status).toBe(200);
-    expect((await request(app).post('/api/printers').send({})).status).toBe(201);
-    expect((await request(app).get('/api/settings')).status).toBe(200);
+    const me = await request(app).get('/api/auth/me');
+    expect(me.body).toMatchObject({ authRequired: true, needsSetup: true, authenticated: false });
+    expect((await request(app).get('/api/printers')).status).toBe(401);
   });
 });
 
@@ -100,13 +100,6 @@ describe('setup + login + session', () => {
     const ok = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'supersecret1' });
     expect(ok.status).toBe(200);
     expect(ok.body.user.role).toBe('admin');
-  });
-
-  test('enabling auth requires an admin to exist', async () => {
-    const db = freshDb();
-    const app = makeApp(db);
-    const res = await request(app).put('/api/settings/auth_enabled').send({ value: '1' });
-    expect(res.status).toBe(409);
   });
 
   test('me reports identity; logout ends the session', async () => {
@@ -158,6 +151,8 @@ describe('RBAC enforcement', () => {
     expect(adminSettings.status).toBe(200);
     expect(adminSettings.body).toHaveProperty('trusted_proxies');
     expect((await request(app).get('/api/users').set('Cookie', admin)).status).toBe(200);
+    // authentication cannot be turned off: auth_enabled is not a writable setting
+    expect((await request(app).put('/api/settings/auth_enabled').set('Cookie', admin).send({ value: '0' })).status).toBe(400);
   });
 
   test('unauthenticated request is 401 when auth is on', async () => {
@@ -270,27 +265,16 @@ describe('SSO forward-auth header', () => {
   });
 });
 
-describe('bootstrap admin (upgrade / recovery)', () => {
-  test('ensureBootstrapAdmin creates a one-time admin only when auth is on and none exists', () => {
-    const db = freshDb();
-    expect(auth.ensureBootstrapAdmin(db)).toBeNull(); // auth off -> nothing
-    setSetting(db, 'auth_enabled', '1');
-    const boot = auth.ensureBootstrapAdmin(db);
-    expect(boot).toMatchObject({ username: 'admin' });
-    expect(boot.password.length).toBeGreaterThanOrEqual(12);
-    const u = db.prepare("SELECT * FROM users WHERE username = 'admin'").get();
-    expect(u.role).toBe('admin');
-    expect(u.must_change_password).toBe(1);
-    expect(auth.ensureBootstrapAdmin(db)).toBeNull(); // idempotent once an admin exists
-  });
-
+describe('forced password change (one-time / recovery passwords)', () => {
   test('a must-change user is blocked until they change the password, then allowed', async () => {
     const db = freshDb();
-    setSetting(db, 'auth_enabled', '1');
-    const boot = auth.ensureBootstrapAdmin(db);
+    // A recovery/temporary account flagged must_change_password (as the CLI would set).
+    const { hash, salt } = auth.hashPassword('temp12345');
+    db.prepare("INSERT INTO users (username, password_hash, password_salt, role, is_active, created_at, must_change_password) VALUES ('admin', ?, ?, 'admin', 1, ?, 1)")
+      .run(hash, salt, 1);
     const app = makeApp(db);
 
-    const login = await request(app).post('/api/auth/login').send({ username: boot.username, password: boot.password });
+    const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'temp12345' });
     expect(login.status).toBe(200);
     const c = cookie(login);
 
@@ -304,7 +288,7 @@ describe('bootstrap admin (upgrade / recovery)', () => {
 
     // change it -> new session issued, old one invalidated, access granted
     const chg = await request(app).post('/api/auth/change-password').set('Cookie', c)
-      .send({ current_password: boot.password, new_password: 'brandnew123' });
+      .send({ current_password: 'temp12345', new_password: 'brandnew123' });
     expect(chg.status).toBe(200);
     const c2 = cookie(chg);
     expect((await request(app).get('/api/printers').set('Cookie', c2)).status).toBe(200);

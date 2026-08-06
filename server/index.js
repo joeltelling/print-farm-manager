@@ -101,17 +101,12 @@ app.get(/^(?!\/api).*/, (_req, res) => {
 const server = app.listen(PORT, () => {
   console.log(`[server] Express running on http://localhost:${PORT}`);
 
-  // Upgrade / recovery: if auth is on but there is no admin, mint a one-time
-  // admin password and print it once. The account must change it on first login.
-  const boot = auth.ensureBootstrapAdmin(db);
-  if (boot) {
-    console.log('[auth] ===================================================');
-    console.log('[auth]  Authentication is enabled but no admin was found.');
-    console.log('[auth]  A one-time admin login has been created:');
-    console.log(`[auth]    username: ${boot.username}`);
-    console.log(`[auth]    password: ${boot.password}`);
-    console.log('[auth]  Log in and set a new password immediately.');
-    console.log('[auth] ===================================================');
+  // Authentication is mandatory. A fresh or migrated install with no users is
+  // stepped through creating the primary admin in the browser (the setup flow);
+  // for a headless install use `npm run set-password <username>`.
+  const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+  if (userCount === 0) {
+    console.log('[auth] No users yet. Open the app to create the primary admin, or run: npm run set-password <username>');
   }
 
   const poller    = new PrinterPoller(db);

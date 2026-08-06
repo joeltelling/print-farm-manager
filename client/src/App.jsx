@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Link } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import Account from './pages/Account';
 import Fleet from './pages/Fleet';
 import Printers from './pages/Printers';
 import PrinterDetail from './pages/PrinterDetail';
@@ -84,8 +85,8 @@ export default function App() {
     <BrowserRouter>
       {/* Responsive layout: sidebar on desktop, top nav bar on mobile */}
       <style>{`
-        #layout { display: flex; min-height: 100vh; }
-        #sidebar { width: 180px; flex-shrink: 0; background: #131720; border-right: 1px solid #1e2433; display: flex; flex-direction: column; padding: 16px 8px; gap: 4px; }
+        #layout { display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 180px; flex-shrink: 0; background: #131720; border-right: 1px solid #1e2433; display: flex; flex-direction: column; padding: 16px 8px; gap: 4px; overflow-y: auto; }
         #topbar { display: none; background: #131720; border-bottom: 1px solid #1e2433; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
         #main { flex: 1; padding: 24px 28px; overflow-y: auto; min-width: 0; }
         @media (max-width: 600px) {
@@ -110,9 +111,9 @@ export default function App() {
           ))}
           {me.authRequired && me.authenticated && (
             <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #1e2433' }}>
-              <div style={{ fontSize: 12, color: '#94a3b8', padding: '0 6px 6px' }}>
+              <Link to="/account" style={{ display: 'block', fontSize: 12, color: '#94a3b8', padding: '0 6px 6px', textDecoration: 'none' }} title="My Account">
                 {me.username || 'signed in'}<span style={{ color: '#475569' }}> · {me.role}</span>
-              </div>
+              </Link>
               {me.type === 'session' && (
                 <button onClick={logout} style={{ width: '100%', padding: '6px 10px', background: '#1e2433', border: '1px solid #2d3748', borderRadius: 6, color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>
                   Sign out
@@ -156,6 +157,7 @@ export default function App() {
             <Route path="/jobs"            element={<Jobs />} />
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
+            <Route path="/account"         element={<Account />} />
           </Routes>
         </main>
       </div>

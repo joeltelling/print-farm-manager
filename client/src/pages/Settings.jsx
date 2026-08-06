@@ -46,6 +46,13 @@ const CREDENTIAL_HELP = {
 export default function Settings() {
   const [showToast, toastEl] = useToast();
   const [confirm, confirmModal] = useConfirm();
+  const SETTINGS_TABS = [
+    { id: 'printers', label: 'Printers' },
+    { id: 'filaments', label: 'Filaments' },
+    { id: 'farm', label: 'Farm' },
+    { id: 'auth', label: 'Authentication' },
+  ];
+  const [settingsTab, setSettingsTab] = useState('printers');
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -459,12 +466,21 @@ export default function Settings() {
       {confirmModal}
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Settings</h1>
 
-      {/* Authentication, users, and API tokens (admin only; renders nothing otherwise) */}
-      <AuthAdmin />
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, flexWrap: 'wrap', borderBottom: '1px solid #1e2433' }}>
+        {SETTINGS_TABS.map(t => (
+          <button key={t.id} onClick={() => setSettingsTab(t.id)} style={{
+            padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14,
+            color: settingsTab === t.id ? '#e2e8f0' : '#94a3b8', fontWeight: settingsTab === t.id ? 700 : 400,
+            borderBottom: settingsTab === t.id ? '2px solid #2563eb' : '2px solid transparent', marginBottom: -1,
+          }}>{t.label}</button>
+        ))}
+      </div>
 
+      {settingsTab === 'auth' && <AuthAdmin />}
 
       {/* Server Alerts */}
-      {alerts.length > 0 && (
+      {settingsTab === 'farm' && alerts.length > 0 && (
         <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640, border: '1px solid #7f1d1d' }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#fca5a5' }}>
             Server Alerts ({alerts.length})
@@ -508,6 +524,7 @@ export default function Settings() {
         </section>
       )}
 
+      {settingsTab === 'printers' && (<>
       {/* Printer Models */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Printer Models</h2>
@@ -661,7 +678,9 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{groupFormError}</div>
         )}
       </section>
+      </>)}
 
+      {settingsTab === 'filaments' && (<>
       {/* Filament Library */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
@@ -819,7 +838,9 @@ export default function Settings() {
         </form>
         {colorFormError && <div style={{ marginTop: 8, color: '#fca5a5', fontSize: 13 }}>{colorFormError}</div>}
       </section>
+      </>)}
 
+      {settingsTab === 'printers' && (<>
       {/* Add Single Printer */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Add Printer</h2>
@@ -1100,7 +1121,9 @@ export default function Settings() {
           </div>
         )}
       </section>
+      </>)}
 
+      {settingsTab === 'farm' && (<>
       {/* Farm Name */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Name</h2>
@@ -1308,6 +1331,7 @@ export default function Settings() {
           </a>
         </div>
       </section>
+      </>)}
     </div>
   );
 }

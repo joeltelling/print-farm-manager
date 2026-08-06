@@ -49,27 +49,12 @@ export default function AuthAdmin() {
 
   if (!me || me.role !== 'admin') return null; // not an admin: render nothing
 
-  const authOn = settings.auth_enabled === '1';
-  const hasAdminUser = users.some(u => u.role === 'admin' && u.is_active);
-
   async function setSetting(key, value, okMsg) {
     const { ok, body } = await j(`/api/settings/${key}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value }),
     });
     if (ok) { showToast(okMsg || 'Saved'); reloadAll(); }
     else showToast('Failed: ' + (body.error || 'error'), 'error');
-  }
-
-  async function toggleAuth() {
-    if (!authOn && !hasAdminUser) {
-      showToast('Create an admin user first', 'warning');
-      return;
-    }
-    if (!authOn) {
-      const go = await confirm({ title: 'Enable authentication?', message: 'Everyone will need to sign in. Make sure you know an admin password.', confirmLabel: 'Enable' });
-      if (!go) return;
-    }
-    setSetting('auth_enabled', authOn ? '0' : '1', authOn ? 'Authentication disabled' : 'Authentication enabled');
   }
 
   async function addUser(e) {
@@ -115,16 +100,8 @@ export default function AuthAdmin() {
       {/* Access */}
       <section style={SECTION}>
         <h2 style={H2}>Authentication</h2>
-        <div style={HELP}>
-          {authOn ? 'Authentication is ON. Users must sign in.' : 'Authentication is OFF. The API is open on the network.'}
-        </div>
-        <button onClick={toggleAuth} style={{ ...BTN, background: authOn ? '#7f1d1d' : '#2563eb' }}>
-          {authOn ? 'Disable authentication' : 'Enable authentication'}
-        </button>
-        {!authOn && !hasAdminUser && (
-          <div style={{ ...HELP, marginTop: 10, color: '#fca5a5' }}>Create an admin user below before enabling.</div>
-        )}
-        <div style={{ marginTop: 16 }}>
+        <div style={HELP}>Authentication is required on this install and is always on. Manage who can sign in below.</div>
+        <div style={{ marginTop: 4 }}>
           <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Trusted proxies (comma-separated IPs/CIDRs, e.g. the Traefik IP)</label>
           <div style={{ display: 'flex', gap: 8 }}>
             <input style={{ ...INPUT, flex: 1 }} defaultValue={settings.trusted_proxies || ''} id="tp"

@@ -42,6 +42,9 @@ module.exports = (db) => {
     const authRequired = auth.authEnabled(db);
     const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
     const identity = auth.resolveIdentity(db, req);
+    const profile = identity && identity.userId
+      ? db.prepare('SELECT display_name, email FROM users WHERE id = ?').get(identity.userId)
+      : null;
     res.json({
       authRequired,
       needsSetup: authRequired && userCount === 0,
@@ -50,7 +53,34 @@ module.exports = (db) => {
       username: identity ? (identity.username || null) : null,
       type: identity ? identity.type : (authRequired ? 'anonymous' : 'disabled'),
       must_change_password: identity ? !!identity.mustChange : false,
+      display_name: profile ? profile.display_name : null,
+      email: profile ? profile.email : null,
+      can_edit_profile: !!(identity && identity.userId && identity.type === 'session'),
     });
+  });
+
+  // POST /api/auth/profile: the signed-in user updates their own details
+  // (display name, email, and username). Password changes go through
+  // /change-password. SSO accounts cannot change these here (managed by the IdP).
+  router.post('/profile', (req, res) => {
+    const identity = auth.resolveIdentity(db, req);
+    if (!identity || !identity.userId) return res.status(401).json({ error: 'Not signed in' });
+    if (identity.type !== 'session') return res.status(403).json({ error: 'This account is managed externally' });
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(identity.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const { username, display_name, email } = req.body || {};
+    let newUsername = user.username;
+    if (username !== undefined && String(username).trim() && String(username).trim() !== user.username) {
+      const clash = db.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').get(String(username).trim(), user.id);
+      if (clash) return res.status(409).json({ error: 'username already exists' });
+      newUsername = String(username).trim();
+    }
+    const newDisplay = display_name !== undefined ? (String(display_name).trim() || null) : user.display_name;
+    const newEmail = email !== undefined ? (String(email).trim() || null) : user.email;
+    db.prepare('UPDATE users SET username = ?, display_name = ?, email = ? WHERE id = ?')
+      .run(newUsername, newDisplay, newEmail, user.id);
+    res.json({ id: user.id, username: newUsername, display_name: newDisplay, email: newEmail, role: user.role });
   });
 
   // POST /api/auth/change-password: the signed-in user sets a new password.
