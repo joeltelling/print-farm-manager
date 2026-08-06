@@ -36,6 +36,13 @@ const PROJECT_STATUS = {
   completed: { bg: '#14532d', text: '#86efac', dot: '#86efac', labelKey: 'projects.statusCompleted' },
 };
 
+// Only Active projects show by default; Draft, Paused, and Completed are each behind
+// their own checkbox so a farm with a long project history doesn't bury the in-flight
+// work. Persisted per browser, same pattern as Printers.jsx's "Show decommissioned".
+const SHOW_DRAFT_KEY     = 'projects.showDraft';
+const SHOW_PAUSED_KEY    = 'projects.showPaused';
+const SHOW_COMPLETED_KEY = 'projects.showCompleted';
+
 // Dropdown options per project status.
 // 'action' is either a status string ('active', 'paused') or a special verb ('complete', 'reactivate').
 const STATUS_MENU = {
@@ -887,6 +894,20 @@ export default function Projects() {
   const [projects, setProjects]           = useState([]);
   const [loading, setLoading]             = useState(true);
 
+  // List filters: only Active shows by default (see SHOW_*_KEY above)
+  const [showDraft, setShowDraft] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(SHOW_DRAFT_KEY) || 'false'); }
+    catch (_) { return false; }
+  });
+  const [showPaused, setShowPaused] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(SHOW_PAUSED_KEY) || 'false'); }
+    catch (_) { return false; }
+  });
+  const [showCompleted, setShowCompleted] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(SHOW_COMPLETED_KEY) || 'false'); }
+    catch (_) { return false; }
+  });
+
   // Detail view
   const [selectedId, setSelectedId]       = useState(null);
   const [detailProject, setDetailProject] = useState(null);
@@ -931,6 +952,10 @@ export default function Projects() {
     fetch('/api/filaments/colors').then(r => r.json()).then(setFilamentColors).catch(() => {});
     fetch('/api/groups').then(r => r.json()).then(groups => setAllGroups(groups.map(g => g.name))).catch(() => {});
   }, []);
+
+  function toggleShowDraft(v)     { setShowDraft(v);     localStorage.setItem(SHOW_DRAFT_KEY, JSON.stringify(v)); }
+  function toggleShowPaused(v)    { setShowPaused(v);    localStorage.setItem(SHOW_PAUSED_KEY, JSON.stringify(v)); }
+  function toggleShowCompleted(v) { setShowCompleted(v); localStorage.setItem(SHOW_COMPLETED_KEY, JSON.stringify(v)); }
 
   // Drag-and-drop reorder state
   const [projectDragSrc,  setProjectDragSrc]  = useState(null);
@@ -1178,7 +1203,10 @@ export default function Projects() {
     });
     setNewPartName(''); setNewPartQty('');
     setAddingPart(false);
-    await fetchDetail(selectedId);
+    // Adding a part can flip the parent project from completed back to active (server-side):
+    // refresh the list too, same as every other status-changing action, so the cached
+    // projects array doesn't keep showing "Completed" until some unrelated refresh happens.
+    await Promise.all([fetchDetail(selectedId), fetchProjects()]);
     showToast(t('projects.partAddedToast'));
   }
 
@@ -1230,6 +1258,16 @@ export default function Projects() {
 
   // ─── List view ───────────────────────────────────────────────────────────────
   if (selectedId == null) {
+    const draftCount     = projects.filter(p => p.status === 'draft').length;
+    const pausedCount    = projects.filter(p => p.status === 'paused').length;
+    const completedCount = projects.filter(p => p.status === 'completed').length;
+    const visibleProjects = projects.filter(p =>
+      p.status === 'active' ||
+      (p.status === 'draft'     && showDraft) ||
+      (p.status === 'paused'    && showPaused) ||
+      (p.status === 'completed' && showCompleted)
+    );
+
     return (
       <div>
         {toastEl}
@@ -1313,6 +1351,29 @@ export default function Projects() {
           </button>
         </div>
 
+        {(draftCount > 0 || pausedCount > 0 || completedCount > 0) && (
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
+            {draftCount > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showDraft} onChange={e => toggleShowDraft(e.target.checked)} style={{ accentColor: '#3b82f6' }} />
+                {t('projects.showDraftsCount', { count: draftCount })}
+              </label>
+            )}
+            {pausedCount > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showPaused} onChange={e => toggleShowPaused(e.target.checked)} style={{ accentColor: '#3b82f6' }} />
+                {t('projects.showPausedCount', { count: pausedCount })}
+              </label>
+            )}
+            {completedCount > 0 && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showCompleted} onChange={e => toggleShowCompleted(e.target.checked)} style={{ accentColor: '#3b82f6' }} />
+                {t('projects.showCompletedCount', { count: completedCount })}
+              </label>
+            )}
+          </div>
+        )}
+
         {showNewForm && (
           <div style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 16, marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1359,9 +1420,15 @@ export default function Projects() {
             hint={<Trans i18nKey="projects.emptyHint" components={[<strong style={{ color: '#cbd5e1' }} />]} />}
           />
         )}
+        {!loading && projects.length > 0 && visibleProjects.length === 0 && (
+          <EmptyState
+            title={t('projects.allFilteredTitle')}
+            hint={t('projects.allFilteredHint')}
+          />
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {projects.map(p => {
+          {visibleProjects.map(p => {
             const s = PROJECT_STATUS[p.status] || PROJECT_STATUS.draft;
             const isDragging = projectDragSrc === p.id;
             const isOver     = projectDragOver === p.id && !isDragging;
@@ -1675,7 +1742,13 @@ export default function Projects() {
               <PartDetailsPanel
                 part={part}
                 gcodes={partGs}
-                onRefresh={() => fetchDetail(selectedId)}
+                // saveQtys() below can reopen a closed part and, server-side, reactivate a
+                // completed project (raising target_qty above completed_qty), same as
+                // addPart(). Refresh the list too so it doesn't keep showing "Completed"
+                // until some unrelated refresh happens. saveName()/deleteGcode() share this
+                // same onRefresh and never change project status, so the extra fetchProjects()
+                // call there is just a harmless no-op refresh.
+                onRefresh={() => { fetchDetail(selectedId); fetchProjects(); }}
                 onSaved={showToast}
                 onConfirm={confirm}
                 filamentTypes={filamentTypes}
