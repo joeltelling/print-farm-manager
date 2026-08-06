@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useToast } from '../useToast';
 import { useConfirm } from '../useConfirm';
+import AuthAdmin from '../components/AuthAdmin';
 
 const inputStyle = {
   background: '#0f172a',
@@ -457,6 +458,10 @@ export default function Settings() {
       {toastEl}
       {confirmModal}
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Settings</h1>
+
+      {/* Authentication, users, and API tokens (admin only; renders nothing otherwise) */}
+      <AuthAdmin />
+
 
       {/* Server Alerts */}
       {alerts.length > 0 && (
