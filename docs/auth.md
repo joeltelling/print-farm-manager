@@ -1,12 +1,14 @@
 # Authentication, API Tokens, and Roles (design spec)
 
-Status: implemented on the `feat/auth-rbac` branch, except WebAuthn passkey ceremonies (schema and settings are in place, the register/authenticate flows are still to come) and the web client (login page, setup screen, and admin panels). The server, RBAC middleware, tokens, SSO forward-auth header, dashboard IP allowlist, and the bootstrap/recovery paths are live and covered by `server/tests/auth.test.js`.
+Status: implemented on the `feat/auth-rbac` branch. Live: the server and RBAC middleware, API tokens (device and display), the SSO forward-auth header, the dashboard IP allowlist, and the full web client (login, first-run setup, forced change password, a My Account page, and admin Users/Tokens panels). WebAuthn passkey ceremonies are scaffolded (schema and settings) but the register/authenticate flows are not yet implemented. Authentication is mandatory on this build (see below). Covered by `server/tests/auth.test.js`.
 
 Print Farm Manager has historically shipped with no authentication: the API is open on the LAN and any device that can reach the server can drive printers. This is fine for an air gapped farm, but once the app is exposed through a reverse proxy (or an operator wants per person accountability and roles), it needs real access control. This feature adds authentication, API tokens, and role based access control (RBAC) without changing the project's minimalism: no new runtime dependencies, hashing via Node's built in `crypto`, storage in the existing SQLite database.
 
-## Backward compatibility (the non negotiable)
+## Authentication is mandatory
 
-Existing installs must keep working unchanged after `git pull`. Enforcement is gated by an `auth_enabled` setting that defaults to `0` (off). When off, the server behaves exactly as it does today: every request is allowed. An operator turns auth on only after creating an admin account, so there is no lockout. `GET /api/health` and the auth endpoints are always reachable regardless of the flag.
+This build requires authentication: it is always on and cannot be turned off. The `auth_enabled` setting is retained for compatibility but is not writable and no longer gates anything. A fresh or migrated install with no users is stepped through creating the primary admin in a browser setup wizard; `npm run set-password <username>` is the headless equivalent. `GET /api/health` and the auth endpoints (login, setup, me) are always reachable so you can sign in.
+
+Note: this deliberately departs from the backward-compatible, off-by-default posture an upstream contribution would need (existing installs would suddenly require a login and setup on `git pull`). It is a deployment choice for this fork; an upstream version would likely keep auth opt-in.
 
 ## Identities
 

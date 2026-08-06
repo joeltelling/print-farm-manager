@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-08-07: Authentication is mandatory; My Account page; tabbed Settings
+
+Following the initial auth work, authentication is now mandatory on this build: always on, no off switch, and the auth_enabled setting is no longer writable. A fresh or migrated install with no users is stepped through creating the primary admin in a browser setup wizard. The earlier auto-generated one-time console password is removed (it conflicted with the wizard); `npm run set-password <username>` remains for headless recovery.
+
+Signed-in users get a self-service My Account page on its own route: edit username, display name, and email, and change password. The sidebar user chip is pinned to the bottom of the viewport and links to it. The Settings page is split into tabs: Printers, Filaments, Farm, and Authentication.
+
+Note: making auth mandatory intentionally departs from the backward-compatible, off-by-default design of the entry below, so this diverges from what upstream would accept unchanged. It is a deliberate choice for this deployment.
+
+### Changes
+- `server/auth.js`: authEnabled always returns true; removed the one-time-password bootstrap helper.
+- `server/index.js`: removed the bootstrap-password startup block; logs a hint to create the primary admin when no users exist.
+- `server/routes/settings.js`: auth_enabled removed from writable keys.
+- `server/routes/auth.js`: `GET /api/auth/me` now returns display_name/email/can_edit_profile; new `POST /api/auth/profile` for self-service edits.
+- `client/src/pages/Account.jsx`, `client/src/components/MyAccount.jsx`: the My Account page.
+- `client/src/pages/Settings.jsx`: split into tabs; account management moved out.
+- `client/src/App.jsx`: viewport-height shell, user chip pinned to the bottom and linking to the account page.
+- `client/src/AuthScreens.jsx`: welcome copy on the setup screen.
+- `client/src/components/AuthAdmin.jsx`: removed the enable/disable toggle.
+- `server/tests/auth.test.js`: updated for always-on auth.
+
 ## 2026-08-06: Authentication, roles, and device tokens (opt-in)
 
 Print Farm Manager has always shipped with no authentication: any device that can reach the server can drive printers. That is fine for an air-gapped farm, but once the app is exposed through a reverse proxy it needs real access control. This adds authentication, role-based access control, API tokens, and SSO, all opt-in and off by default so existing installs are unchanged after an update.
