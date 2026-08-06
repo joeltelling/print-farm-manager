@@ -1,5 +1,6 @@
 const express = require('express');
 const auth = require('../auth');
+const mfaRoutes = require('./mfa');
 
 // Auth endpoints: login, logout, me, and first-run setup. These are always
 // reachable (the main middleware exempts /api/auth/*), so each one enforces its
@@ -43,7 +44,7 @@ module.exports = (db) => {
     const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
     const identity = auth.resolveIdentity(db, req);
     const profile = identity && identity.userId
-      ? db.prepare('SELECT display_name, email FROM users WHERE id = ?').get(identity.userId)
+      ? db.prepare('SELECT display_name, email, mfa_enabled FROM users WHERE id = ?').get(identity.userId)
       : null;
     res.json({
       authRequired,
@@ -56,6 +57,8 @@ module.exports = (db) => {
       display_name: profile ? profile.display_name : null,
       email: profile ? profile.email : null,
       can_edit_profile: !!(identity && identity.userId && identity.type === 'session'),
+      mfa_required: auth.getSetting(db, 'require_mfa') === '1',
+      mfa_enabled: profile ? !!profile.mfa_enabled : false,
     });
   });
 
@@ -116,6 +119,12 @@ module.exports = (db) => {
     // Same response for unknown user and wrong password (no account enumeration).
     if (!user || !auth.verifyPassword(password, user.password_hash, user.password_salt)) {
       return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    // Password is the first factor. If MFA is on for this user, do not issue a
+    // session yet: start the second step and let /api/auth/mfa/verify finish it.
+    if (user.mfa_enabled) {
+      mfaRoutes.beginLoginChallenge(req, res, user.id);
+      return res.json({ mfa_required: true });
     }
     issueSession(req, res, user);
     res.json({ user: { id: user.id, username: user.username, role: user.role } });

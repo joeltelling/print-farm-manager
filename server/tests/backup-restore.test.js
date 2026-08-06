@@ -136,7 +136,12 @@ beforeEach(() => {
       role TEXT NOT NULL DEFAULT 'viewer', is_active INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL, last_login_at INTEGER,
       email TEXT, display_name TEXT, sso_subject TEXT, sso_provider TEXT,
-      must_change_password INTEGER NOT NULL DEFAULT 0
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      totp_secret TEXT, mfa_enabled INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE recovery_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
+      code_hash TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
     );
     CREATE TABLE api_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,

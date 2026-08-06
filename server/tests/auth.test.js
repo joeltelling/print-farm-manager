@@ -14,7 +14,12 @@ function freshDb() {
       role TEXT NOT NULL DEFAULT 'viewer', is_active INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL, last_login_at INTEGER,
       email TEXT, display_name TEXT, sso_subject TEXT, sso_provider TEXT,
-      must_change_password INTEGER NOT NULL DEFAULT 0
+      must_change_password INTEGER NOT NULL DEFAULT 0,
+      totp_secret TEXT, mfa_enabled INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE recovery_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+      code_hash TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
     );
     CREATE TABLE api_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -50,6 +55,7 @@ function makeApp(db) {
   app.use(express.json());
   app.set('trust proxy', auth.trustProxyValue(db));
   app.use('/api/auth/passkey', require('../routes/webauthn')(db));
+  app.use('/api/auth/mfa', require('../routes/mfa')(db));
   app.use('/api/auth', require('../routes/auth')(db));
   app.use(auth.createAuthMiddleware(db));
   app.use('/api/users', require('../routes/users')(db));
@@ -321,6 +327,63 @@ describe('passkeys (WebAuthn) plumbing', () => {
     const res = await request(app).post('/api/auth/passkey/login/verify').set('Cookie', cookie(opt))
       .send({ credential: { id: 'does-not-exist', response: {} } });
     expect([400, 401]).toContain(res.status);
+  });
+});
+
+describe('MFA (TOTP + recovery codes + two-step login)', () => {
+  const mfaLib = require('../mfa');
+  async function adminSession(app, db) {
+    const res = await request(app).post('/api/auth/setup').send({ username: 'admin', password: 'supersecret1' });
+    setSetting(db, 'auth_enabled', '1');
+    return cookie(res);
+  }
+
+  test('enroll and enable, then password login becomes two-step', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const c = await adminSession(app, db);
+    const setup = await request(app).post('/api/auth/mfa/setup').set('Cookie', c).send({});
+    expect(setup.status).toBe(200);
+    expect(setup.body.secret).toBeTruthy();
+    const en = await request(app).post('/api/auth/mfa/enable').set('Cookie', c)
+      .send({ code: mfaLib.totpAt(setup.body.secret, Date.now()) });
+    expect(en.status).toBe(200);
+    expect(en.body.recovery_codes).toHaveLength(10);
+
+    const login = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'supersecret1' });
+    expect(login.body.mfa_required).toBe(true);
+    const mfaCookie = cookie(login);
+    expect((await request(app).post('/api/auth/mfa/verify').set('Cookie', mfaCookie).send({ code: '000000' })).status).toBe(400);
+    const verify = await request(app).post('/api/auth/mfa/verify').set('Cookie', mfaCookie)
+      .send({ code: mfaLib.totpAt(setup.body.secret, Date.now()) });
+    expect(verify.status).toBe(200);
+    expect((await request(app).get('/api/printers').set('Cookie', cookie(verify))).status).toBe(200);
+  });
+
+  test('a recovery code works once then is spent', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const c = await adminSession(app, db);
+    const setup = await request(app).post('/api/auth/mfa/setup').set('Cookie', c).send({});
+    const en = await request(app).post('/api/auth/mfa/enable').set('Cookie', c).send({ code: mfaLib.totpAt(setup.body.secret, Date.now()) });
+    const recovery = en.body.recovery_codes[0];
+    const l1 = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'supersecret1' });
+    expect((await request(app).post('/api/auth/mfa/verify').set('Cookie', cookie(l1)).send({ recovery_code: recovery })).status).toBe(200);
+    const l2 = await request(app).post('/api/auth/login').send({ username: 'admin', password: 'supersecret1' });
+    expect((await request(app).post('/api/auth/mfa/verify').set('Cookie', cookie(l2)).send({ recovery_code: recovery })).status).toBe(400);
+  });
+
+  test('require_mfa gates a user without MFA into setup', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const c = await adminSession(app, db);
+    setSetting(db, 'require_mfa', '1');
+    const r = await request(app).get('/api/printers').set('Cookie', c);
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('MFA_SETUP_REQUIRED');
+    expect((await request(app).get('/api/auth/me').set('Cookie', c)).body).toMatchObject({ mfa_required: true, mfa_enabled: false });
+    // the setup endpoint stays reachable so the user can comply
+    expect((await request(app).post('/api/auth/mfa/setup').set('Cookie', c).send({})).status).toBe(200);
   });
 });
 

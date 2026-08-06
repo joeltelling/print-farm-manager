@@ -43,12 +43,24 @@ export function Login({ onDone }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mfaStep, setMfaStep] = useState(false);
+  const [mfaCode, setMfaCode] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
 
   async function submit() {
     setError(''); setBusy(true);
     const { ok, data } = await postJson('/api/auth/login', { username, password });
     setBusy(false);
+    if (ok && data.mfa_required) { setError(''); setMfaStep(true); return; }
     if (ok) onDone(); else setError(data.error || 'Login failed');
+  }
+
+  async function verifyMfa() {
+    setError(''); setBusy(true);
+    const body = useRecovery ? { recovery_code: mfaCode.trim() } : { code: mfaCode.trim() };
+    const { ok, data } = await postJson('/api/auth/mfa/verify', body);
+    setBusy(false);
+    if (ok) onDone(); else setError(data.error || 'Verification failed');
   }
 
   async function passkeyLogin() {
@@ -65,6 +77,23 @@ export function Login({ onDone }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (mfaStep) {
+    return (
+      <Shell title="Two-factor authentication" subtitle={useRecovery ? 'Enter one of your recovery codes' : 'Enter the 6-digit code from your authenticator app'}>
+        <label style={LABEL}>{useRecovery ? 'Recovery code' : '6-digit code'}</label>
+        <input style={INPUT} value={mfaCode} autoFocus inputMode={useRecovery ? 'text' : 'numeric'}
+          onChange={(e) => setMfaCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && mfaCode && verifyMfa()} />
+        {error && <div style={ERR}>{error}</div>}
+        <button style={busy || !mfaCode ? BTN_DISABLED : BTN} disabled={busy || !mfaCode} onClick={verifyMfa}>
+          {busy ? 'Verifying...' : 'Verify'}
+        </button>
+        <button type="button" style={BTN_SECONDARY} onClick={() => { setUseRecovery(!useRecovery); setMfaCode(''); setError(''); }}>
+          {useRecovery ? 'Use authenticator code' : 'Use a recovery code'}
+        </button>
+      </Shell>
+    );
   }
 
   return (

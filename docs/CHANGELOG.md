@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-08-07: Multi-factor authentication (TOTP + recovery codes)
+
+Adds MFA: an authenticator app (TOTP, RFC 6238) as a second factor, single-use recovery codes, and a global `require_mfa` setting that forces every user to enrol. TOTP is hand-rolled on Node crypto (no dependency) and verified against the RFC 6238 test vectors; the enrollment QR uses the `qrcode` package on the client.
+
+Password login becomes two-step when MFA is on: the password is the first factor, then a TOTP or recovery code completes it. Passkey login is unaffected (a passkey is already a strong factor). When `require_mfa` is on, a signed-in user without MFA is gated into a setup screen before they can use the app, the same pattern as the forced password change.
+
+### Changes
+- `server/mfa.js`: TOTP (base32, HOTP/TOTP, verify) and recovery-code helpers, dependency-free.
+- `server/routes/mfa.js`: setup, enable, disable, status, recovery regeneration, and the second login step, mounted at `/api/auth/mfa` before the guard.
+- `server/routes/auth.js`: password login returns `mfa_required` and starts the second step when MFA is on; `/api/auth/me` reports `mfa_required` and `mfa_enabled`.
+- `server/auth.js`: the request guard forces enrollment when `require_mfa` is on and the user has no MFA.
+- `server/routes/settings.js`: `require_mfa` is a writable admin setting.
+- `server/db.js`: `users.totp_secret`/`mfa_enabled` and a `recovery_codes` table (additive).
+- `server/routes/backup.js`: `recovery_codes` and the TOTP columns round-trip.
+- `client/src/components/MfaEnroll.jsx`: enrollment (QR via `qrcode`), reused by the forced-setup gate and My Account; a two-factor step on the login screen; a Two-Factor section in My Account; a `require_mfa` toggle in the admin panel.
+- `server/tests/mfa.test.js`, `server/tests/auth.test.js`: TOTP RFC 6238 vectors and the MFA flows.
+- `client/package.json`: adds `qrcode`.
+
 ## 2026-08-07: Passkeys (WebAuthn)
 
 Adds passkey sign-in (Touch ID, Windows Hello, security keys) via `@simplewebauthn`. Signed-in users register passkeys from My Account, and the login screen gains a "Sign in with a passkey" option. Implemented from the `@simplewebauthn` v13 API; not yet validated against a physical authenticator.

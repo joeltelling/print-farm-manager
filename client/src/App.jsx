@@ -10,6 +10,7 @@ import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
 import { Login, Setup, ChangePassword, installAuthGuard } from './AuthScreens';
+import MfaEnroll from './components/MfaEnroll';
 
 const NAV_ITEMS = [
   { to: '/',               label: 'Dashboard' },
@@ -80,6 +81,13 @@ export default function App() {
   if (me.authRequired && me.needsSetup) return <Setup onDone={loadMe} />;
   if (me.authRequired && !me.authenticated) return <Login onDone={loadMe} />;
   if (me.authRequired && me.must_change_password) return <ChangePassword onDone={loadMe} />;
+  if (me.authRequired && me.authenticated && me.mfa_required && !me.mfa_enabled) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a0f1a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <MfaEnroll onDone={loadMe} />
+      </div>
+    );
+  }
 
   return (
     <BrowserRouter>

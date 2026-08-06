@@ -322,6 +322,7 @@ function resolveIdentity(db, req) {
       return {
         type: 'session', role: user.role, userId: user.id, username: user.username,
         mustChange: !!user.must_change_password,
+        mfaEnabled: !!user.mfa_enabled,
       };
     }
   }
@@ -376,6 +377,11 @@ function createAuthMiddleware(db) {
       // endpoints (mounted before this guard) until they change it.
       if (identity.mustChange) {
         return res.status(403).json({ error: 'Password change required', code: 'MUST_CHANGE_PASSWORD' });
+      }
+      // Global MFA policy: a session user without MFA must enrol before proceeding.
+      // The auth endpoints (mounted before this guard) stay reachable so they can.
+      if (identity.type === 'session' && getSetting(db, 'require_mfa') === '1' && !identity.mfaEnabled) {
+        return res.status(403).json({ error: 'MFA setup required', code: 'MFA_SETUP_REQUIRED' });
       }
       // Device tokens: fixed allowlist plus optional per-printer binding.
       if (identity.role === 'device') {

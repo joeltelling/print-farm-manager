@@ -9,7 +9,7 @@ const ALLOWED_KEYS = new Set([
   'dashboard_ip_allowlist', 'trusted_proxies',
   'sso_header_enabled', 'sso_header_user', 'sso_header_email', 'sso_header_name',
   'sso_header_groups', 'sso_group_role_map', 'sso_default_role',
-  'passkey_rp_id', 'passkey_origin',
+  'passkey_rp_id', 'passkey_origin', 'require_mfa',
 ]);
 
 // Keys where an empty string is a valid value (means "none" / "unset"): a list
@@ -20,7 +20,7 @@ const EMPTY_OK = new Set([
   'sso_group_role_map', 'passkey_rp_id', 'passkey_origin',
 ]);
 
-const BOOL_KEYS = new Set(['sso_header_enabled']);
+const BOOL_KEYS = new Set(['sso_header_enabled', 'require_mfa']);
 
 // Non-sensitive settings any logged-in user may read (the UI needs them, e.g.
 // farm_name for the sidebar). Everything else (auth toggles, trusted proxies,

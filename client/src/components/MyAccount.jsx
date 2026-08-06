@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { startRegistration } from '@simplewebauthn/browser';
+import MfaEnroll from './MfaEnroll';
 import { useToast } from '../useToast';
 
 // The signed-in user's own account settings: profile details (username, display
@@ -26,9 +27,15 @@ export default function MyAccount() {
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
   const [passkeys, setPasskeys] = useState([]);
   const [pkName, setPkName] = useState('');
+  const [mfaStatus, setMfaStatus] = useState(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [disableCode, setDisableCode] = useState('');
 
   function loadPasskeys() {
     fetch('/api/auth/passkey').then(r => r.ok ? r.json() : []).then(setPasskeys).catch(() => setPasskeys([]));
+  }
+  function loadMfa() {
+    fetch('/api/auth/mfa').then(r => r.ok ? r.json() : null).then(setMfaStatus).catch(() => {});
   }
   function load() {
     fetch('/api/auth/me').then(r => r.json()).then(m => {
@@ -36,8 +43,15 @@ export default function MyAccount() {
       setProfile({ username: m.username || '', display_name: m.display_name || '', email: m.email || '' });
     }).catch(() => {});
     loadPasskeys();
+    loadMfa();
   }
   useEffect(load, []);
+
+  async function disableMfa() {
+    const { ok, body } = await postJson('/api/auth/mfa/disable', { code: disableCode });
+    if (ok) { showToast('MFA disabled'); setDisableCode(''); loadMfa(); window.dispatchEvent(new Event('authChanged')); }
+    else showToast('Failed: ' + (body.error || 'error'), 'error');
+  }
 
   async function addPasskey() {
     try {
@@ -143,6 +157,34 @@ export default function MyAccount() {
             <input style={INPUT} placeholder="name (e.g. MacBook Touch ID)" value={pkName} onChange={e => setPkName(e.target.value)} />
             <button type="button" onClick={addPasskey} style={{ ...BTN, marginTop: 0 }}>Add passkey</button>
           </div>
+        </section>
+      )}
+      {editable && (
+        <section style={SECTION}>
+          <h2 style={H2}>Two-Factor Authentication</h2>
+          {enrolling ? (
+            <div style={{ marginTop: 8 }}>
+              <MfaEnroll onDone={() => { setEnrolling(false); loadMfa(); window.dispatchEvent(new Event('authChanged')); }} />
+            </div>
+          ) : mfaStatus && mfaStatus.enabled ? (
+            <>
+              <div style={HELP}>
+                Enabled. {mfaStatus.recovery_codes_remaining} recovery code(s) remaining.
+                {mfaStatus.required ? ' Required by policy, cannot be disabled.' : ''}
+              </div>
+              {!mfaStatus.required && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input style={{ ...INPUT, width: 140 }} placeholder="code to disable" value={disableCode} onChange={e => setDisableCode(e.target.value)} />
+                  <button type="button" onClick={disableMfa} style={{ background: '#7f1d1d', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Disable MFA</button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={HELP}>Add a second factor with an authenticator app (Google Authenticator, 1Password, Authy).</div>
+              <button type="button" onClick={() => setEnrolling(true)} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Set up MFA</button>
+            </>
+          )}
         </section>
       )}
       {toastEl}

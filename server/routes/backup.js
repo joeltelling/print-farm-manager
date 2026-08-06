@@ -79,6 +79,7 @@ module.exports = (db) => {
     const users                = db.prepare('SELECT * FROM users').all();
     const api_tokens           = db.prepare('SELECT * FROM api_tokens').all();
     const webauthn_credentials = db.prepare('SELECT * FROM webauthn_credentials').all();
+    const recovery_codes       = db.prepare('SELECT * FROM recovery_codes').all();
 
     // Embed gcode files as base64, keyed by their on-disk basename
     const gcodeFiles = {};
@@ -106,6 +107,7 @@ module.exports = (db) => {
       users,
       api_tokens,
       webauthn_credentials,
+      recovery_codes,
       gcode_files: gcodeFiles,
     };
 
@@ -175,6 +177,7 @@ module.exports = (db) => {
         if (hasUsers) {
           db.prepare('DELETE FROM sessions').run();
           db.prepare('DELETE FROM webauthn_credentials').run();
+          db.prepare('DELETE FROM recovery_codes').run();
           db.prepare('DELETE FROM api_tokens').run();
           db.prepare('DELETE FROM users').run();
         }
@@ -197,6 +200,7 @@ module.exports = (db) => {
           user:           makeInserter(db, 'users', backup.users || []),
           api_token:      makeInserter(db, 'api_tokens', backup.api_tokens || []),
           webauthn:       makeInserter(db, 'webauthn_credentials', backup.webauthn_credentials || []),
+          recovery_code:  makeInserter(db, 'recovery_codes', backup.recovery_codes || []),
         };
 
         // printer_models before printers — printers.model refers to it logically
@@ -219,6 +223,7 @@ module.exports = (db) => {
         for (const u of (backup.users || [])) stmts.user.run(u);
         for (const t of (backup.api_tokens || [])) stmts.api_token.run(t);
         for (const w of (backup.webauthn_credentials || [])) stmts.webauthn.run(w);
+        for (const r of (backup.recovery_codes || [])) stmts.recovery_code.run(r);
 
         // Sync auto-increment counters so new inserts don't collide
         for (const [table, col] of [
@@ -227,6 +232,7 @@ module.exports = (db) => {
           ['printer_events', 'printer_events'],
           ['filament_types', 'filament_types'], ['filament_colors', 'filament_colors'],
           ['users', 'users'], ['api_tokens', 'api_tokens'], ['webauthn_credentials', 'webauthn_credentials'],
+          ['recovery_codes', 'recovery_codes'],
         ]) {
           db.prepare(`
             INSERT OR REPLACE INTO sqlite_sequence (name, seq)

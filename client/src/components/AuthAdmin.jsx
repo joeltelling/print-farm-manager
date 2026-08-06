@@ -101,6 +101,10 @@ export default function AuthAdmin() {
       <section style={SECTION}>
         <h2 style={H2}>Authentication</h2>
         <div style={HELP}>Authentication is required on this install and is always on. Manage who can sign in below.</div>
+        <label style={{ fontSize: 13, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', margin: '4px 0 12px' }}>
+          <input type="checkbox" checked={settings.require_mfa === '1'} onChange={e => setSetting('require_mfa', e.target.checked ? '1' : '0', e.target.checked ? 'MFA now required for all users' : 'MFA requirement removed')} />
+          Require all users to set up two-factor authentication
+        </label>
         <div style={{ marginTop: 4 }}>
           <label style={{ fontSize: 12, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Trusted proxies (comma-separated IPs/CIDRs, e.g. the Traefik IP)</label>
           <div style={{ display: 'flex', gap: 8 }}>
