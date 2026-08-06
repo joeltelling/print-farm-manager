@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-08-06: merged upstream main into the i18n branch, translated the new Projects filter UI
+
+While this i18n PR was in review, two unrelated fixes landed on joeltelling/main: the Projects
+page's default active-only filter (draft/paused/completed each behind a "Show X (count)"
+checkbox) and the completed-project reactivation sweep fix (`addPart()` refreshing the projects
+list, not just the detail view). Both touched `client/src/pages/Projects.jsx` and
+`docs/web-app.md` in the same regions this branch had translated, so merging produced real
+conflicts rather than a clean fast-forward.
+
+Resolved by keeping both sides' behavior instead of picking one: `addPart()` now refreshes
+`fetchProjects()` alongside `fetchDetail()` (the upstream fix) while keeping the translated
+toast (`t('projects.partAddedToast')`) instead of the raw string upstream had used before this
+branch existed. `docs/web-app.md`'s Dashboard table row keeps both facts: the translated
+fleet-grid badge/tooltip behavior and the dispatch-priority ordering for Active Projects.
+
+The new filter checkboxes and "no active projects" empty state came in as hardcoded English
+text, since upstream's branch predates this one's i18n work. Wired them through i18n rather than
+leaving new hardcoded strings in an otherwise-translated app.
+
+### Changes
+- `client/src/pages/Projects.jsx`: merge-resolved `addPart()` to do both the list refresh and
+  the translated toast; the three new filter checkboxes and the new empty state now call `t()`
+  instead of rendering literal English.
+- `client/src/locales/en.json`: added `projects.showDraftsCount`, `showPausedCount`,
+  `showCompletedCount` (same `{{count}}` pattern as `printers.showDecommissioned`), and
+  `projects.allFilteredTitle`/`allFilteredHint`.
+- `docs/web-app.md`: merged the Dashboard table's Fleet grid/Active Projects row to describe
+  both the i18n badge behavior and the priority ordering.
+
 ## 2026-07-14: i18n formatting locale: separate regional date/number format from translation language
 
 The previous fix (feeding `i18n.resolvedLanguage` into every `Intl` call so formatting followed
