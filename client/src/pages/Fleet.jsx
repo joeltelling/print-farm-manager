@@ -1,25 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import PollTimer from '../components/PollTimer';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
+import { useFormattingLocale } from '../useFormattingLocale';
 
 const STATUS_COLORS = {
-  PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
-  UPLOADING:  { bg: '#3b2c69', text: '#a78bfa', label: 'Uploading' },
-  IDLE:       { bg: '#1f2937', text: '#6b7280', label: 'Idle' },
-  READY:      { bg: '#1f2937', text: '#94a3b8', label: 'Ready' },
-  FINISHED:   { bg: '#14532d', text: '#86efac', label: 'Finished' },
-  STOPPED:    { bg: '#431407', text: '#fb923c', label: 'Stopped' },
-  PAUSED:     { bg: '#78350f', text: '#fbbf24', label: 'Paused' },
-  ATTENTION:  { bg: '#78350f', text: '#fbbf24', label: 'Attention' },
-  ERROR:      { bg: '#7f1d1d', text: '#f87171', label: 'Error' },
-  OFFLINE:    { bg: '#1f2937', text: '#6b7280', label: 'Offline' },
-  UNKNOWN:    { bg: '#1f2937', text: '#9ca3af', label: 'Unknown' },
+  PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', labelKey: 'common.statusPrinting' },
+  UPLOADING:  { bg: '#3b2c69', text: '#a78bfa', labelKey: 'common.statusUploading' },
+  IDLE:       { bg: '#1f2937', text: '#6b7280', labelKey: 'common.statusIdle' },
+  READY:      { bg: '#1f2937', text: '#94a3b8', labelKey: 'common.statusReady' },
+  FINISHED:   { bg: '#14532d', text: '#86efac', labelKey: 'common.statusFinished' },
+  STOPPED:    { bg: '#431407', text: '#fb923c', labelKey: 'common.statusStopped' },
+  PAUSED:     { bg: '#78350f', text: '#fbbf24', labelKey: 'common.statusPaused' },
+  ATTENTION:  { bg: '#78350f', text: '#fbbf24', labelKey: 'common.statusAttention' },
+  ERROR:      { bg: '#7f1d1d', text: '#f87171', labelKey: 'common.statusError' },
+  OFFLINE:    { bg: '#1f2937', text: '#6b7280', labelKey: 'common.statusOffline' },
+  UNKNOWN:    { bg: '#1f2937', text: '#9ca3af', labelKey: 'common.statusUnknown' },
 };
 
 const KNOWN_STATUSES = new Set(Object.keys(STATUS_COLORS));
+
+// Mirrors Jobs.jsx's JOB_STATUS labelKey mapping, same job status codes, same keys.
+// 'done' is a legacy alias for 'finished' (see DONE_STATUSES in server/routes/dashboard.js).
+const JOB_STATUS_LABEL_KEYS = {
+  queued:    'jobs.statusQueued',
+  uploading: 'common.statusUploading',
+  printing:  'common.statusPrinting',
+  finished:  'common.statusFinished',
+  done:      'common.statusFinished',
+  failed:    'jobs.statusFailed',
+  cancelled: 'jobs.statusCancelled',
+};
 
 function statusStyle(status) {
   return STATUS_COLORS[status] || STATUS_COLORS.UNKNOWN;
@@ -35,27 +49,29 @@ function displayStatus(p) {
   return p.status;
 }
 
-function formatTimeRemaining(secs) {
+function formatTimeRemaining(t, secs) {
   if (secs == null || secs < 0) return null;
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m left`;
-  if (m > 0) return `${m}m left`;
-  return '< 1m left';
+  if (h > 0) return t('fleet.timeRemainingHm', { h, m });
+  if (m > 0) return t('fleet.timeRemainingM', { m });
+  return t('fleet.timeRemainingLessThanMin');
 }
 
 // Wall-clock finish time — "done 3:45 PM", with a day marker if it rolls past midnight
-function formatEta(secs) {
+function formatEta(t, secs, formattingLocale) {
   if (secs == null || secs < 0) return null;
   const eta = new Date(Date.now() + secs * 1000);
-  const time = eta.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const time = eta.toLocaleTimeString(formattingLocale, { hour: 'numeric', minute: '2-digit' });
   const days = Math.floor((eta - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000);
-  if (days === 1) return `done ${time} tomorrow`;
-  if (days > 1) return `done ${eta.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
-  return `done ${time}`;
+  if (days === 1) return t('fleet.etaTomorrow', { time });
+  if (days > 1) return t('fleet.etaDay', { day: eta.toLocaleDateString(formattingLocale, { weekday: 'short' }), time });
+  return t('fleet.etaToday', { time });
 }
 
 function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail }) {
+  const { t } = useTranslation();
+  const formattingLocale = useFormattingLocale();
   const shownStatus = displayStatus(printer);
   const style = statusStyle(shownStatus);
   const isUploading = shownStatus === 'UPLOADING';
@@ -102,8 +118,8 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
   const needsUploadConfirmation = printer.is_held === 1 && printer.has_uploading_job === 1 && printer.status !== 'OFFLINE';
   const isPrinting = printer.status === 'PRINTING';
   const pct = isPrinting && printer.job_progress != null ? Math.round(printer.job_progress) : null;
-  const timeLeft = isPrinting ? formatTimeRemaining(printer.job_time_remaining) : null;
-  const eta      = isPrinting ? formatEta(printer.job_time_remaining) : null;
+  const timeLeft = isPrinting ? formatTimeRemaining(t, printer.job_time_remaining) : null;
+  const eta      = isPrinting ? formatEta(t, printer.job_time_remaining, formattingLocale) : null;
 
   function cardBorder() {
     if (needsOfflineConfirmation || needsUploadConfirmation) return '#92400e';
@@ -114,7 +130,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
   return (
     <div
       onClick={(needsConfirmation && !needsUploadConfirmation) ? () => onToggleSelect(printer.id) : () => onOpenDetail(printer.id)}
-      title={(needsConfirmation && !needsUploadConfirmation) ? (selected ? 'Click to deselect' : 'Click to select for batch Set Ready') : 'Click to open printer details'}
+      title={(needsConfirmation && !needsUploadConfirmation) ? (selected ? t('fleet.clickToDeselect') : t('fleet.clickToSelectBatch')) : t('fleet.clickToOpenDetails')}
       style={{
         background: (needsOfflineConfirmation || needsUploadConfirmation) ? '#2a1f0e' : needsConfirmation ? '#1c2a1c' : '#1e2433',
         border: `${selected ? '2px' : '1px'} solid ${cardBorder()}`,
@@ -133,7 +149,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
           {printer.name}
         </span>
         <span style={{ background: style.bg, color: style.text, borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
-          {style.label}
+          {t(style.labelKey)}
         </span>
       </div>
 
@@ -163,7 +179,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
             </div>
           )}
           <div style={{ fontSize: 11, color: '#a78bfa' }}>
-            Sending file to printer…
+            {t('fleet.sendingFile')}
           </div>
         </div>
       )}
@@ -204,8 +220,8 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
       {printer.status === 'STOPPED' && (
         <div style={{ fontSize: 11, color: '#fb923c', marginTop: 4 }}>
           {needsConfirmation
-            ? 'Print stopped from printer screen — confirm outcome below to resume'
-            : 'Print stopped from printer screen — returns to service on next dispatch'}
+            ? t('fleet.stoppedConfirmPending')
+            : t('fleet.stoppedReturnsToService')}
         </div>
       )}
 
@@ -213,7 +229,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
           {printer.last_parts_per_plate != null && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 11, color: '#64748b' }}>Good:</span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>{t('fleet.goodLabel')}</span>
               <input
                 type="number"
                 min={0}
@@ -232,17 +248,17 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => onSetReady(printer.id, printer.last_parts_per_plate != null ? parseInt(confirmedQty, 10) : null)}
-              title="Confirm the print was good — credits the part count and returns this printer to the dispatch queue"
+              title={t('fleet.setReadyTitle')}
               style={{ flex: 1, background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
-              ✓ Set Ready
+              ✓ {t('fleet.setReady')}
             </button>
             <button
               onClick={() => onBadPrint(printer.id)}
-              title="Mark the print as failed — no parts are credited; the job re-queues so it can print again"
+              title={t('fleet.badPrintTitle')}
               style={{ flex: 1, background: '#7f1d1d', color: '#f87171', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
-              ✗ Bad Print
+              ✗ {t('fleet.badPrint')}
             </button>
           </div>
         </div>
@@ -251,20 +267,20 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
       {needsOfflineConfirmation && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
           <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 6 }}>
-            Went offline with a job in progress. If it comes back printing, this clears automatically.
+            {t('fleet.offlineWentOffline')}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => onSetReady(printer.id, null)}
               style={{ flex: 1, background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
-              ✓ Job OK
+              ✓ {t('fleet.jobOk')}
             </button>
             <button
               onClick={() => onBadPrint(printer.id)}
               style={{ flex: 1, background: '#7f1d1d', color: '#f87171', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
-              ✗ Job Failed
+              ✗ {t('fleet.jobFailed')}
             </button>
           </div>
         </div>
@@ -274,8 +290,8 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 4 }}>
           <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 6 }}>
             {(printer.status === 'FINISHED' || printer.status === 'IDLE')
-              ? 'Upload failed — but printer shows job complete. Did the print succeed?'
-              : 'Upload failed after retries — check the printer. Is it actually printing?'}
+              ? t('fleet.uploadFailedButComplete')
+              : t('fleet.uploadFailedCheckPrinter')}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button
@@ -284,13 +300,13 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
                 : onLinkJob(printer.id, true)}
               style={{ flex: 1, background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
-              {(printer.status === 'FINISHED' || printer.status === 'IDLE') ? '✓ Set Ready' : '✓ Job Running'}
+              {(printer.status === 'FINISHED' || printer.status === 'IDLE') ? `✓ ${t('fleet.setReady')}` : `✓ ${t('fleet.jobRunning')}`}
             </button>
             <button
               onClick={() => onUploadFailed(printer.id)}
               style={{ flex: 1, background: '#7f1d1d', color: '#f87171', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
-              ✗ Upload Failed
+              ✗ {t('fleet.uploadFailedBtn')}
             </button>
           </div>
         </div>
@@ -300,10 +316,10 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 2 }}>
           <button
             onClick={() => onLinkJob(printer.id, false)}
-            title="Stalled upload? Tell the system which queued job is actually printing on this machine so tracking stays correct"
+            title={t('fleet.linkJobTitle')}
             style={{ background: 'none', color: '#60a5fa', border: '1px solid #1e3a5f', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
           >
-            Link Job
+            {t('fleet.linkJob')}
           </button>
         </div>
       )}
@@ -311,7 +327,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
       {!isPrinting && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 2 }}>
           <button onClick={() => onDecommission(printer.id, (needsConfirmation && printer.last_parts_per_plate != null) ? parseInt(confirmedQty, 10) : null)} style={{ background: 'none', color: '#475569', border: '1px solid #2d3748', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}>
-            Decommission
+            {t('fleet.decommission')}
           </button>
         </div>
       )}
@@ -320,6 +336,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
 }
 
 export default function Fleet() {
+  const { t }                                 = useTranslation();
   const navigate                              = useNavigate();
   const [confirm, confirmModal]               = useConfirm();
   const [showToast, toastEl]                  = useToast();
@@ -341,7 +358,7 @@ export default function Fleet() {
   const fetchPrinters = useCallback(async () => {
     try {
       const res = await fetch('/api/printers');
-      if (!res.ok) throw new Error('Failed to fetch printers');
+      if (!res.ok) throw new Error(t('fleet.fetchFailed'));
       const data = await res.json();
       setPrinters(data);
       setLastPolled(Date.now());
@@ -351,7 +368,7 @@ export default function Fleet() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchPrinters();
@@ -388,7 +405,7 @@ export default function Fleet() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      showToast(`Set Ready failed: ${body.error || res.status}`, 'error');
+      showToast(t('fleet.setReadyFailed', { reason: body.error || res.status }), 'error');
       return;
     }
     setSelectedForReady(prev => { const next = new Set(prev); next.delete(printerId); return next; });
@@ -403,7 +420,7 @@ export default function Fleet() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      showToast(`Batch Set Ready failed: ${body.error || res.status}`, 'error');
+      showToast(t('fleet.batchSetReadyFailed', { reason: body.error || res.status }), 'error');
       return;
     }
     setSelectedForReady(new Set());
@@ -422,7 +439,7 @@ export default function Fleet() {
 
     setLinkJobModal({
       printerId,
-      printerName: printer?.name ?? `Printer ${printerId}`,
+      printerName: printer?.name ?? t('fleet.printerFallbackName', { id: printerId }),
       jobs,
       selectedJobId: preselect,
       isHeld,
@@ -441,7 +458,7 @@ export default function Fleet() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        showToast(`Failed to link job: ${body.error || res.status}`, 'error');
+        showToast(t('fleet.linkJobFailed', { reason: body.error || res.status }), 'error');
       }
     } else if (isHeld) {
       // No job selected — just release the hold
@@ -468,13 +485,13 @@ export default function Fleet() {
     if (!awaitingSignoff) {
       // No outcome to resolve — just collect a note and decommission directly
       const result = await confirm({
-        title: `Decommission ${printer?.name}`,
-        message: 'This machine will be removed from the active fleet and will require a manual recommission before running again.',
-        cancelLabel: 'Cancel',
-        prompt: 'Reason for decommissioning',
+        title: t('fleet.decommissionTitle', { name: printer?.name }),
+        message: t('fleet.decommissionMessage'),
+        cancelLabel: t('common.cancel'),
+        prompt: t('fleet.decommissionReasonPrompt'),
         promptRequired: true,
         actions: [
-          { label: 'Decommission', value: 'decommission', variant: 'danger' },
+          { label: t('fleet.decommission'), value: 'decommission', variant: 'danger' },
         ],
       });
       if (!result) return;
@@ -486,7 +503,7 @@ export default function Fleet() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        showToast(`Decommission failed: ${body.error || res.status}`, 'error');
+        showToast(t('fleet.decommissionFailed', { reason: body.error || res.status }), 'error');
       }
       fetchPrinters();
       return;
@@ -494,14 +511,14 @@ export default function Fleet() {
 
     // Print outcome pending (active job or held for sign-off) — resolve it first
     const result = await confirm({
-      title: `Decommission ${printer?.name}`,
-      message: 'Was the last print successful?\n\nThis machine will be removed from the active fleet and will require a manual recommission before running again.',
-      cancelLabel: 'Cancel',
-      prompt: 'Reason for decommissioning',
+      title: t('fleet.decommissionTitle', { name: printer?.name }),
+      message: t('fleet.decommissionSignoffMessage'),
+      cancelLabel: t('common.cancel'),
+      prompt: t('fleet.decommissionReasonPrompt'),
       promptRequired: true,
       actions: [
-        { label: 'Print succeeded — credit & decommission', value: 'success', variant: 'success' },
-        { label: 'Print failed — discard & decommission',   value: 'failure', variant: 'danger'  },
+        { label: t('fleet.decommissionSuccessAction'), value: 'success', variant: 'success' },
+        { label: t('fleet.decommissionFailureAction'), value: 'failure', variant: 'danger'  },
       ],
     });
     if (!result) return;
@@ -515,7 +532,7 @@ export default function Fleet() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        showToast(`Failed: ${body.error || res.status}`, 'error');
+        showToast(t('fleet.markFailureFailed', { reason: body.error || res.status }), 'error');
       }
       fetchPrinters();
       return;
@@ -530,7 +547,7 @@ export default function Fleet() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      showToast(`Decommission failed: ${body.error || res.status}`, 'error');
+      showToast(t('fleet.decommissionFailed', { reason: body.error || res.status }), 'error');
     }
     fetchPrinters();
   }
@@ -538,10 +555,10 @@ export default function Fleet() {
   async function badPrint(printerId) {
     const printer = printers.find(p => p.id === printerId);
     const result = await confirm({
-      title: `Mark Bad Print — ${printer?.name}`,
-      message: 'This will undo the completed quantity, reopen the part if it was closed, and decommission the printer pending investigation.\n\nRecommission the printer manually once you have confirmed it is safe to run.',
-      confirmLabel: 'Mark as Failed',
-      prompt: 'Reason for failure',
+      title: t('fleet.markBadPrintTitle', { name: printer?.name }),
+      message: t('fleet.markBadPrintMessage'),
+      confirmLabel: t('fleet.markAsFailed'),
+      prompt: t('fleet.reasonForFailure'),
       promptRequired: true,
       danger: true,
     });
@@ -554,7 +571,7 @@ export default function Fleet() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      showToast(`Failed to mark bad print: ${body.error || res.status}`, 'error');
+      showToast(t('fleet.badPrintFailed', { reason: body.error || res.status }), 'error');
     } else {
       setSelectedForReady(prev => { const next = new Set(prev); next.delete(printerId); return next; });
     }
@@ -564,10 +581,10 @@ export default function Fleet() {
   async function uploadFailed(printerId) {
     const printer = printers.find(p => p.id === printerId);
     const result = await confirm({
-      title: `Confirm Upload Failure — ${printer?.name}`,
-      message: 'This confirms the print never started. No completed quantity will be deducted. The printer will be decommissioned pending investigation.\n\nRecommission the printer manually when it is ready to run again.',
-      confirmLabel: 'Confirm Upload Failed',
-      prompt: 'Notes / reason',
+      title: t('fleet.confirmUploadFailureTitle', { name: printer?.name }),
+      message: t('fleet.confirmUploadFailureMessage'),
+      confirmLabel: t('fleet.confirmUploadFailedLabel'),
+      prompt: t('fleet.notesReasonPrompt'),
       promptRequired: true,
       danger: true,
     });
@@ -580,7 +597,7 @@ export default function Fleet() {
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      showToast(`Failed to mark upload failure: ${body.error || res.status}`, 'error');
+      showToast(t('fleet.uploadFailureMarkFailed', { reason: body.error || res.status }), 'error');
     }
     fetchPrinters();
   }
@@ -606,7 +623,7 @@ export default function Fleet() {
   // Group by model — order and labels come from the DB via /api/models
   const modelOrder  = allModels.map(m => m.model_id);
   const MODEL_LABELS = Object.fromEntries(allModels.map(m => [m.model_id, m.label]));
-  MODEL_LABELS.other = 'Other';
+  MODEL_LABELS.other = t('common.other');
 
   const grouped = modelOrder.reduce((acc, model) => {
     const group = filtered.filter((p) => p.model === model);
@@ -635,14 +652,14 @@ export default function Fleet() {
             onClick={e => e.stopPropagation()}
             style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 24, width: 480, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto' }}
           >
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Link Job — {linkJobModal.printerName}</div>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>{t('fleet.linkJobModalTitle', { name: linkJobModal.printerName })}</div>
             <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              Select the job currently running on this machine.
+              {t('fleet.linkJobModalHint')}
             </div>
 
             {linkJobModal.jobs.length === 0 ? (
               <div style={{ fontSize: 13, color: '#94a3b8', padding: '12px 0' }}>
-                No failed or stalled jobs found for this printer's model.
+                {t('fleet.linkJobModalEmpty')}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -661,8 +678,8 @@ export default function Fleet() {
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{job.part_name}</div>
                     <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace', marginBottom: 4 }}>{job.gcode_filename}</div>
                     <div style={{ fontSize: 11, color: '#475569' }}>
-                      Job #{job.id} · {job.status}
-                      {job.original_printer_name ? ` · was on ${job.original_printer_name}` : ''}
+                      {t('fleet.linkJobRowMeta', { id: job.id, status: t(JOB_STATUS_LABEL_KEYS[job.status] || 'common.statusUnknown') })}
+                      {job.original_printer_name ? t('fleet.linkJobRowWasOn', { name: job.original_printer_name }) : ''}
                     </div>
                   </div>
                 ))}
@@ -674,14 +691,14 @@ export default function Fleet() {
                 onClick={() => setLinkJobModal(null)}
                 style={{ background: '#1e2433', color: '#94a3b8', border: '1px solid #2d3748', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               {linkJobModal.isHeld && !linkJobModal.selectedJobId && (
                 <button
                   onClick={submitLinkJob}
                   style={{ background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
                 >
-                  Release Hold
+                  {t('fleet.releaseHold')}
                 </button>
               )}
               {linkJobModal.selectedJobId && (
@@ -689,7 +706,7 @@ export default function Fleet() {
                   onClick={submitLinkJob}
                   style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                 >
-                  Link Job
+                  {t('fleet.linkJob')}
                 </button>
               )}
             </div>
@@ -698,15 +715,15 @@ export default function Fleet() {
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Fleet</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t('fleet.title')}</h1>
           <PollTimer lastPolled={lastPolled} intervalMs={15000} />
         </div>
         <button
           onClick={sweep}
-          title="Manually trigger job dispatch now. This normally happens automatically — use it to start jobs on idle machines without waiting for the next cycle."
+          title={t('fleet.sweepTitle')}
           style={{ background: '#1e2433', color: '#94a3b8', border: '1px solid #2d3748', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}
         >
-          Sweep for Jobs
+          {t('fleet.sweepButton')}
         </button>
       </div>
 
@@ -723,10 +740,10 @@ export default function Fleet() {
           gap: 12,
         }}>
           <span style={{ color: '#fbbf24', fontWeight: 600, fontSize: 14 }}>
-            {awaitingOfflineReview.length} printer{awaitingOfflineReview.length !== 1 ? 's' : ''} went offline with a job in progress
+            {t('fleet.offlineBannerCount', { count: awaitingOfflineReview.length })}
           </span>
           <span style={{ color: '#78350f', fontSize: 13 }}>
-            — will auto-clear if they come back printing
+            {t('fleet.offlineBannerAutoClear')}
           </span>
         </div>
       )}
@@ -744,7 +761,7 @@ export default function Fleet() {
           gap: 12,
         }}>
           <span style={{ color: '#fbbf24', fontWeight: 600, fontSize: 14 }}>
-            {awaitingUploadReview.length} printer{awaitingUploadReview.length !== 1 ? 's' : ''} had a failed upload — check each machine
+            {t('fleet.uploadBannerCount', { count: awaitingUploadReview.length })}
           </span>
         </div>
       )}
@@ -763,13 +780,13 @@ export default function Fleet() {
           flexWrap: 'wrap',
         }}>
           <span style={{ color: '#86efac', fontWeight: 600, fontSize: 14 }}>
-            {awaitingConfirmation.length} printer{awaitingConfirmation.length !== 1 ? 's' : ''} awaiting confirmation
+            {t('fleet.awaitingBannerCount', { count: awaitingConfirmation.length })}
           </span>
           <button
             onClick={selectAll}
             style={{ background: '#166534', color: '#4ade80', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
           >
-            Select All
+            {t('fleet.selectAll')}
           </button>
           {selectedForReady.size > 0 && (
             <>
@@ -777,13 +794,13 @@ export default function Fleet() {
                 onClick={deselectAll}
                 style={{ background: '#1f2937', color: '#9ca3af', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
               >
-                Deselect All
+                {t('fleet.deselectAll')}
               </button>
               <button
                 onClick={setReadyForSelected}
                 style={{ background: '#15803d', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
               >
-                ✓ Set Ready ({selectedForReady.size})
+                ✓ {t('fleet.setReadyCount', { count: selectedForReady.size })}
               </button>
             </>
           )}
@@ -793,16 +810,16 @@ export default function Fleet() {
       {/* Filter chips */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {[
-          { key: 'ALL',      count: printers.length,        label: `All (${printers.length})`,             color: '#64748b' },
-          { key: 'PRINTING', count: counts.PRINTING || 0,   label: `Printing (${counts.PRINTING || 0})`,   color: STATUS_COLORS.PRINTING.text },
-          { key: 'UPLOADING',count: counts.UPLOADING || 0,  label: `Uploading (${counts.UPLOADING || 0})`, color: STATUS_COLORS.UPLOADING.text },
-          { key: 'IDLE',     count: counts.IDLE || 0,       label: `Idle (${counts.IDLE || 0})`,           color: STATUS_COLORS.IDLE.text },
-          { key: 'FINISHED', count: counts.FINISHED || 0,   label: `Finished (${counts.FINISHED || 0})`,   color: STATUS_COLORS.FINISHED.text },
-          { key: 'STOPPED',  count: counts.STOPPED || 0,    label: `Stopped (${counts.STOPPED || 0})`,     color: STATUS_COLORS.STOPPED.text },
-          { key: 'ERROR',    count: counts.ERROR || 0,      label: `Error (${counts.ERROR || 0})`,         color: STATUS_COLORS.ERROR.text },
-          { key: 'ATTENTION',count: counts.ATTENTION || 0,  label: `Attention (${counts.ATTENTION || 0})`, color: STATUS_COLORS.ATTENTION.text },
-          { key: 'OFFLINE',  count: counts.OFFLINE || 0,    label: `Offline (${counts.OFFLINE || 0})`,     color: STATUS_COLORS.OFFLINE.text },
-          ...(hasUnknown ? [{ key: 'UNKNOWN', count: 1, label: `Unknown (${printers.filter(p => !KNOWN_STATUSES.has(p.status)).length})`, color: STATUS_COLORS.UNKNOWN.text }] : []),
+          { key: 'ALL',      count: printers.length,        label: t('fleet.filterCount', { label: t('common.all'), count: printers.length }),                          color: '#64748b' },
+          { key: 'PRINTING', count: counts.PRINTING || 0,   label: t('fleet.filterCount', { label: t('common.statusPrinting'), count: counts.PRINTING || 0 }),          color: STATUS_COLORS.PRINTING.text },
+          { key: 'UPLOADING',count: counts.UPLOADING || 0,  label: t('fleet.filterCount', { label: t('common.statusUploading'), count: counts.UPLOADING || 0 }),        color: STATUS_COLORS.UPLOADING.text },
+          { key: 'IDLE',     count: counts.IDLE || 0,       label: t('fleet.filterCount', { label: t('common.statusIdle'), count: counts.IDLE || 0 }),                  color: STATUS_COLORS.IDLE.text },
+          { key: 'FINISHED', count: counts.FINISHED || 0,   label: t('fleet.filterCount', { label: t('common.statusFinished'), count: counts.FINISHED || 0 }),          color: STATUS_COLORS.FINISHED.text },
+          { key: 'STOPPED',  count: counts.STOPPED || 0,    label: t('fleet.filterCount', { label: t('common.statusStopped'), count: counts.STOPPED || 0 }),            color: STATUS_COLORS.STOPPED.text },
+          { key: 'ERROR',    count: counts.ERROR || 0,      label: t('fleet.filterCount', { label: t('common.statusError'), count: counts.ERROR || 0 }),                color: STATUS_COLORS.ERROR.text },
+          { key: 'ATTENTION',count: counts.ATTENTION || 0,  label: t('fleet.filterCount', { label: t('common.statusAttention'), count: counts.ATTENTION || 0 }),        color: STATUS_COLORS.ATTENTION.text },
+          { key: 'OFFLINE',  count: counts.OFFLINE || 0,    label: t('fleet.filterCount', { label: t('common.statusOffline'), count: counts.OFFLINE || 0 }),            color: STATUS_COLORS.OFFLINE.text },
+          ...(hasUnknown ? [{ key: 'UNKNOWN', count: 1, label: t('fleet.filterCount', { label: t('common.statusUnknown'), count: printers.filter(p => !KNOWN_STATUSES.has(p.status)).length }), color: STATUS_COLORS.UNKNOWN.text }] : []),
         // Zero-count chips are noise — hide them unless that filter is currently active
         ].filter(({ key, count }) => key === 'ALL' || count > 0 || filter === key)
          .map(({ key, label, color }) => (
@@ -826,7 +843,7 @@ export default function Fleet() {
         ))}
         <input
           type="text"
-          placeholder="Search name / IP / group…"
+          placeholder={t('fleet.searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
@@ -854,12 +871,12 @@ export default function Fleet() {
           ))}
         </div>
       )}
-      {error && <p style={{ color: '#f87171' }}>Error: {error}</p>}
+      {error && <p style={{ color: '#f87171' }}>{t('common.errorPrefix', { message: error })}</p>}
       {!loading && printers.length === 0 && (
         <EmptyState
-          title="No printers yet"
-          hint="Your fleet will appear here as live status cards. Add printers one at a time or import your whole farm from a CSV — both are on the Settings page."
-          actionLabel="Go to Settings"
+          title={t('fleet.emptyTitle')}
+          hint={t('fleet.emptyHint')}
+          actionLabel={t('fleet.emptyActionLabel')}
           actionTo="/settings"
         />
       )}

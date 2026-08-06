@@ -1,6 +1,22 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import { useToast } from '../useToast';
 import { useConfirm } from '../useConfirm';
+import { SUPPORTED_LANGUAGES } from '../i18n';
+import { useFormattingLocale } from '../useFormattingLocale';
+
+function LanguageSwitcher() {
+  const { t, i18n } = useTranslation();
+  return (
+    // Resolve to the base code (en-US -> en) so the control matches a SUPPORTED_LANGUAGES
+    // option even if the browser detector reports a region code.
+    <select value={(i18n.resolvedLanguage || i18n.language || 'en').split('-')[0]} onChange={(e) => i18n.changeLanguage(e.target.value)} style={inputStyle}>
+      {SUPPORTED_LANGUAGES.map((l) => (
+        <option key={l.code} value={l.code}>{l.label}</option>
+      ))}
+    </select>
+  );
+}
 
 const inputStyle = {
   background: '#0f172a',
@@ -33,16 +49,18 @@ const CONNECTOR_LABEL = {
 const NO_API_KEY_TYPES = new Set(['elegoo-centauri', 'klipper']);
 
 // Per-brand hints on where to find connection credentials
-const CREDENTIAL_HELP = {
-  'prusa':            'API Key: on the printer under Settings → Network → PrusaLink, or in the PrusaLink web UI (open the printer\'s IP in a browser) under Settings → API Key.',
-  'elegoo-centauri':  'No API key needed — just the printer\'s IP address, shown on the printer\'s network settings screen.',
-  'elegoo-centauri2': 'Enable LAN mode on the printer. The Access Code and Serial Number are shown on the printer\'s network settings screen.',
-  'bambu':            'Enable LAN Mode on the printer first. The Access Code is on the printer screen under Settings → WLAN; the Serial Number is under Settings → Device.',
-  'klipper':          'No API key needed — just the IP of the machine running Moonraker. Port 7125 is used automatically.',
-  'octoprint':        'API Key: in OctoPrint under Settings → API. If OctoPrint isn\'t on port 80 (commonly :5000), include the port in the IP field, e.g. 192.168.1.50:5000.',
+const CREDENTIAL_HELP_KEYS = {
+  'prusa':            'settings.credentialHelpPrusa',
+  'elegoo-centauri':  'settings.credentialHelpElegooCentauri',
+  'elegoo-centauri2': 'settings.credentialHelpElegooCentauri2',
+  'bambu':            'settings.credentialHelpBambu',
+  'klipper':          'settings.credentialHelpKlipper',
+  'octoprint':        'settings.credentialHelpOctoprint',
 };
 
 export default function Settings() {
+  const { t } = useTranslation();
+  const formattingLocale = useFormattingLocale();
   const [showToast, toastEl] = useToast();
   const [confirm, confirmModal] = useConfirm();
   const [importing, setImporting] = useState(false);
@@ -80,10 +98,10 @@ export default function Settings() {
         body: JSON.stringify({ name: typeForm.name }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add type');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToAddType'));
       setTypeForm({ name: '' });
       fetchModels();
-      showToast('Filament type added');
+      showToast(t('settings.filamentTypeAddedToast'));
     } catch (err) {
       setTypeFormError(err.message);
     }
@@ -94,9 +112,9 @@ export default function Settings() {
     try {
       const res = await fetch(`/api/filaments/types/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to delete');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToDelete'));
       fetchModels();
-      showToast(`"${name}" removed`);
+      showToast(t('settings.itemRemovedToast', { name }));
     } catch (err) {
       setTypeDeleteError(prev => ({ ...prev, [id]: err.message }));
     }
@@ -120,10 +138,10 @@ export default function Settings() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add color');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToAddColor'));
       setColorForm({ type_id: '', name: '', hex_color: '' });
       fetchModels();
-      showToast('Filament color added');
+      showToast(t('settings.filamentColorAddedToast'));
     } catch (err) {
       setColorFormError(err.message);
     }
@@ -134,9 +152,9 @@ export default function Settings() {
     try {
       const res = await fetch(`/api/filaments/colors/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to delete');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToDelete'));
       fetchModels();
-      showToast(`"${name}" removed`);
+      showToast(t('settings.itemRemovedToast', { name }));
     } catch (err) {
       setColorDeleteError(prev => ({ ...prev, [id]: err.message }));
     }
@@ -181,7 +199,7 @@ export default function Settings() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Add failed');
+      if (!res.ok) throw new Error(data.error || t('settings.addPrinterFailed'));
       setAddResult(data);
       setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '' });
     } catch (err) {
@@ -206,10 +224,10 @@ export default function Settings() {
         body: JSON.stringify(modelForm),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add model');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToAddModel'));
       setModelForm({ model_id: '', label: '', connector: 'prusa' });
       fetchModels();
-      showToast('Model added');
+      showToast(t('settings.modelAddedToast'));
     } catch (err) {
       setModelFormError(err.message);
     }
@@ -220,7 +238,7 @@ export default function Settings() {
     try {
       const res = await fetch(`/api/models/${encodeURIComponent(model_id)}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to delete model');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToDeleteModel'));
       fetchModels();
     } catch (err) {
       setModelDeleteError(prev => ({ ...prev, [model_id]: err.message }));
@@ -244,10 +262,10 @@ export default function Settings() {
         body: JSON.stringify(groupForm),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add group');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToAddGroup'));
       setGroupForm({ name: '' });
       fetchModels();
-      showToast('Group added');
+      showToast(t('settings.groupAddedToast'));
     } catch (err) {
       setGroupFormError(err.message);
     }
@@ -258,7 +276,7 @@ export default function Settings() {
     try {
       const res = await fetch(`/api/groups/${encodeURIComponent(name)}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to delete group');
+      if (!res.ok) throw new Error(data.error || t('settings.failedToDeleteGroup'));
       fetchModels();
     } catch (err) {
       setGroupDeleteError(prev => ({ ...prev, [name]: err.message }));
@@ -292,8 +310,8 @@ export default function Settings() {
         body: JSON.stringify({ value: batchSize }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Save failed');
-      showToast('Saved');
+      if (!res.ok) throw new Error(data.error || t('settings.saveFailedGeneric'));
+      showToast(t('common.saved'));
     } catch (err) {
       setBatchSizeError(err.message);
     }
@@ -308,9 +326,9 @@ export default function Settings() {
         body: JSON.stringify({ value: farmName }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Save failed');
+      if (!res.ok) throw new Error(data.error || t('settings.saveFailedGeneric'));
       window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: data.value }));
-      showToast('Farm name saved');
+      showToast(t('settings.farmNameSavedToast'));
     } catch (err) {
       setFarmNameError(err.message);
     }
@@ -349,9 +367,9 @@ export default function Settings() {
     const file = restoreFileRef.current?.files[0];
     if (!file) return;
     const ok = await confirm({
-      title: 'Restore Farm Data',
-      message: 'This will replace ALL current farm data with the backup. This cannot be undone.',
-      confirmLabel: 'Restore',
+      title: t('settings.restoreFarmTitle'),
+      message: t('settings.restoreFarmMessage'),
+      confirmLabel: t('settings.restoreButton'),
       danger: true,
     });
     if (!ok) return;
@@ -366,7 +384,7 @@ export default function Settings() {
     try {
       const res = await fetch('/api/backup/restore', { method: 'POST', body: formData });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Restore failed');
+      if (!res.ok) throw new Error(data.error || t('settings.restoreFailed'));
       setRestoreResult(data);
 
       // Restore replaces printer_models/groups/filament library/settings wholesale:
@@ -377,7 +395,7 @@ export default function Settings() {
         .then(settingsData => {
           if (settingsData.dispatch_batch_size) setBatchSize(settingsData.dispatch_batch_size);
           setFarmName(settingsData.farm_name || '');
-          window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: settingsData.farm_name || 'Print Farm' }));
+          window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: settingsData.farm_name || '' }));
         })
         .catch(() => {});
     } catch (err) {
@@ -406,7 +424,7 @@ export default function Settings() {
         body: formData,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Import failed');
+      if (!res.ok) throw new Error(data.error || t('settings.importFailed'));
       setResult(data);
       // Init model selectors for flagged rows that need manual model selection
       const initial = {};
@@ -440,15 +458,15 @@ export default function Settings() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Save failed');
-      showToast(`"${row.name}" saved as ${selectedModel}`);
+      if (!res.ok) throw new Error(data.error || t('settings.saveFailedGeneric'));
+      showToast(t('settings.flaggedSavedToast', { name: row.name, model: selectedModel }));
       setResult((prev) => ({
         ...prev,
         flagged: prev.flagged.filter((f) => f !== flaggedItem),
         imported: prev.imported + 1,
       }));
     } catch (err) {
-      showToast(`Error: ${err.message}`, 'error');
+      showToast(t('common.errorPrefix', { message: err.message }), 'error');
     }
   }
 
@@ -456,13 +474,13 @@ export default function Settings() {
     <div>
       {toastEl}
       {confirmModal}
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Settings</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>{t('settings.title')}</h1>
 
       {/* Server Alerts */}
       {alerts.length > 0 && (
         <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640, border: '1px solid #7f1d1d' }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#fca5a5' }}>
-            Server Alerts ({alerts.length})
+            {t('settings.serverAlerts', { count: alerts.length })}
           </h2>
           {alerts.map(alert => (
             <div key={alert.id} style={{
@@ -479,7 +497,7 @@ export default function Settings() {
               <div style={{ flex: 1 }}>
                 <div style={{ color: '#fca5a5', marginBottom: 4 }}>{alert.message}</div>
                 <div style={{ color: '#475569', fontSize: 12 }}>
-                  {new Date(alert.timestamp).toLocaleString()}
+                  {new Date(alert.timestamp).toLocaleString(formattingLocale)}
                 </div>
               </div>
               <button
@@ -494,7 +512,7 @@ export default function Settings() {
                   padding: '0 4px',
                   flexShrink: 0,
                 }}
-                title="Dismiss"
+                title={t('common.dismiss')}
               >
                 ×
               </button>
@@ -505,19 +523,18 @@ export default function Settings() {
 
       {/* Printer Models */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Printer Models</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.printerModelsTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Configure which printer models are available in your farm. Models appear in the G-code upload
-          selector and the Add Printer form. Deleting a model is blocked if active printers use it.
+          {t('settings.printerModelsHint')}
         </p>
 
         {allModels.length > 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>
             <thead>
               <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>ID</th>
-                <th style={{ padding: '4px 8px' }}>Label</th>
-                <th style={{ padding: '4px 8px' }}>Connector</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colId')}</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colLabel')}</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colConnector')}</th>
                 <th style={{ padding: '4px 8px' }}></th>
               </tr>
             </thead>
@@ -532,7 +549,7 @@ export default function Settings() {
                       onClick={() => handleDeleteModel(m.model_id)}
                       style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                     {modelDeleteError[m.model_id] && (
                       <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{modelDeleteError[m.model_id]}</span>
@@ -545,12 +562,12 @@ export default function Settings() {
         )}
 
         {allModels.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>No models configured yet. Add your first model below.</p>
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>{t('settings.noModelsYet')}</p>
         )}
 
         <form onSubmit={handleAddModel} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model ID *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.modelIdLabel')}</label>
             <input
               value={modelForm.model_id}
               onChange={e => setModelForm(p => ({ ...p, model_id: e.target.value }))}
@@ -560,7 +577,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Label *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.labelLabel')}</label>
             <input
               value={modelForm.label}
               onChange={e => setModelForm(p => ({ ...p, label: e.target.value }))}
@@ -570,7 +587,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Connector *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.connectorLabel')}</label>
             <select
               value={modelForm.connector}
               onChange={e => setModelForm(p => ({ ...p, connector: e.target.value }))}
@@ -583,7 +600,7 @@ export default function Settings() {
             type="submit"
             style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
-            Add
+            {t('common.add')}
           </button>
         </form>
         {modelFormError && (
@@ -593,19 +610,16 @@ export default function Settings() {
 
       {/* Groups */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Groups</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.groupsTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Named groups (e.g. racks or rooms) that projects and G-codes can restrict dispatch to. A group
-          stays listed here even when no printer currently carries it (assigning a printer's Group field
-          on the Printers page auto-registers a new name here too). Deleting a group is blocked while any
-          active printer, G-code, or project still references it.
+          {t('settings.groupsHint')}
         </p>
 
         {allGroups.length > 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>
             <thead>
               <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Name</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colName')}</th>
                 <th style={{ padding: '4px 8px' }}></th>
               </tr>
             </thead>
@@ -618,7 +632,7 @@ export default function Settings() {
                       onClick={() => handleDeleteGroup(g.name)}
                       style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                     {groupDeleteError[g.name] && (
                       <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{groupDeleteError[g.name]}</span>
@@ -631,17 +645,17 @@ export default function Settings() {
         )}
 
         {allGroups.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>No groups registered yet. Add one below, or it'll be created automatically the first time you type it on a printer.</p>
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>{t('settings.noGroupsYet')}</p>
         )}
 
         <form onSubmit={handleAddGroup} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Name *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.groupNameLabel')}</label>
             <input
               value={groupForm.name}
               onChange={e => setGroupForm({ name: e.target.value })}
               required
-              placeholder="Rack A"
+              placeholder={t('settings.groupNameExample')}
               style={inputStyle}
             />
           </div>
@@ -649,7 +663,7 @@ export default function Settings() {
             type="submit"
             style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
-            Add
+            {t('common.add')}
           </button>
         </form>
         {groupFormError && (
@@ -659,34 +673,34 @@ export default function Settings() {
 
       {/* Filament Library */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.filamentLibraryTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
-          Define the filament types and colors available in your farm. Printers and G-codes select from these lists.
+          {t('settings.filamentLibraryHint')}
         </p>
 
         {/* Filament Types */}
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Types</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>{t('settings.typesHeading')}</h3>
         {filamentTypes.length > 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
             <thead>
               <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Name</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colName')}</th>
                 <th style={{ padding: '4px 8px' }}></th>
               </tr>
             </thead>
             <tbody>
-              {filamentTypes.map(t => (
-                <tr key={t.id} style={{ borderBottom: '1px solid #1a2030' }}>
-                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>{t.name}</td>
+              {filamentTypes.map(ft => (
+                <tr key={ft.id} style={{ borderBottom: '1px solid #1a2030' }}>
+                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>{ft.name}</td>
                   <td style={{ padding: '6px 8px' }}>
                     <button
-                      onClick={() => handleDeleteType(t.id, t.name)}
+                      onClick={() => handleDeleteType(ft.id, ft.name)}
                       style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
-                    {typeDeleteError[t.id] && (
-                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{typeDeleteError[t.id]}</span>
+                    {typeDeleteError[ft.id] && (
+                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{typeDeleteError[ft.id]}</span>
                     )}
                   </td>
                 </tr>
@@ -695,16 +709,16 @@ export default function Settings() {
           </table>
         )}
         {filamentTypes.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No types yet. Add your first below.</p>
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>{t('settings.noTypesYet')}</p>
         )}
         <form onSubmit={handleAddType} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 24 }}>
           <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type name *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.typeNameLabel')}</label>
             <input
               value={typeForm.name}
               onChange={e => setTypeForm(p => ({ ...p, name: e.target.value }))}
               required
-              placeholder="e.g. PLA, PETG, ASA"
+              placeholder={t('settings.typeNameExample')}
               style={inputStyle}
             />
           </div>
@@ -712,20 +726,20 @@ export default function Settings() {
             type="submit"
             style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
-            Add Type
+            {t('settings.addTypeButton')}
           </button>
         </form>
         {typeFormError && <div style={{ marginTop: -16, marginBottom: 16, color: '#fca5a5', fontSize: 13 }}>{typeFormError}</div>}
 
         {/* Filament Colors */}
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Colors</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>{t('settings.colorsHeading')}</h3>
         {filamentColors.length > 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
             <thead>
               <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Type</th>
-                <th style={{ padding: '4px 8px' }}>Color</th>
-                <th style={{ padding: '4px 8px' }}>Name</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colType')}</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colColor')}</th>
+                <th style={{ padding: '4px 8px' }}>{t('settings.colName')}</th>
                 <th style={{ padding: '4px 8px' }}></th>
               </tr>
             </thead>
@@ -739,7 +753,7 @@ export default function Settings() {
                       background: c.hex_color || '#334155',
                       border: '1px solid #475569',
                       verticalAlign: 'middle',
-                    }} title={c.hex_color || 'no color set'} />
+                    }} title={c.hex_color || t('settings.noColorSetTitle')} />
                   </td>
                   <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>
                     {c.name}
@@ -750,7 +764,7 @@ export default function Settings() {
                       onClick={() => handleDeleteColor(c.id, c.name)}
                       style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                     {colorDeleteError[c.id] && (
                       <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{colorDeleteError[c.id]}</span>
@@ -762,45 +776,45 @@ export default function Settings() {
           </table>
         )}
         {filamentColors.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No colors yet. Add your first below.</p>
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>{t('settings.noColorsYet')}</p>
         )}
         <form onSubmit={handleAddColor} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, alignItems: 'flex-end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.typeLabel')}</label>
             <select
               value={colorForm.type_id}
               onChange={e => setColorForm(p => ({ ...p, type_id: e.target.value }))}
               required
               style={inputStyle}
             >
-              <option value="">Select type…</option>
-              {filamentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="">{t('settings.selectTypePlaceholder')}</option>
+              {filamentTypes.map(ft => <option key={ft.id} value={ft.id}>{ft.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Color name *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.colorNameLabel')}</label>
             <input
               value={colorForm.name}
               onChange={e => setColorForm(p => ({ ...p, name: e.target.value }))}
               required
-              placeholder="e.g. Black, Galaxy Red"
+              placeholder={t('settings.colorNameExample')}
               style={inputStyle}
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Hex (optional)</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.hexOptionalLabel')}</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input
                 type="color"
                 value={colorForm.hex_color || '#000000'}
                 onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
                 style={{ width: 36, height: 34, padding: 2, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer' }}
-                title="Pick a color"
+                title={t('settings.pickColorTitle')}
               />
               <input
                 value={colorForm.hex_color}
                 onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
-                placeholder="#rrggbb"
+                placeholder={t('settings.hexPlaceholder')}
                 style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }}
               />
             </div>
@@ -809,7 +823,7 @@ export default function Settings() {
             type="submit"
             style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
           >
-            Add Color
+            {t('settings.addColorButton')}
           </button>
         </form>
         {colorFormError && <div style={{ marginTop: 8, color: '#fca5a5', fontSize: 13 }}>{colorFormError}</div>}
@@ -817,9 +831,9 @@ export default function Settings() {
 
       {/* Add Single Printer */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Add Printer</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.addPrinterTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>
-          Add a single printer directly without a CSV file.
+          {t('settings.addPrinterHint')}
         </p>
         <div style={{
           background: '#16213a',
@@ -831,18 +845,18 @@ export default function Settings() {
           marginBottom: 16,
           lineHeight: 1.5,
         }}>
-          {CREDENTIAL_HELP[addForm.type]}
+          {t(CREDENTIAL_HELP_KEYS[addForm.type])}
         </div>
         <form onSubmit={handleAddPrinter}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Brand *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.brandLabel')}</label>
               <select
                 value={addForm.type}
                 onChange={e => {
-                  const t = e.target.value;
-                  const first = allModels.find(m => m.connector === t);
-                  setAddForm(p => ({ ...p, type: t, model: first?.model_id || '', serial_number: '' }));
+                  const type = e.target.value;
+                  const first = allModels.find(m => m.connector === type);
+                  setAddForm(p => ({ ...p, type, model: first?.model_id || '', serial_number: '' }));
                 }}
                 style={inputStyle}
               >
@@ -850,26 +864,26 @@ export default function Settings() {
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.modelLabel')}</label>
               <select
                 value={addForm.model}
                 onChange={e => setAddForm(p => ({ ...p, model: e.target.value }))}
                 style={inputStyle}
               >
                 {allModels.filter(m => m.connector === addForm.type).length === 0
-                ? <option value="">— no models configured —</option>
+                ? <option value="">{t('settings.noModelsConfigured')}</option>
                 : allModels.filter(m => m.connector === addForm.type).map(m => (
                     <option key={m.model_id} value={m.model_id}>{m.label}</option>
                   ))}
               </select>
               {allModels.filter(m => m.connector === addForm.type).length === 0 && (
                 <div style={{ fontSize: 11.5, color: '#fbbf24', marginTop: 4 }}>
-                  No models for this brand yet — add one in Printer Models above first.
+                  {t('settings.noModelsForBrand')}
                 </div>
               )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Name *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.nameLabel')}</label>
               <input
                 value={addForm.name}
                 onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))}
@@ -879,7 +893,7 @@ export default function Settings() {
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>IP Address *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.ipAddressLabel')}</label>
               <input
                 value={addForm.ip}
                 onChange={e => setAddForm(p => ({ ...p, ip: e.target.value }))}
@@ -890,7 +904,7 @@ export default function Settings() {
             </div>
             {(addForm.type === 'bambu' || addForm.type === 'elegoo-centauri2') && (
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Serial Number *</label>
+                <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.serialNumberLabel')}</label>
                 <input
                   value={addForm.serial_number}
                   onChange={e => setAddForm(p => ({ ...p, serial_number: e.target.value }))}
@@ -903,7 +917,7 @@ export default function Settings() {
             {!NO_API_KEY_TYPES.has(addForm.type) && (
               <div>
                 <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
-                  {addForm.type === 'bambu' || addForm.type === 'elegoo-centauri2' ? 'Access Code *' : 'API Key *'}
+                  {addForm.type === 'bambu' || addForm.type === 'elegoo-centauri2' ? t('settings.accessCodeLabel') : t('settings.apiKeyLabel')}
                 </label>
                 <input
                   value={addForm.api_key}
@@ -915,11 +929,11 @@ export default function Settings() {
               </div>
             )}
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Group (optional)</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.groupOptionalLabel')}</label>
               <input
                 value={addForm.group_name}
                 onChange={e => setAddForm(p => ({ ...p, group_name: e.target.value }))}
-                placeholder="Rack A"
+                placeholder={t('settings.groupExample')}
                 list="add-printer-group-options"
                 style={inputStyle}
               />
@@ -928,25 +942,25 @@ export default function Settings() {
               </datalist>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Loaded Material</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.loadedMaterialLabel')}</label>
               <select
                 value={addForm.loaded_material}
                 onChange={e => setAddForm(p => ({ ...p, loaded_material: e.target.value, loaded_color: '' }))}
                 style={inputStyle}
               >
-                <option value="">— none —</option>
-                {filamentTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                <option value="">{t('common.noneOption')}</option>
+                {filamentTypes.map(ft => <option key={ft.id} value={ft.name}>{ft.name}</option>)}
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Loaded Color</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>{t('settings.loadedColorLabel')}</label>
               <select
                 value={addForm.loaded_color}
                 onChange={e => setAddForm(p => ({ ...p, loaded_color: e.target.value }))}
                 disabled={!addForm.loaded_material}
                 style={inputStyle}
               >
-                <option value="">— none —</option>
+                <option value="">{t('common.noneOption')}</option>
                 {filamentColors
                   .filter(c => c.type_name === addForm.loaded_material)
                   .map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -968,7 +982,7 @@ export default function Settings() {
               opacity: adding ? 0.7 : 1,
             }}
           >
-            {adding ? 'Adding…' : 'Add Printer'}
+            {adding ? t('settings.addingPrinter') : t('settings.addPrinterButton')}
           </button>
         </form>
         {addError && (
@@ -978,17 +992,18 @@ export default function Settings() {
         )}
         {addResult && (
           <div style={{ marginTop: 14, background: '#14532d', borderRadius: 6, padding: '10px 14px', color: '#4ade80', fontSize: 13 }}>
-            Printer <strong>{addResult.name}</strong> added (ID #{addResult.id}).
+            {/* addResult.name is operator-controlled; render as a plain React child (not
+                through Trans's HTML-parsed interpolation) so React escapes it as text. */}
+            {t('settings.printerAddedPrefix')} <strong>{addResult.name}</strong> {t('settings.printerAddedSuffix', { id: addResult.id })}
           </div>
         )}
       </section>
 
       {/* CSV Import */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Import Printer Registry</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.importRegistryTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>model, name, ip, api_key, group, type</code>.<br />
-          Model field value is the ID from the Printer Models list above. Missing mandatory fields and duplicate names are skipped.
+          <Trans i18nKey="settings.importRegistryHint" components={[<code style={{ color: '#94a3b8' }} />, <br />]} />
         </p>
 
         <form onSubmit={handleImport} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1022,7 +1037,7 @@ export default function Settings() {
               opacity: importing ? 0.7 : 1,
             }}
           >
-            {importing ? 'Importing…' : 'Import CSV'}
+            {importing ? t('settings.importingButton') : t('settings.importCsvButton')}
           </button>
         </form>
 
@@ -1035,15 +1050,15 @@ export default function Settings() {
         {result && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              <Chip color="#4ade80" label={`${result.imported} imported`} />
-              <Chip color="#fbbf24" label={`${result.skipped} skipped (duplicates)`} />
-              <Chip color="#f87171" label={`${result.flagged.length} flagged`} />
+              <Chip color="#4ade80" label={t('settings.importedChip', { count: result.imported })} />
+              <Chip color="#fbbf24" label={t('settings.skippedChip', { count: result.skipped })} />
+              <Chip color="#f87171" label={t('settings.flaggedChip', { count: result.flagged.length })} />
             </div>
 
             {result.flagged.length > 0 && (
               <div>
                 <p style={{ fontSize: 13, fontWeight: 600, color: '#f87171', marginBottom: 8 }}>
-                  Flagged rows — resolve manually:
+                  {t('settings.flaggedRowsHeading')}
                 </p>
                 {result.flagged.map((f, i) => (
                   <div key={i} style={{
@@ -1084,7 +1099,7 @@ export default function Settings() {
                             cursor: 'pointer',
                           }}
                         >
-                          Save
+                          {t('common.save')}
                         </button>
                       </div>
                     )}
@@ -1098,15 +1113,15 @@ export default function Settings() {
 
       {/* Farm Name */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Name</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.farmNameTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Shown in the sidebar. Name your farm — or leave blank for the default.
+          {t('settings.farmNameHint')}
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             value={farmName}
             onChange={e => setFarmName(e.target.value)}
-            placeholder="My Print Farm"
+            placeholder={t('settings.farmNameExample')}
             maxLength={40}
             style={{ ...inputStyle, width: 240 }}
           />
@@ -1114,7 +1129,7 @@ export default function Settings() {
             onClick={handleSaveFarmName}
             style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
-            Save
+            {t('common.save')}
           </button>
         </div>
         {farmNameError && (
@@ -1122,19 +1137,27 @@ export default function Settings() {
         )}
       </section>
 
+      {/* Language */}
+      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('language.title')}</h2>
+        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+          {t('language.hint')}
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <LanguageSwitcher />
+        </div>
+      </section>
+
       {/* Dispatch Settings */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Dispatch Settings</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.dispatchTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          The scheduler keeps this many printers uploading or printing at once, pulling
-          further down the ready queue to fill that target even if some printers have no
-          matching work right now. Reduce this number if your network is saturated during
-          large uploads.
+          <Trans i18nKey="settings.dispatchHint" />
         </p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
-              Concurrent printers (1-100)
+              {t('settings.printersPerBatchLabel')}
             </label>
             <input
               type="number"
@@ -1159,7 +1182,7 @@ export default function Settings() {
               alignSelf: 'flex-end',
             }}
           >
-            Save
+            {t('common.save')}
           </button>
         </div>
         {batchSizeError && (
@@ -1169,10 +1192,9 @@ export default function Settings() {
 
       {/* Farm Backup / Restore */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Backup</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.farmBackupTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Export a full snapshot of your printers, projects, parts, G-code files, and job history.
-          Use the same file to restore on another machine or recover from data loss.
+          {t('settings.farmBackupHint')}
         </p>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1190,7 +1212,7 @@ export default function Settings() {
               cursor: 'pointer',
             }}
           >
-            Export Farm
+            {t('settings.exportFarmButton')}
           </button>
 
           {/* Restore */}
@@ -1225,7 +1247,7 @@ export default function Settings() {
                 opacity: restoring ? 0.7 : 1,
               }}
             >
-              {restoring ? 'Restoring…' : 'Restore Farm'}
+              {restoring ? t('settings.restoringButton') : t('settings.restoreFarmButton')}
             </button>
           </form>
         </div>
@@ -1239,18 +1261,18 @@ export default function Settings() {
         {restoreResult && (
           <div style={{ marginTop: 14 }}>
             <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
-              Farm restored successfully
+              {t('settings.farmRestoredSuccess')}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Chip color="#4ade80" label={`${restoreResult.printers} printers`} />
-              <Chip color="#4ade80" label={`${restoreResult.projects} projects`} />
-              <Chip color="#4ade80" label={`${restoreResult.parts} parts`} />
-              <Chip color="#4ade80" label={`${restoreResult.gcodes} G-codes`} />
-              <Chip color="#4ade80" label={`${restoreResult.jobs} jobs`} />
-              <Chip color="#4ade80" label={`${restoreResult.printer_models ?? 0} printer models`} />
-              <Chip color="#4ade80" label={`${restoreResult.printer_groups ?? 0} groups`} />
-              <Chip color="#4ade80" label={`${restoreResult.filament_types ?? 0} filament types`} />
-              <Chip color="#4ade80" label={`${restoreResult.filament_colors ?? 0} filament colors`} />
+              <Chip color="#4ade80" label={t('settings.chipPrinters', { count: restoreResult.printers })} />
+              <Chip color="#4ade80" label={t('settings.chipProjects', { count: restoreResult.projects })} />
+              <Chip color="#4ade80" label={t('settings.chipParts', { count: restoreResult.parts })} />
+              <Chip color="#4ade80" label={t('settings.chipGcodes', { count: restoreResult.gcodes })} />
+              <Chip color="#4ade80" label={t('settings.chipJobs', { count: restoreResult.jobs })} />
+              <Chip color="#4ade80" label={t('settings.chipPrinterModels', { count: restoreResult.printer_models ?? 0 })} />
+              <Chip color="#4ade80" label={t('settings.chipPrinterGroups', { count: restoreResult.printer_groups ?? 0 })} />
+              <Chip color="#4ade80" label={t('settings.chipFilamentTypes', { count: restoreResult.filament_types ?? 0 })} />
+              <Chip color="#4ade80" label={t('settings.chipFilamentColors', { count: restoreResult.filament_colors ?? 0 })} />
             </div>
           </div>
         )}
@@ -1258,21 +1280,20 @@ export default function Settings() {
 
       {/* Polling interval info */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Polling</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{t('settings.pollingTitle')}</h2>
         <p style={{ color: '#64748b', fontSize: 13 }}>
-          All printers are polled every <strong style={{ color: '#e2e8f0' }}>15 seconds</strong> via their connector API.
-          Polling runs concurrently — all printers are queried in parallel each tick.
-          Unreachable printers show as <span style={{ color: '#6b7280' }}>OFFLINE</span> and do not affect other printers.
+          <Trans
+            i18nKey="settings.pollingHint"
+            values={{ offline: t('common.statusOffline').toUpperCase() }}
+            components={[<strong style={{ color: '#e2e8f0' }} />, <span style={{ color: '#6b7280' }} />]}
+          />
         </p>
       </section>
 
       {/* About */}
       <section style={{ maxWidth: 640, borderTop: '1px solid #1e2433', paddingTop: 24 }}>
         <p style={{ color: '#475569', fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
-          Hi, I'm Joel — aka <strong style={{ color: '#64748b' }}>3D Printing Nerd</strong>. I built this tool
-          to manage my own print farm and decided to open-source it so the community could benefit too.
-          If it saves you time or headaches, I'd love a coffee — it helps me keep making free content and
-          tools like this one. Thanks for being part of the community. Happy printing!
+          <Trans i18nKey="settings.aboutText" components={[<strong style={{ color: '#64748b' }} />]} />
         </p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <a
@@ -1286,7 +1307,7 @@ export default function Settings() {
               fontSize: 13, fontWeight: 700, textDecoration: 'none',
             }}
           >
-            ☕ Buy Me a Coffee
+            ☕ {t('settings.buyMeACoffee')}
           </a>
           <a
             href="https://paypal.me/JoelTelling"
