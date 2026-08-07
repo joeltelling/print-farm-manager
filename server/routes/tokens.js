@@ -17,15 +17,22 @@ module.exports = (db) => {
       token_prefix: t.token_prefix,
       role: t.role,
       printer_ids: printerIds,
+      user_id: t.user_id ?? null,       // set = personal token (acts as a user)
+      owner: t.owner_username || null,  // the user a personal token belongs to
       created_at: t.created_at,
       last_used_at: t.last_used_at,
       revoked: t.revoked,
     };
   }
 
-  // GET /api/tokens: metadata only, never the secret
+  // GET /api/tokens: metadata only, never the secret. Includes personal tokens
+  // (with their owner) so an admin can audit and revoke them.
   router.get('/', (_req, res) => {
-    const rows = db.prepare('SELECT * FROM api_tokens ORDER BY created_at DESC').all();
+    const rows = db.prepare(`
+      SELECT t.*, u.username AS owner_username
+      FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id
+      ORDER BY t.created_at DESC
+    `).all();
     res.json(rows.map(publicToken));
   });
 

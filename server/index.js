@@ -33,6 +33,7 @@ const printerJobsRouter  = require('./routes/printer-jobs')(db);
 const authRouter         = require('./routes/auth')(db);
 const webauthnRouter     = require('./routes/webauthn')(db);
 const mfaRouter          = require('./routes/mfa')(db);
+const personalTokensRouter = require('./routes/personal-tokens')(db);
 const usersRouter        = require('./routes/users')(db);
 const tokensRouter       = require('./routes/tokens')(db);
 
@@ -52,6 +53,7 @@ app.use(express.json());
 app.set('trust proxy', auth.trustProxyValue(db));
 app.use('/api/auth/passkey', webauthnRouter);
 app.use('/api/auth/mfa', mfaRouter);
+app.use('/api/auth/tokens', personalTokensRouter);
 app.use('/api/auth', authRouter);
 app.use(auth.createAuthMiddleware(db));
 

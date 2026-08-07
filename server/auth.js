@@ -295,6 +295,13 @@ function resolveIdentity(db, req) {
       if (!row.last_used_at || now - row.last_used_at > 60000) {
         try { db.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?').run(now, row.id); } catch (_) {}
       }
+      // Personal token: authenticates AS its user, with the user's live role, so
+      // actions (e.g. creating a project) are attributed to that person.
+      if (row.user_id) {
+        const u = db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(row.user_id);
+        if (!u) return null;
+        return { type: 'token', tokenId: row.id, name: row.name, userId: u.id, username: u.username, role: u.role, personal: true };
+      }
       let printerIds = null;
       if (row.printer_ids) {
         try { const a = JSON.parse(row.printer_ids); if (Array.isArray(a)) printerIds = a.map(Number).filter(Number.isFinite); } catch (_) {}

@@ -30,12 +30,18 @@ export default function MyAccount() {
   const [mfaStatus, setMfaStatus] = useState(null);
   const [enrolling, setEnrolling] = useState(false);
   const [disableCode, setDisableCode] = useState('');
+  const [apiKeys, setApiKeys] = useState([]);
+  const [keyName, setKeyName] = useState('');
+  const [newKey, setNewKey] = useState(null);
 
   function loadPasskeys() {
     fetch('/api/auth/passkey').then(r => r.ok ? r.json() : []).then(setPasskeys).catch(() => setPasskeys([]));
   }
   function loadMfa() {
     fetch('/api/auth/mfa').then(r => r.ok ? r.json() : null).then(setMfaStatus).catch(() => {});
+  }
+  function loadKeys() {
+    fetch('/api/auth/tokens').then(r => r.ok ? r.json() : []).then(setApiKeys).catch(() => setApiKeys([]));
   }
   function load() {
     fetch('/api/auth/me').then(r => r.json()).then(m => {
@@ -44,6 +50,7 @@ export default function MyAccount() {
     }).catch(() => {});
     loadPasskeys();
     loadMfa();
+    loadKeys();
   }
   useEffect(load, []);
 
@@ -51,6 +58,18 @@ export default function MyAccount() {
     const { ok, body } = await postJson('/api/auth/mfa/disable', { code: disableCode });
     if (ok) { showToast('MFA disabled'); setDisableCode(''); loadMfa(); window.dispatchEvent(new Event('authChanged')); }
     else showToast('Failed: ' + (body.error || 'error'), 'error');
+  }
+
+  async function addKey() {
+    if (!keyName.trim()) { showToast('Name the key', 'error'); return; }
+    const { ok, body } = await postJson('/api/auth/tokens', { name: keyName.trim() });
+    if (ok) { setNewKey({ name: body.name, token: body.token }); setKeyName(''); loadKeys(); }
+    else showToast('Failed: ' + (body.error || 'error'), 'error');
+  }
+  async function removeKey(id) {
+    const res = await fetch('/api/auth/tokens/' + id, { method: 'DELETE' });
+    if (res.ok) { showToast('API key revoked'); loadKeys(); }
+    else { const b = await res.json().catch(() => ({})); showToast('Failed: ' + (b.error || 'error'), 'error'); }
   }
 
   async function addPasskey() {
@@ -185,6 +204,45 @@ export default function MyAccount() {
               <button type="button" onClick={() => setEnrolling(true)} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Set up MFA</button>
             </>
           )}
+        </section>
+      )}
+      {editable && (
+        <section style={SECTION}>
+          <h2 style={H2}>API Keys</h2>
+          <div style={HELP}>Personal keys for integrations such as the wall planner. A key acts as you, with your role, so projects it creates are attributed to your account. Send it as an <code style={{ color: '#94a3b8' }}>Authorization: Bearer</code> header.</div>
+          {newKey && (
+            <div style={{ background: '#0a0f1a', border: '1px solid #2563eb', borderRadius: 6, padding: 12, marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>Key "{newKey.name}" (copy it now, it is shown only once):</div>
+              <code style={{ display: 'block', wordBreak: 'break-all', color: '#e2e8f0', fontSize: 13 }}>{newKey.token}</code>
+              <button style={{ marginTop: 8, background: 'none', border: '1px solid #2d3748', borderRadius: 4, color: '#94a3b8', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }} onClick={() => setNewKey(null)}>Dismiss</button>
+            </div>
+          )}
+          {apiKeys.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+              <thead><tr>
+                <th style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', fontSize: 12 }}>Name</th>
+                <th style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', fontSize: 12 }}>Prefix</th>
+                <th style={{ textAlign: 'left', padding: '4px 8px', color: '#64748b', fontSize: 12 }}>Last used</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                {apiKeys.map(k => (
+                  <tr key={k.id} style={{ borderBottom: '1px solid #1a2030' }}>
+                    <td style={{ padding: '6px 8px', color: '#e2e8f0', fontSize: 13 }}>{k.name}</td>
+                    <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 13, fontFamily: 'monospace' }}>{k.token_prefix}...</td>
+                    <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 13 }}>{k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                      <button onClick={() => removeKey(k.id)} style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}>Revoke</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input style={{ ...INPUT, width: 200 }} placeholder="key name (e.g. Wall Planner)" value={keyName} onChange={e => setKeyName(e.target.value)} />
+            <button type="button" onClick={addKey} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Create key</button>
+          </div>
         </section>
       )}
       {toastEl}

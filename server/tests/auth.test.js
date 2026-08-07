@@ -24,7 +24,12 @@ function freshDb() {
     CREATE TABLE api_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
       token_prefix TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'device', printer_ids TEXT,
-      created_at INTEGER NOT NULL, last_used_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0, created_by INTEGER
+      user_id INTEGER, created_at INTEGER NOT NULL, last_used_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0, created_by INTEGER
+    );
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
+      status TEXT DEFAULT 'draft', priority INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, created_by INTEGER
     );
     CREATE TABLE sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -51,16 +56,25 @@ function freshDb() {
 // Build a fresh app that reads current settings (trust proxy is static per app,
 // so tests that change trusted_proxies rebuild via makeApp()).
 function makeApp(db) {
-  const app = express();
-  app.use(express.json());
-  app.set('trust proxy', auth.trustProxyValue(db));
+  // Several route files (projects.js, settings.js) declare their Express router at
+  // module scope; require()'s cache would otherwise bind a router to a previous
+  // test's db across makeApp() calls. Reset the registry and require everything
+  // fresh so this app's routers all close over THIS db (and one express instance).
+  jest.resetModules();
+  const expressFresh = require('express');
+  const authMod = require('../auth');
+  const app = expressFresh();
+  app.use(expressFresh.json());
+  app.set('trust proxy', authMod.trustProxyValue(db));
   app.use('/api/auth/passkey', require('../routes/webauthn')(db));
   app.use('/api/auth/mfa', require('../routes/mfa')(db));
+  app.use('/api/auth/tokens', require('../routes/personal-tokens')(db));
   app.use('/api/auth', require('../routes/auth')(db));
-  app.use(auth.createAuthMiddleware(db));
+  app.use(authMod.createAuthMiddleware(db));
   app.use('/api/users', require('../routes/users')(db));
   app.use('/api/tokens', require('../routes/tokens')(db));
   app.use('/api/settings', require('../routes/settings')(db));
+  app.use('/api/projects', require('../routes/projects')(db, null));
   // Stubs standing in for real resource routes, to exercise the policy middleware.
   app.get('/api/printers', (_req, res) => res.json([]));
   app.post('/api/printers', (_req, res) => res.status(201).json({ ok: true }));
@@ -384,6 +398,50 @@ describe('MFA (TOTP + recovery codes + two-step login)', () => {
     expect((await request(app).get('/api/auth/me').set('Cookie', c)).body).toMatchObject({ mfa_required: true, mfa_enabled: false });
     // the setup endpoint stays reachable so the user can comply
     expect((await request(app).post('/api/auth/mfa/setup').set('Cookie', c).send({})).status).toBe(200);
+  });
+});
+
+describe('personal API tokens (act as a user; attribute projects)', () => {
+  async function adminSession(app, db) {
+    const res = await request(app).post('/api/auth/setup').send({ username: 'admin', password: 'supersecret1' });
+    setSetting(db, 'auth_enabled', '1');
+    return cookie(res);
+  }
+
+  test('a personal token authenticates as its user with their role; creation needs a session', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const admin = await adminSession(app, db);
+    expect((await request(app).get('/api/auth/tokens')).status).toBe(401); // no session
+    const created = await request(app).post('/api/auth/tokens').set('Cookie', admin).send({ name: 'Wall Planner' });
+    expect(created.status).toBe(201);
+    expect(created.body.token).toMatch(/^pfm_/);
+    const bearer = { Authorization: `Bearer ${created.body.token}` };
+    expect((await request(app).get('/api/users').set(bearer)).status).toBe(200); // acts as admin
+  });
+
+  test('a project created with a personal token is attributed to that user', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const admin = await adminSession(app, db);
+    const created = await request(app).post('/api/auth/tokens').set('Cookie', admin).send({ name: 'wp' });
+    const bearer = { Authorization: `Bearer ${created.body.token}` };
+    const proj = await request(app).post('/api/projects').set(bearer).send({ name: 'From Wall Planner' });
+    expect(proj.status).toBe(201);
+    const list = await request(app).get('/api/projects').set(bearer);
+    expect(list.body[0]).toMatchObject({ name: 'From Wall Planner', created_by_username: 'admin' });
+  });
+
+  test('a viewer personal token cannot create projects (inherits the viewer role)', async () => {
+    const db = freshDb();
+    const app = makeApp(db);
+    const admin = await adminSession(app, db);
+    await request(app).post('/api/users').set('Cookie', admin).send({ username: 'v', password: 'supersecret1', role: 'viewer' });
+    const vc = cookie(await request(app).post('/api/auth/login').send({ username: 'v', password: 'supersecret1' }));
+    const vtoken = await request(app).post('/api/auth/tokens').set('Cookie', vc).send({ name: 'vkey' });
+    const bearer = { Authorization: `Bearer ${vtoken.body.token}` };
+    expect((await request(app).get('/api/projects').set(bearer)).status).toBe(200);
+    expect((await request(app).post('/api/projects').set(bearer).send({ name: 'x' })).status).toBe(403);
   });
 });
 

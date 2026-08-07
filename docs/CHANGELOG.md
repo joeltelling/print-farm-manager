@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-08-07: Personal API keys and project ownership
+
+Adds per-user personal API keys and records who created each project, so an external integration (a wall planner) can push projects in under a user's key and have them attributed to that person.
+
+A personal token (an `api_tokens` row with `user_id` set) authenticates AS its user, inheriting the user's live role, unlike the existing role/service tokens. Users mint their own keys in My Account (shown once) and send them as a `Bearer` header. Projects gain a `created_by` column, set from the authenticated user on creation and surfaced as the creator's username in the API and the Projects list. Admins can see and revoke personal tokens (with their owner) in the Authentication panel.
+
+### Changes
+- `server/db.js`: additive `api_tokens.user_id` and `projects.created_by`.
+- `server/auth.js`: a token with `user_id` set resolves to that user (live role) rather than a fixed role.
+- `server/routes/personal-tokens.js`: self-service GET/POST/DELETE at `/api/auth/tokens`.
+- `server/routes/projects.js`: sets `created_by` from the authenticated caller on POST; GET joins the creator's username (guarded so a missing users table is tolerated).
+- `server/routes/tokens.js`: the admin token list shows each token's owner.
+- `client/src/components/MyAccount.jsx`: an API Keys section.
+- `client/src/pages/Projects.jsx`: shows "created by" per project.
+- `server/tests/auth.test.js`: personal-token identity, project attribution, and role inheritance.
+
 ## 2026-08-07: Multi-factor authentication (TOTP + recovery codes)
 
 Adds MFA: an authenticator app (TOTP, RFC 6238) as a second factor, single-use recovery codes, and a global `require_mfa` setting that forces every user to enrol. TOTP is hand-rolled on Node crypto (no dependency) and verified against the RFC 6238 test vectors; the enrollment QR uses the `qrcode` package on the client.

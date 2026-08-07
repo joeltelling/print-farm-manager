@@ -335,6 +335,12 @@ try {
   )`);
 } catch (_) {}
 try { db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('require_mfa', '0')").run(); } catch (_) {}
+
+// Personal API tokens act as a user (api_tokens.user_id set); a null user_id is a
+// role/service token. Projects record who created them (projects.created_by), so a
+// project created via someone's personal token is attributed to that user. Additive.
+try { db.exec('ALTER TABLE api_tokens ADD COLUMN user_id INTEGER REFERENCES users(id)'); } catch (_) {}
+try { db.exec('ALTER TABLE projects ADD COLUMN created_by INTEGER REFERENCES users(id)'); } catch (_) {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_sso ON users(sso_provider, sso_subject)'); } catch (_) {}
 
 try {
