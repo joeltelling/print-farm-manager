@@ -2,6 +2,97 @@
 
 ---
 
+## 2026-08-07: Personal API keys and project ownership
+
+Adds per-user personal API keys and records who created each project, so an external integration (a wall planner) can push projects in under a user's key and have them attributed to that person.
+
+A personal token (an `api_tokens` row with `user_id` set) authenticates AS its user, inheriting the user's live role, unlike the existing role/service tokens. Users mint their own keys in My Account (shown once) and send them as a `Bearer` header. Projects gain a `created_by` column, set from the authenticated user on creation and surfaced as the creator's username in the API and the Projects list. Admins can see and revoke personal tokens (with their owner) in the Authentication panel.
+
+### Changes
+- `server/db.js`: additive `api_tokens.user_id` and `projects.created_by`.
+- `server/auth.js`: a token with `user_id` set resolves to that user (live role) rather than a fixed role.
+- `server/routes/personal-tokens.js`: self-service GET/POST/DELETE at `/api/auth/tokens`.
+- `server/routes/projects.js`: sets `created_by` from the authenticated caller on POST; GET joins the creator's username (guarded so a missing users table is tolerated).
+- `server/routes/tokens.js`: the admin token list shows each token's owner.
+- `client/src/components/MyAccount.jsx`: an API Keys section.
+- `client/src/pages/Projects.jsx`: shows "created by" per project.
+- `server/tests/auth.test.js`: personal-token identity, project attribution, and role inheritance.
+
+## 2026-08-07: Multi-factor authentication (TOTP + recovery codes)
+
+Adds MFA: an authenticator app (TOTP, RFC 6238) as a second factor, single-use recovery codes, and a global `require_mfa` setting that forces every user to enrol. TOTP is hand-rolled on Node crypto (no dependency) and verified against the RFC 6238 test vectors; the enrollment QR uses the `qrcode` package on the client.
+
+Password login becomes two-step when MFA is on: the password is the first factor, then a TOTP or recovery code completes it. Passkey login is unaffected (a passkey is already a strong factor). When `require_mfa` is on, a signed-in user without MFA is gated into a setup screen before they can use the app, the same pattern as the forced password change.
+
+### Changes
+- `server/mfa.js`: TOTP (base32, HOTP/TOTP, verify) and recovery-code helpers, dependency-free.
+- `server/routes/mfa.js`: setup, enable, disable, status, recovery regeneration, and the second login step, mounted at `/api/auth/mfa` before the guard.
+- `server/routes/auth.js`: password login returns `mfa_required` and starts the second step when MFA is on; `/api/auth/me` reports `mfa_required` and `mfa_enabled`.
+- `server/auth.js`: the request guard forces enrollment when `require_mfa` is on and the user has no MFA.
+- `server/routes/settings.js`: `require_mfa` is a writable admin setting.
+- `server/db.js`: `users.totp_secret`/`mfa_enabled` and a `recovery_codes` table (additive).
+- `server/routes/backup.js`: `recovery_codes` and the TOTP columns round-trip.
+- `client/src/components/MfaEnroll.jsx`: enrollment (QR via `qrcode`), reused by the forced-setup gate and My Account; a two-factor step on the login screen; a Two-Factor section in My Account; a `require_mfa` toggle in the admin panel.
+- `server/tests/mfa.test.js`, `server/tests/auth.test.js`: TOTP RFC 6238 vectors and the MFA flows.
+- `client/package.json`: adds `qrcode`.
+
+## 2026-08-07: Passkeys (WebAuthn)
+
+Adds passkey sign-in (Touch ID, Windows Hello, security keys) via `@simplewebauthn`. Signed-in users register passkeys from My Account, and the login screen gains a "Sign in with a passkey" option. Implemented from the `@simplewebauthn` v13 API; not yet validated against a physical authenticator.
+
+Adds runtime dependencies `@simplewebauthn/server` and `@simplewebauthn/browser`, a deliberate exception to the project's minimal-dependency norm for this fork (hand-rolling WebAuthn attestation and signature verification is exactly where subtle security bugs appear).
+
+### Changes
+- `server/routes/webauthn.js`: registration and authentication ceremonies, an in-memory challenge store, and passkey management, mounted at `/api/auth/passkey` before the RBAC guard.
+- `server/auth.js`: extracted a shared `issueSession` helper used by both password and passkey login.
+- `server/index.js`: mounts the passkey router.
+- `client/src/AuthScreens.jsx`: "Sign in with a passkey" on the login screen.
+- `client/src/components/MyAccount.jsx`: a Passkeys section to add and remove passkeys.
+- `server/tests/auth.test.js`: passkey plumbing tests (full ceremony needs a real authenticator).
+- `package.json`, `client/package.json`: add the `@simplewebauthn` packages.
+
+## 2026-08-07: Authentication is mandatory; My Account page; tabbed Settings
+
+Following the initial auth work, authentication is now mandatory on this build: always on, no off switch, and the auth_enabled setting is no longer writable. A fresh or migrated install with no users is stepped through creating the primary admin in a browser setup wizard. The earlier auto-generated one-time console password is removed (it conflicted with the wizard); `npm run set-password <username>` remains for headless recovery.
+
+Signed-in users get a self-service My Account page on its own route: edit username, display name, and email, and change password. The sidebar user chip is pinned to the bottom of the viewport and links to it. The Settings page is split into tabs: Printers, Filaments, Farm, and Authentication.
+
+Note: making auth mandatory intentionally departs from the backward-compatible, off-by-default design of the entry below, so this diverges from what upstream would accept unchanged. It is a deliberate choice for this deployment.
+
+### Changes
+- `server/auth.js`: authEnabled always returns true; removed the one-time-password bootstrap helper.
+- `server/index.js`: removed the bootstrap-password startup block; logs a hint to create the primary admin when no users exist.
+- `server/routes/settings.js`: auth_enabled removed from writable keys.
+- `server/routes/auth.js`: `GET /api/auth/me` now returns display_name/email/can_edit_profile; new `POST /api/auth/profile` for self-service edits.
+- `client/src/pages/Account.jsx`, `client/src/components/MyAccount.jsx`: the My Account page.
+- `client/src/pages/Settings.jsx`: split into tabs; account management moved out.
+- `client/src/App.jsx`: viewport-height shell, user chip pinned to the bottom and linking to the account page.
+- `client/src/AuthScreens.jsx`: welcome copy on the setup screen.
+- `client/src/components/AuthAdmin.jsx`: removed the enable/disable toggle.
+- `server/tests/auth.test.js`: updated for always-on auth.
+
+## 2026-08-06: Authentication, roles, and device tokens (opt-in)
+
+Print Farm Manager has always shipped with no authentication: any device that can reach the server can drive printers. That is fine for an air-gapped farm, but once the app is exposed through a reverse proxy it needs real access control. This adds authentication, role-based access control, API tokens, and SSO, all opt-in and off by default so existing installs are unchanged after an update.
+
+Identities: a password session cookie for people, a Bearer API token for machines, an SSO forward-auth header (trusted only from a configured reverse proxy, so an IdP behind Traefik provides single sign-on with no embedded OIDC client), and a read-only dashboard IP allowlist for appliance browsers. Roles are viewer, operator, and admin, plus two token-only roles: device (a CYD wall box that confirms and fails plates, optionally bound to specific printers) and display (a read-only dashboard viewport for an Apple TV or Android app, adopted as a device rather than a user). Passwords use scrypt; tokens and session tokens are stored only as hashes.
+
+Upgrade and recovery paths avoid any lockout: enabling auth with no admin present mints a one-time admin password printed once to the console and flagged must-change; `npm run set-password` creates or resets an admin over SSH; and a fresh install prompts to create the first admin. All three funnel through a forced password change on first login.
+
+Everything is dependency-free (Node crypto, better-sqlite3). WebAuthn passkeys are scaffolded (schema and settings) with the ceremonies to follow.
+
+### Changes
+- `server/db.js`: additive users, api_tokens, sessions, webauthn_credentials tables plus the auth_enabled / dashboard_ip_allowlist / trusted_proxies / sso_* / passkey_* settings, all off or empty by default.
+- `server/auth.js`: new module. scrypt password hashing, sha256 token hashing, the role hierarchy and the device/display allowlists, per-printer device binding, dashboard IP allowlist (IPv4/CIDR) with trusted-proxy X-Forwarded-For handling, SSO header identity with group-to-role mapping and auto-provisioning, the request middleware, and the bootstrap-admin helper.
+- `server/routes/auth.js`: login, logout, me, first-run setup, and change-password.
+- `server/routes/users.js`, `server/routes/tokens.js`: admin-only account and token management (token secret shown once; device tokens accept a printer_ids binding).
+- `server/routes/settings.js`: the new keys with validation, the anti-lockout guard on auth_enabled, and sensitive settings hidden from non-admins on GET.
+- `server/set-password.js`: CLI to create or reset an admin password headless.
+- `server/index.js`: mounts the auth endpoints before the guard, applies the RBAC middleware, sets trust proxy, and prints the one-time bootstrap password.
+- `server/routes/backup.js`: users, api_tokens, and webauthn_credentials now round-trip through export and restore (sessions excluded).
+- `server/tests/auth.test.js`, `server/tests/backup-restore.test.js`: coverage for every identity, role, the device and display allowlists, the dashboard IP allowlist, SSO header, bootstrap and change-password, and the auth-table backup round-trip.
+- `docs/auth.md`: the design and behavior.
+
 ## 2026-07-30: Projects page only shows Active projects by default
 
 Joel noticed the Projects page listed every project regardless of status, so a farm with a long history of finished and shelved work buried the projects actually in flight. Now only `active` projects show by default; `draft`, `paused`, and `completed` are each hidden behind their own "Show X (count)" checkbox above the list, and a checkbox only appears when at least one project has that status. State persists per browser via `localStorage`, matching the existing "Show decommissioned" pattern on the Printers page. If every project ends up filtered out, an empty-state prompts to check a box instead of showing the misleading first-run "create your first project" message.

@@ -27,9 +27,12 @@
     "build": "npm run build --prefix client",
     "start": "node server/index.js",
     "test": "jest --testPathPatterns=server/tests",
+    "set-password": "node server/set-password.js",
+    "create-admin": "node server/set-password.js",
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
     "axios": "^1.7.2",
     "basic-ftp": "^5.2.1",
     "better-sqlite3": "^9.6.0",

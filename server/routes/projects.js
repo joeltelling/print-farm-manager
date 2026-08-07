@@ -8,13 +8,21 @@ const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 // scheduler is optional — only needed at runtime for sweepIdlePrinters on reactivate.
 // Tests pass null so there is no live scheduler dependency.
 module.exports = (db, scheduler = null) => {
+  // created_by is joined to the username so the UI can show who made each project.
+  // The join is only added when a users table exists (always in production; some
+  // minimal test schemas omit it), otherwise created_by_username is just null.
+  const hasUsers = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").get();
+  const PROJECT_SELECT = hasUsers
+    ? 'SELECT p.*, u.username AS created_by_username FROM projects p LEFT JOIN users u ON u.id = p.created_by'
+    : 'SELECT p.*, NULL AS created_by_username FROM projects p';
+
   router.get('/', (req, res) => {
-    const projects = db.prepare('SELECT * FROM projects ORDER BY priority ASC, created_at ASC').all();
+    const projects = db.prepare(`${PROJECT_SELECT} ORDER BY p.priority ASC, p.created_at ASC`).all();
     res.json(projects);
   });
 
   router.get('/:id', (req, res) => {
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+    const project = db.prepare(`${PROJECT_SELECT} WHERE p.id = ?`).get(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     res.json(project);
   });
@@ -23,10 +31,13 @@ module.exports = (db, scheduler = null) => {
     const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     const now = Date.now();
+    // Attribute the project to the authenticated user (a signed-in operator or a
+    // personal API token, e.g. the wall planner). null when unknown.
+    const createdBy = req.auth && req.auth.userId ? req.auth.userId : null;
     const result = db.prepare(`
-      INSERT INTO projects (name, description, created_at, updated_at)
-      VALUES (?, ?, ?, ?)
-    `).run(name, description || null, now, now);
+      INSERT INTO projects (name, description, created_at, updated_at, created_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, description || null, now, now, createdBy);
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(project);
   });

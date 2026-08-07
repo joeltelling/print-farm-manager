@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Link } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import Account from './pages/Account';
 import Fleet from './pages/Fleet';
 import Printers from './pages/Printers';
 import PrinterDetail from './pages/PrinterDetail';
@@ -8,6 +9,8 @@ import Projects from './pages/Projects';
 import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
+import { Login, Setup, ChangePassword, installAuthGuard } from './AuthScreens';
+import MfaEnroll from './components/MfaEnroll';
 
 const NAV_ITEMS = [
   { to: '/',               label: 'Dashboard' },
@@ -33,6 +36,28 @@ const navLinkStyle = ({ isActive }) => ({
 });
 
 export default function App() {
+  // Auth state from GET /api/auth/me. null while loading. When auth is disabled
+  // the server reports authenticated:true so the gate falls straight through.
+  const [me, setMe] = useState(null);
+  const loadMe = () => fetch('/api/auth/me').then(r => r.json()).then(setMe)
+    .catch(() => setMe({ authRequired: false, authenticated: true, role: 'admin', type: 'disabled' }));
+  useEffect(() => {
+    installAuthGuard();
+    loadMe();
+    const onExpired = () => loadMe();
+    window.addEventListener('authExpired', onExpired);
+    window.addEventListener('authChanged', onExpired);
+    return () => {
+      window.removeEventListener('authExpired', onExpired);
+      window.removeEventListener('authChanged', onExpired);
+    };
+  }, []);
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    loadMe();
+  }
+
   // Operator-configurable farm name (Settings → Farm Name)
   const [farmName, setFarmName] = useState('Print Farm');
   useEffect(() => {
@@ -48,12 +73,28 @@ export default function App() {
     return () => window.removeEventListener('farmNameChanged', onFarmNameChanged);
   }, []);
 
+  // Auth gate: full-screen flows before the app renders. When auth is disabled
+  // these never trigger (authRequired is false), so the app behaves as before.
+  if (me === null) {
+    return <div style={{ minHeight: '100vh', background: '#0a0f1a', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>Loading...</div>;
+  }
+  if (me.authRequired && me.needsSetup) return <Setup onDone={loadMe} />;
+  if (me.authRequired && !me.authenticated) return <Login onDone={loadMe} />;
+  if (me.authRequired && me.must_change_password) return <ChangePassword onDone={loadMe} />;
+  if (me.authRequired && me.authenticated && me.mfa_required && !me.mfa_enabled) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a0f1a', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <MfaEnroll onDone={loadMe} />
+      </div>
+    );
+  }
+
   return (
     <BrowserRouter>
       {/* Responsive layout: sidebar on desktop, top nav bar on mobile */}
       <style>{`
-        #layout { display: flex; min-height: 100vh; }
-        #sidebar { width: 180px; flex-shrink: 0; background: #131720; border-right: 1px solid #1e2433; display: flex; flex-direction: column; padding: 16px 8px; gap: 4px; }
+        #layout { display: flex; height: 100vh; overflow: hidden; }
+        #sidebar { width: 180px; flex-shrink: 0; background: #131720; border-right: 1px solid #1e2433; display: flex; flex-direction: column; padding: 16px 8px; gap: 4px; overflow-y: auto; }
         #topbar { display: none; background: #131720; border-bottom: 1px solid #1e2433; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
         #main { flex: 1; padding: 24px 28px; overflow-y: auto; min-width: 0; }
         @media (max-width: 600px) {
@@ -76,6 +117,18 @@ export default function App() {
               {item.label}
             </NavLink>
           ))}
+          {me.authRequired && me.authenticated && (
+            <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #1e2433' }}>
+              <Link to="/account" style={{ display: 'block', fontSize: 12, color: '#94a3b8', padding: '0 6px 6px', textDecoration: 'none' }} title="My Account">
+                {me.username || 'signed in'}<span style={{ color: '#475569' }}> · {me.role}</span>
+              </Link>
+              {me.type === 'session' && (
+                <button onClick={logout} style={{ width: '100%', padding: '6px 10px', background: '#1e2433', border: '1px solid #2d3748', borderRadius: 6, color: '#94a3b8', fontSize: 13, cursor: 'pointer' }}>
+                  Sign out
+                </button>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* Top nav bar (mobile) */}
@@ -112,6 +165,7 @@ export default function App() {
             <Route path="/jobs"            element={<Jobs />} />
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
+            <Route path="/account"         element={<Account />} />
           </Routes>
         </main>
       </div>

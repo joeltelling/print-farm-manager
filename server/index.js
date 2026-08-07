@@ -19,6 +19,7 @@ const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
 const events         = require('./events');
 const backup         = require('./backup');
+const auth           = require('./auth');
 
 const printersRouter     = require('./routes/printers')(db);
 const jobsRouter         = require('./routes/jobs')(db);
@@ -29,13 +30,36 @@ const modelsRouter       = require('./routes/models')(db);
 const groupsRouter       = require('./routes/groups')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
+const authRouter         = require('./routes/auth')(db);
+const webauthnRouter     = require('./routes/webauthn')(db);
+const mfaRouter          = require('./routes/mfa')(db);
+const personalTokensRouter = require('./routes/personal-tokens')(db);
+const usersRouter        = require('./routes/users')(db);
+const tokensRouter       = require('./routes/tokens')(db);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Authentication + RBAC (see docs/auth.md). Trust the configured reverse proxy
+// so req.ip reflects the real client for the dashboard IP allowlist and the SSO
+// forward-auth header; with no trusted_proxies set this is off and the raw
+// socket IP is used (a direct-LAN install cannot be spoofed via headers). The
+// auth endpoints mount BEFORE the guard so login/setup stay reachable; the
+// guard then protects every other /api route. When auth_enabled is '0' the
+// guard is a pass-through, so existing installs are unaffected. A change to
+// trusted_proxies takes effect on restart.
+app.set('trust proxy', auth.trustProxyValue(db));
+app.use('/api/auth/passkey', webauthnRouter);
+app.use('/api/auth/mfa', mfaRouter);
+app.use('/api/auth/tokens', personalTokensRouter);
+app.use('/api/auth', authRouter);
+app.use(auth.createAuthMiddleware(db));
+
 // API routes
+app.use('/api/users',           usersRouter);
+app.use('/api/tokens',          tokensRouter);
 app.use('/api/printers',        printersRouter);
 app.use('/api/printers/:id/jobs', printerJobsRouter);
 app.use('/api/jobs',            jobsRouter);
@@ -82,6 +106,14 @@ app.get(/^(?!\/api).*/, (_req, res) => {
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`[server] Express running on http://localhost:${PORT}`);
+
+  // Authentication is mandatory. A fresh or migrated install with no users is
+  // stepped through creating the primary admin in the browser (the setup flow);
+  // for a headless install use `npm run set-password <username>`.
+  const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+  if (userCount === 0) {
+    console.log('[auth] No users yet. Open the app to create the primary admin, or run: npm run set-password <username>');
+  }
 
   const poller    = new PrinterPoller(db);
   const scheduler = new JobScheduler(db, poller);

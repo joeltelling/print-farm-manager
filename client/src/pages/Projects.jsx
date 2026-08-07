@@ -1459,6 +1459,9 @@ export default function Projects() {
                   {p.description && (
                     <div style={{ color: '#64748b', fontSize: 12 }}>{p.description}</div>
                   )}
+                  {p.created_by_username && (
+                    <div style={{ color: '#475569', fontSize: 11 }}>created by {p.created_by_username}</div>
+                  )}
                 </div>
 
                 {/* Duplicate button — stop propagation so it doesn't navigate into the project */}
