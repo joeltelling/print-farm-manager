@@ -37,6 +37,10 @@ setInterval (15s)
     ├─ if FINISHED transition → also set is_held = 1 in DB
     ├─ emit 'statusChange' for any transition
     └─ emit 'printerIdle' when transitioning into IDLE ← triggers scheduler dispatch
+                                                            (via scheduleForPrinter, so it
+                                                            defers behind an in-progress
+                                                            batch sweep instead of exceeding
+                                                            dispatch_batch_size)
 ```
 
 `Promise.allSettled()` is used (not `Promise.all()`) so a rejection from one printer never blocks or kills the loop for others. Each printer's failure is isolated.
@@ -81,12 +85,14 @@ poller.on('statusChange', ({ printer, previousStatus, newStatus }) => { ... });
 
 ### `printerIdle`
 
-Fired only when a printer transitions *into* `IDLE` from any non-IDLE state. This is the primary hook for Phase 2 dispatch logic.
+Fired only when a printer transitions *into* `IDLE` from any non-IDLE state. This is the primary hook for dispatch logic.
 
 ```js
 poller.on('printerIdle', ({ printer }) => { ... });
 // printer: DB row with status already updated to 'IDLE'
 ```
+
+The scheduler's listener calls `scheduleForPrinter`, not a raw dispatch, so a printer that organically goes idle while a batch sweep (Set Ready (N), project activation, recommission) is already running gets deferred to the tail of that sweep instead of dispatching concurrently with it and pushing peak concurrency past `dispatch_batch_size`. See the 2026-09-01 entry in [CHANGELOG.md](CHANGELOG.md).
 
 ## Active vs Held vs Decommissioned
 

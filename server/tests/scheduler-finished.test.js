@@ -76,8 +76,9 @@ function makeDb() {
 
 function makeScheduler(db) {
   const scheduler = new JobScheduler(db, { on: () => {} });
-  // Prevent _dispatchToPrinter from running (it requires a full DB candidate)
-  scheduler._dispatchToPrinter = jest.fn().mockResolvedValue(null);
+  // Prevent the no-job fallback's dispatch attempt from running for real (it
+  // requires a full DB candidate schema this test file's minimal tables don't have).
+  scheduler.scheduleForPrinter = jest.fn();
   return scheduler;
 }
 
@@ -446,6 +447,27 @@ describe('_handleFinished — no job found', () => {
 
     const part = db.prepare('SELECT completed_qty FROM parts WHERE id = ?').get(partId);
     expect(part.completed_qty).toBe(5); // unchanged
+  });
+
+  // Regression test for the printerIdle/no-job-found bypass reported on the real
+  // farm: this fallback used to call _dispatchToPrinter directly, skipping the
+  // _isSweeping gate entirely, so a printer finishing with no tracked job could
+  // dispatch concurrently with an in-progress batch sweep and push peak
+  // concurrency past dispatch_batch_size. It must now route through
+  // scheduleForPrinter like every other dispatch trigger.
+  test('defers to the tail of an in-progress sweep instead of dispatching concurrently', () => {
+    const db        = makeDb();
+    // Construct directly (not via makeScheduler) so the real scheduleForPrinter
+    // runs: its _isSweeping early-return does no DB/dispatch work, so this stays
+    // safe against the minimal schema while proving the routing is correct.
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const printerId = seedPrinter(db);
+    scheduler._isSweeping = true;
+
+    scheduler._handleFinished(makePrinter(db, printerId));
+
+    expect(scheduler._pendingPrinters).toHaveLength(1);
+    expect(scheduler._pendingPrinters[0].id).toBe(printerId);
   });
 });
 

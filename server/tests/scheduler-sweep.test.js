@@ -291,6 +291,73 @@ describe('scheduleForPrinter', () => {
   });
 });
 
+// ── start(): printerIdle routes through scheduleForPrinter ─────────────────────
+// Regression test reported on the real farm: batch-confirming a stack of held
+// printers ("Set Ready (N)") while also individually confirming others left more
+// uploads running at once than dispatch_batch_size allowed (7 against a configured
+// limit of 5). Root cause: the printerIdle listener registered in start() called
+// _dispatchToPrinter directly, bypassing the _isSweeping gate entirely: a printer
+// that organically went idle elsewhere in the fleet while a batch sweep was already
+// running would dispatch concurrently with it instead of deferring to the tail of
+// the same sweep. Fixed by routing printerIdle through scheduleForPrinter, same as
+// every other dispatch trigger (set-ready, recommission, _handleFinished's fallback).
+const { EventEmitter } = require('events');
+
+describe('start(): printerIdle defers to an in-progress sweep instead of bypassing it', () => {
+  test('printerIdle during a sweep defers the printer instead of dispatching concurrently', async () => {
+    const scheduler = makeScheduler();
+    const poller = new EventEmitter();
+    scheduler.poller = poller;
+
+    let releaseP1;
+    const p1Gate = new Promise(r => { releaseP1 = r; });
+
+    scheduler._reserveJob = jest.fn((printer) => ({ jobId: printer.id, printer }));
+    scheduler._executeUpload = jest.fn((printer) => {
+      if (printer.id === 1) return p1Gate.then(() => null);
+      return Promise.resolve(null);
+    });
+    scheduler._waitForBatch = jest.fn().mockResolvedValue();
+
+    scheduler.start();
+
+    const sweepPromise = scheduler._sweepInBatches([fakePrinter(1)]);
+    expect(scheduler._isSweeping).toBe(true);
+
+    // An unrelated printer elsewhere in the fleet organically goes idle mid-sweep.
+    poller.emit('printerIdle', { printer: fakePrinter(2) });
+
+    // Must be queued behind the running sweep, not reserved as a second concurrent
+    // dispatch (this is the exact bypass that let peak concurrency exceed
+    // dispatch_batch_size on the real farm).
+    expect(scheduler._pendingPrinters).toHaveLength(1);
+    expect(scheduler._pendingPrinters[0].id).toBe(2);
+    expect(scheduler._reserveJob).toHaveBeenCalledTimes(1);
+
+    releaseP1();
+    await sweepPromise;
+
+    // Picked up at the tail of the same sweep once P1 settled, not concurrently.
+    expect(scheduler._reserveJob).toHaveBeenCalledTimes(2);
+    expect(scheduler._pendingPrinters).toHaveLength(0);
+  });
+
+  test('printerIdle with no sweep in progress dispatches immediately', () => {
+    const scheduler = makeScheduler();
+    const poller = new EventEmitter();
+    scheduler.poller = poller;
+
+    scheduler._reserveJob = jest.fn((printer) => ({ jobId: printer.id, printer }));
+    scheduler._executeUpload = jest.fn().mockResolvedValue(null);
+    scheduler._waitForBatch = jest.fn().mockResolvedValue();
+
+    scheduler.start();
+    poller.emit('printerIdle', { printer: fakePrinter(1) });
+
+    expect(scheduler._reserveJob).toHaveBeenCalledWith(fakePrinter(1));
+  });
+});
+
 // ── Fill-to-target concurrency ────────────────────────────────────────────────
 // The actual bug: dispatch_batch_size is supposed to be how many printers are
 // uploading/printing AT ONCE, not how many are merely considered per pass. A

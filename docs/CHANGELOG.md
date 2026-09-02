@@ -206,6 +206,23 @@ Delete is now a deliberate, guarded action: only reachable for an already-decomm
 - `docs/driver-authoring.md`: added `dropConnection(printerId)` to the documented optional driver exports.
 - `server/tests/printers-delete.test.js` (new): covers 404, both 409 guards, cascading job deletion, connection-cache cleanup, and that other printers/jobs are untouched.
 - `server/tests/printers-connection-cleanup.test.js` (new): regression test for issue #45, asserting all four decommission code paths drop the driver connection cache.
+## 2026-09-01: printerIdle bypass let dispatch exceed dispatch_batch_size
+
+Joel batch-confirmed a stack of held printers via Set Ready (N) with `dispatch_batch_size` set to 5, then individually confirmed roughly ten more printers that had shown a false failed-upload hold (the upload attempt was reported failed on our side, but the printer had actually completed the print). Fleet's uploading count briefly showed 7 concurrent uploads against the configured limit of 5.
+
+Root cause: the `printerIdle` listener registered in `JobScheduler.start()` called `_dispatchToPrinter` directly, bypassing the `_isSweeping` gate entirely, and `_handleFinished`'s "no printing job found" fallback did the same. Both were already flagged as a known gap in the 2026-07-12 `dispatch_batch_size` fix ("that is a separate, pre-existing gap, left as a known follow-up"). Any printer that organically transitions into IDLE, or finishes with no tracked job, while a batch sweep is already running (a routine event on a 50+ printer fleet, independent of the operator's own Set Ready clicks) dispatched immediately and concurrently with whatever the sweep was already uploading, instead of deferring to the tail of that sweep. `scheduleForPrinter`, added in the July fix specifically so set-ready and recommission dispatches defer behind an in-progress sweep, was never wired up to these two callers.
+
+Fixed by routing both call sites through `scheduleForPrinter`, the same path already used by set-ready and recommission. `_dispatchToPrinter` itself is unchanged and remains in direct use by tests and as `scheduleForPrinter`'s own single-printer dispatch path when no sweep is running.
+
+Scheduler-only change: no candidate-selection SQL, ceiling math, or `completed_qty` path touched. Covered by new regression tests that drive the real `start()` event wiring against the `_isSweeping` gate; not yet re-validated against a live repeat of Joel's original scenario on the farm.
+
+### Changes
+- `server/scheduler.js`: the `printerIdle` listener (registered in `start()`) and `_handleFinished`'s no-job fallback now call `scheduleForPrinter` instead of `_dispatchToPrinter` directly, so both defer to an in-progress sweep instead of dispatching concurrently with it. Updated the comments on `scheduleForPrinter` and `_dispatchToPrinter` to describe the new routing; generalized `scheduleForPrinter`'s log line, which previously said "set ready during sweep" for every caller.
+- `server/tests/scheduler-sweep.test.js`: new tests drive `scheduler.start()` against a real `EventEmitter` poller and assert a `printerIdle` event mid-sweep is deferred to `_pendingPrinters` instead of triggering a second concurrent reservation.
+- `server/tests/scheduler-finished.test.js`: new test asserts `_handleFinished`'s no-job fallback defers during an in-progress sweep; updated the `makeScheduler` test helper to mock `scheduleForPrinter` instead of `_dispatchToPrinter` (the fallback's new call site).
+- `docs/poller.md`: noted that the `printerIdle` listener routes through `scheduleForPrinter` and defers behind an in-progress batch sweep.
+
+---
 
 ## 2026-07-30: Projects page only shows Active projects by default
 
