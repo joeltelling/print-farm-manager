@@ -102,6 +102,8 @@ Returns `201` with the created printer object. Returns `409` if `name` already e
 
 Partial update — only fields provided are changed (uses `COALESCE`). All fields from POST are accepted, plus `is_held` (`0` or `1`).
 
+Changing `ip`, `api_key`, `serial_number`, or `type` drops the driver's cached connection for this printer, so the new settings take effect on the next poll (about 15 seconds) with no server restart.
+
 Returns `404` if not found, `409` on name conflict.
 
 ### `DELETE /api/printers/:id`
@@ -109,6 +111,8 @@ Returns `404` if not found, `409` on name conflict.
 ```json
 { "success": true }
 ```
+
+Also drops the driver's cached connection for this printer. Decommissioning (all three variants: `decommission`, `complete-and-decommission`, `mark-job-failure`) does the same, so an inactive row can never hold a live client that competes with a replacement entry for the same physical printer.
 
 Returns `404` if not found.
 

@@ -146,6 +146,44 @@ describe('getAmsSlots', () => {
   });
 });
 
+// ─── dropConnection ───────────────────────────────────────────────────────────
+// The connection cache is keyed by printer.id and clients reconnect on their own
+// with the credentials they were created with. dropConnection is how the routes
+// layer forces a reconnect after an operator edits ip/api_key/serial_number, or
+// stops the reconnect loop entirely after a delete/decommission.
+
+describe('dropConnection', () => {
+  test('ends the MQTT client with force=true', () => {
+    const printer = nextPrinter();
+    bambu.getStatus(printer); // creates the cached connection
+    bambu.dropConnection(printer.id);
+    expect(mockMqttClient.end).toHaveBeenCalledWith(true);
+  });
+
+  test('next getStatus reconnects using the credentials it is given', async () => {
+    const printer = nextPrinter();
+    pushStatus(printer, { gcode_state: 'IDLE' });
+    expect(mqtt.connect).toHaveBeenCalledTimes(1);
+
+    // Same status call again: cached, no new client.
+    await bambu.getStatus(printer);
+    expect(mqtt.connect).toHaveBeenCalledTimes(1);
+
+    bambu.dropConnection(printer.id);
+
+    // Operator fixed a mistyped access code; the poller passes the updated row.
+    const updated = { ...printer, api_key: 'NEWCODE1' };
+    await bambu.getStatus(updated);
+    expect(mqtt.connect).toHaveBeenCalledTimes(2);
+    expect(mqtt.connect.mock.calls[1][1].password).toBe('NEWCODE1');
+  });
+
+  test('is a no-op for a printer with no cached connection', () => {
+    expect(() => bambu.dropConnection(999999)).not.toThrow();
+    expect(mockMqttClient.end).not.toHaveBeenCalled();
+  });
+});
+
 // ─── getStatus — FAILED disambiguation ───────────────────────────────────────
 // Bambu reports user-cancelled prints as gcode_state FAILED, same as genuine
 // failures. print_error tells them apart: 50348044 = cancelled by user (resets
