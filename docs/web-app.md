@@ -263,7 +263,7 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 
 **Filters:** status dropdown (all / queued / uploading / printing / finished / failed / cancelled), project dropdown, printer dropdown, all passed as query params on each fetch. The dropdown filters on the real `jobs.status` column; "Awaiting Sign-off" below is a display-only badge, not a filterable value.
 
-**Actions:** "Cancel" button on `queued` rows → `DELETE /api/jobs/:id` with confirm dialog.
+**Actions:** "Cancel" button on `queued` rows → `DELETE /api/jobs/:id` with confirm dialog. "Force Cancel" button on `uploading`/`printing` rows → `DELETE /api/jobs/:id?force=true` with a danger confirm that spells out what it does and does not do: it clears the stuck job record only, it does not stop the printer. The button is hidden when the row displays as "Awaiting Sign-off" (printer held): those are resolved from Fleet via Set Ready / Bad Print, not by cancelling the job out from under the hold. Failed cancels surface via toast.
 
 **Status color coding:**
 

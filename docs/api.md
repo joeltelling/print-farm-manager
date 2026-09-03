@@ -495,6 +495,12 @@ Single job with same joins, including `printer_is_held` and `printer_status`. `4
 
 Cancels a job. Returns `409` if status is not `queued` (only queued jobs can be cancelled).
 
+With `?force=true` (or `?force=1`), also cancels an `uploading` or `printing` job. This is the escape hatch for a stuck row, e.g. a printer that silently ignored the print-start command, leaving its job `printing` forever and blocking part deletion. Force-cancel updates only the job row (status `cancelled`, `finished_at` stamped): it never credits `completed_qty`, never clears a printer hold, and never contacts the printer. `finished` and `failed` jobs return `409` even with force.
+
+```json
+{ "success": true }
+```
+
 ---
 
 ## Scheduler
