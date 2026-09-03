@@ -446,6 +446,8 @@ Upload a G-code file and create a DB record. `Content-Type: multipart/form-data`
 
 Returns `201` with created G-code record. Returns `409` if a G-code for this `(part_id, printer_model)` combination already exists.
 
+**Sliced-.3mf validation:** a `.3mf` upload is inspected (ZIP central directory, no extraction) and rejected with `400` unless it contains `Metadata/plate_1.gcode`, the exact entry the Bambu driver prints. This catches two silent-failure cases at upload time: a project file saved without slicing (no G-code inside at all), and an export whose sliced plate is not plate 1. The error message tells the operator how to re-export ("Slice Plate, then File > Export > Export plate sliced file"). Non-`.3mf` uploads are not inspected.
+
 A part only becomes a real dispatch candidate once it has at least one matching G-code (the scheduler's candidate query joins on `gcodes`). A successful upload triggers a scheduler sweep immediately, so an idle printer can pick up the part right away instead of waiting for a manual dispatch or the next printer status transition.
 
 ### `PUT /api/gcodes/:id`
