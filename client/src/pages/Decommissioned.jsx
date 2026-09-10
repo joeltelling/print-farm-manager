@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
+import { useFormattingLocale } from '../useFormattingLocale';
 
-function formatTimestamp(ms) {
-  if (!ms) return 'Unknown';
-  return new Date(ms).toLocaleString(undefined, {
+function formatTimestamp(t, ms, formattingLocale) {
+  if (!ms) return t('decommissioned.unknownTimestamp');
+  return new Date(ms).toLocaleString(formattingLocale, {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
 }
 
 export default function Decommissioned() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [confirm, confirmModal] = useConfirm();
   const [showToast, toastEl]    = useToast();
@@ -70,9 +73,9 @@ export default function Decommissioned() {
       setPrinters(ps => ps.map(p => p.id === id ? { ...p, decommission_note: draftNote } : p));
       setEditingId(null);
       setDraftNote('');
-      showToast('Note saved', 'success');
+      showToast(t('decommissioned.noteSavedToast'), 'success');
     } catch (err) {
-      showToast(`Failed to save note: ${err.message}`, 'error');
+      showToast(t('decommissioned.noteSaveFailedToast', { message: err.message }), 'error');
     } finally {
       setSaving(false);
     }
@@ -80,10 +83,10 @@ export default function Decommissioned() {
 
   async function recommission(printer) {
     const result = await confirm({
-      title: `Recommission ${printer.name}?`,
-      message: 'Only proceed if the machine has been fully inspected and confirmed safe to run. It will return to the active fleet and be eligible to receive jobs immediately.',
-      confirmLabel: 'Recommission',
-      prompt: 'What was done to fix this printer?',
+      title: t('decommissioned.recommissionTitle', { name: printer.name }),
+      message: t('decommissioned.recommissionMessage'),
+      confirmLabel: t('decommissioned.recommissionButton'),
+      prompt: t('decommissioned.recommissionPrompt'),
       promptRequired: true,
     });
     if (!result) return;
@@ -93,21 +96,21 @@ export default function Decommissioned() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note: fixNote }),
     });
-    showToast(`${printer.name} recommissioned`, 'success');
+    showToast(t('decommissioned.recommissionedToast', { name: printer.name }), 'success');
     fetchPrinters();
   }
 
-  if (loading) return <p style={{ color: '#64748b' }}>Loading…</p>;
+  if (loading) return <p style={{ color: '#64748b' }}>{t('common.loading')}</p>;
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Decommissioned</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{t('decommissioned.title')}</h1>
       <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
-        Printers removed from the active fleet. Each requires inspection and manual recommission before receiving jobs.
+        {t('decommissioned.subtitle')}
       </p>
 
       {printers.length === 0 && (
-        <p style={{ color: '#475569', fontSize: 14 }}>No decommissioned printers.</p>
+        <p style={{ color: '#475569', fontSize: 14 }}>{t('decommissioned.noPrinters')}</p>
       )}
 
       <div style={{
@@ -143,6 +146,8 @@ function DecomCard({
   onBeginEdit, onCancelEdit, onChangeDraft, onSave,
   onRecommission, onViewHistory,
 }) {
+  const { t } = useTranslation();
+  const formattingLocale = useFormattingLocale();
   const note = printer.decommission_note || '';
   const textareaRef = useRef(null);
 
@@ -207,14 +212,14 @@ function DecomCard({
         <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
           <button
             onClick={onRecommission}
-            title="Recommission"
+            title={t('decommissioned.recommissionButton')}
             style={iconBtn('#60a5fa', '#1e3a5f')}
           >
             ↩
           </button>
           <button
             onClick={onViewHistory}
-            title="View history"
+            title={t('decommissioned.viewHistoryTitle')}
             style={iconBtn('#94a3b8', '#2d3748')}
           >
             ⋯
@@ -224,7 +229,7 @@ function DecomCard({
 
       {/* Decommission timestamp */}
       <div style={{ fontSize: 11, color: '#475569' }}>
-        Removed {formatTimestamp(printer.decommissioned_at)}
+        {t('decommissioned.removedAt', { date: formatTimestamp(t, printer.decommissioned_at, formattingLocale) })}
       </div>
 
       {/* Note — view or edit */}
@@ -236,7 +241,7 @@ function DecomCard({
             onChange={e => onChangeDraft(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={onSave}
-            placeholder="Describe the issue, what was inspected, and any findings…"
+            placeholder={t('decommissioned.notePlaceholder')}
             rows={3}
             style={{
               background: '#1e2433',
@@ -255,14 +260,14 @@ function DecomCard({
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             fontSize: 10, color: '#475569',
           }}>
-            <span>Enter saves · Shift+Enter newline · Esc cancels</span>
-            {saving && <span style={{ color: '#60a5fa' }}>Saving…</span>}
+            <span>{t('decommissioned.noteHelpText')}</span>
+            {saving && <span style={{ color: '#60a5fa' }}>{t('common.saving')}</span>}
           </div>
         </div>
       ) : (
         <button
           onClick={onBeginEdit}
-          title="Click to edit note"
+          title={t('decommissioned.editNoteTitle')}
           style={{
             background: 'transparent',
             border: '1px dashed #1e2433',
@@ -281,7 +286,7 @@ function DecomCard({
           onMouseEnter={e => e.currentTarget.style.borderColor = '#334155'}
           onMouseLeave={e => e.currentTarget.style.borderColor = '#1e2433'}
         >
-          {note || 'Add investigation note…'}
+          {note || t('decommissioned.addNotePlaceholderText')}
         </button>
       )}
     </div>

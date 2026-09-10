@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 // Circular progress ring that fills up between polls, giving the operator
 // a visual countdown to the next refresh.
 export default function PollTimer({ lastPolled, intervalMs = 15000, size = 20, stroke = '#3b82f6', track = '#2d3748' }) {
+  const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -24,7 +26,7 @@ export default function PollTimer({ lastPolled, intervalMs = 15000, size = 20, s
       width={size}
       height={size}
       style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}
-      title={`Last refresh ${Math.round(elapsed / 1000)}s ago`}
+      title={t('common.lastRefresh', { seconds: Math.round(elapsed / 1000) })}
     >
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={strokeWidth} />
       <circle

@@ -1,29 +1,34 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 const STATUS_COLORS = {
-  IDLE:     { bg: '#1e3a5f', text: '#93c5fd' },
-  PRINTING: { bg: '#1e3a5f', text: '#60a5fa' },
-  FINISHED: { bg: '#14532d', text: '#86efac' },
-  PAUSED:   { bg: '#78350f', text: '#fcd34d' },
-  ERROR:    { bg: '#7f1d1d', text: '#fca5a5' },
-  OFFLINE:  { bg: '#1e2433', text: '#475569' },
-  UNKNOWN:  { bg: '#1e2433', text: '#475569' },
+  IDLE:      { bg: '#1e3a5f', text: '#93c5fd', labelKey: 'common.statusIdle' },
+  PRINTING:  { bg: '#1e3a5f', text: '#60a5fa', labelKey: 'common.statusPrinting' },
+  UPLOADING: { bg: '#3b2c69', text: '#a78bfa', labelKey: 'common.statusUploading' },
+  READY:     { bg: '#1e3a5f', text: '#93c5fd', labelKey: 'common.statusReady' },
+  FINISHED:  { bg: '#14532d', text: '#86efac', labelKey: 'common.statusFinished' },
+  STOPPED:   { bg: '#78350f', text: '#fcd34d', labelKey: 'common.statusStopped' },
+  PAUSED:    { bg: '#78350f', text: '#fcd34d', labelKey: 'common.statusPaused' },
+  ATTENTION: { bg: '#78350f', text: '#fcd34d', labelKey: 'common.statusAttention' },
+  ERROR:     { bg: '#7f1d1d', text: '#fca5a5', labelKey: 'common.statusError' },
+  OFFLINE:   { bg: '#1e2433', text: '#475569', labelKey: 'common.statusOffline' },
+  UNKNOWN:   { bg: '#1e2433', text: '#475569', labelKey: 'common.statusUnknown' },
 };
 
 const SUMMARY_PILLS = [
-  { key: 'PRINTING', label: 'printing', bg: '#1e3a5f', text: '#60a5fa' },
-  { key: 'IDLE',     label: 'idle',     bg: '#1a2030', text: '#94a3b8' },
-  { key: 'AWAITING', label: 'awaiting', bg: '#14532d', text: '#4ade80' },
-  { key: 'ERROR',    label: 'error',    bg: '#450a0a', text: '#ef4444' },
-  { key: 'PAUSED',   label: 'paused',   bg: '#451a03', text: '#f59e0b' },
-  { key: 'OFFLINE',  label: 'offline',  bg: '#0d1117', text: '#475569' },
+  { key: 'PRINTING', labelKey: 'printers.pillPrinting', bg: '#1e3a5f', text: '#60a5fa' },
+  { key: 'IDLE',     labelKey: 'printers.pillIdle',     bg: '#1a2030', text: '#94a3b8' },
+  { key: 'AWAITING', labelKey: 'printers.pillAwaiting', bg: '#14532d', text: '#4ade80' },
+  { key: 'ERROR',    labelKey: 'printers.pillError',    bg: '#450a0a', text: '#ef4444' },
+  { key: 'PAUSED',   labelKey: 'printers.pillPaused',   bg: '#451a03', text: '#f59e0b' },
+  { key: 'OFFLINE',  labelKey: 'printers.pillOffline',  bg: '#0d1117', text: '#475569' },
 ];
 
 const COLLAPSED_KEY = 'printers.collapsedGroups';
 const SHOW_DECOM_KEY = 'printers.showDecommissioned';
 
-function statusBadge(status) {
+function statusBadge(status, t) {
   const c = STATUS_COLORS[status] || STATUS_COLORS.UNKNOWN;
   return (
     <span style={{
@@ -32,7 +37,7 @@ function statusBadge(status) {
       fontSize: 11, fontWeight: 700,
       letterSpacing: '0.03em',
     }}>
-      {status}
+      {t(c.labelKey)}
     </span>
   );
 }
@@ -49,6 +54,7 @@ function summarize(group) {
 }
 
 export default function Printers() {
+  const { t, i18n } = useTranslation();
   const [printers, setPrinters]     = useState([]);
   const [models, setModels]         = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -206,7 +212,7 @@ export default function Printers() {
       totalMatched += matched.length;
       groups.push({
         key: id,
-        label: id === 'other' ? 'Other' : (labels[id] || id),
+        label: id === 'other' ? t('common.other') : (labels[id] || id),
         all,
         matched: matched.sort((a, b) => a.name.localeCompare(b.name)),
       });
@@ -216,13 +222,13 @@ export default function Printers() {
       .sort((a, b) => a.name.localeCompare(b.name));
     const decomGroup = {
       key: '__decommissioned__',
-      label: 'Decommissioned',
+      label: t('common.statusDecommissioned'),
       all: decomPrinters,
       matched: decomMatched,
     };
 
     return { groups, totalShown, totalMatched, decomGroup };
-  }, [printers, models, search]);
+  }, [printers, models, search, t, i18n.resolvedLanguage]);
 
   const isSearching = search.trim().length > 0;
   const isOpen = (g) => isSearching ? g.matched.length > 0 : !collapsed.has(g.key);
@@ -238,9 +244,9 @@ export default function Printers() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Printers</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>{t('printers.title')}</h1>
       <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-        All printers — grouped by model. Click any row to view history and add notes.
+        {t('printers.subtitle')}
       </p>
 
       {/* Toolbar */}
@@ -250,7 +256,7 @@ export default function Printers() {
       }}>
         <input
           type="text"
-          placeholder="Search by name, model, group, or IP…"
+          placeholder={t('printers.searchPlaceholder')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{
@@ -261,8 +267,8 @@ export default function Printers() {
           }}
         />
         <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={expandAll} style={toolbarBtn}>Expand all</button>
-          <button onClick={collapseAll} style={toolbarBtn}>Collapse all</button>
+          <button onClick={expandAll} style={toolbarBtn}>{t('printers.expandAll')}</button>
+          <button onClick={collapseAll} style={toolbarBtn}>{t('printers.collapseAll')}</button>
         </div>
         <label style={{
           display: 'flex', alignItems: 'center', gap: 6,
@@ -275,7 +281,7 @@ export default function Printers() {
             onChange={e => toggleShowDecom(e.target.checked)}
             style={{ accentColor: '#3b82f6' }}
           />
-          Show decommissioned ({decomGroup.all.length})
+          {t('printers.showDecommissioned', { count: decomGroup.all.length })}
         </label>
       </div>
 
@@ -287,19 +293,19 @@ export default function Printers() {
           borderRadius: 7, padding: '8px 14px', marginBottom: 12,
         }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: '#93c5fd', flexShrink: 0 }}>
-            {selectedIds.size} selected
+            {t('printers.selectedCount', { count: selectedIds.size })}
           </span>
           <button onClick={clearSelection} style={{ ...toolbarBtn, fontSize: 11, padding: '4px 8px' }}>
-            Clear
+            {t('common.clear')}
           </button>
-          <span style={{ fontSize: 11, color: '#475569', flexShrink: 0 }}>Set:</span>
+          <span style={{ fontSize: 11, color: '#475569', flexShrink: 0 }}>{t('printers.setLabel')}</span>
           <select
             value={bulkMaterial}
             onChange={e => { setBulkMaterial(e.target.value); setBulkColor(''); }}
             style={bulkInputSx}
           >
-            <option value="">Material…</option>
-            {filamentTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+            <option value="">{t('printers.materialPlaceholder')}</option>
+            {filamentTypes.map(ft => <option key={ft.id} value={ft.name}>{ft.name}</option>)}
           </select>
           <select
             value={bulkColor}
@@ -307,7 +313,7 @@ export default function Printers() {
             disabled={!bulkMaterial}
             style={bulkInputSx}
           >
-            <option value="">Color…</option>
+            <option value="">{t('printers.colorPlaceholder')}</option>
             {filamentColors
               .filter(c => c.type_name === bulkMaterial)
               .map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
@@ -317,7 +323,7 @@ export default function Printers() {
             list="bulk-group-options"
             value={bulkGroup}
             onChange={e => setBulkGroup(e.target.value)}
-            placeholder="Group…"
+            placeholder={t('printers.groupPlaceholder')}
             style={{ ...bulkInputSx, width: 130 }}
           />
           <datalist id="bulk-group-options">
@@ -335,24 +341,24 @@ export default function Printers() {
               flexShrink: 0,
             }}
           >
-            {applying ? 'Applying…' : 'Apply to selected'}
+            {applying ? t('printers.applying') : t('printers.applyToSelected')}
           </button>
           <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
-            Empty fields are left unchanged
+            {t('printers.emptyFieldsUnchanged')}
           </span>
         </div>
       )}
 
       {isSearching && (
         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
-          {totalMatched} of {totalShown} match "{search}"
+          {t('printers.matchCount', { matched: totalMatched, total: totalShown, query: search })}
         </div>
       )}
 
-      {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
+      {loading && <p style={{ color: '#64748b' }}>{t('common.loading')}</p>}
 
       {!loading && groups.length === 0 && !showDecom && (
-        <p style={{ color: '#475569', fontSize: 14 }}>No printers found.</p>
+        <p style={{ color: '#475569', fontSize: 14 }}>{t('printers.noPrintersFound')}</p>
       )}
 
       {!loading && (
@@ -406,6 +412,7 @@ const bulkInputSx = {
 
 function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty,
                         selectedIds, onTogglePrinter, onSelectGroup }) {
+  const { t } = useTranslation();
   if (hideEmpty && group.matched.length === 0) return null;
 
   const summary = summarize(group.all);
@@ -443,7 +450,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
               ref={el => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }}
               onChange={() => onSelectGroup(visiblePrinters)}
               style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
-              title="Select all in this group"
+              title={t('printers.selectAllInGroup')}
             />
           </div>
         )}
@@ -473,7 +480,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
             {group.label}
           </span>
           <span style={{ fontSize: 12, color: '#475569' }}>
-            {isFiltered ? `${visible} of ${total}` : `${total}`}
+            {isFiltered ? t('printers.groupHeaderCount', { visible, total }) : total}
           </span>
 
           {!dimmed && (
@@ -488,7 +495,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
                     letterSpacing: '0.03em',
                     borderRadius: 3, padding: '2px 7px',
                   }}>
-                    {n} {p.label}
+                    {n} {t(p.labelKey)}
                   </span>
                 );
               })}
@@ -509,11 +516,11 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
             letterSpacing: '0.06em', textTransform: 'uppercase',
           }}>
             <span />
-            <span>Name</span>
-            <span>Group</span>
-            <span>Material</span>
-            <span>IP</span>
-            <span>Status</span>
+            <span>{t('printers.colName')}</span>
+            <span>{t('printers.colGroup')}</span>
+            <span>{t('printers.colMaterial')}</span>
+            <span>{t('printers.colIp')}</span>
+            <span>{t('printers.colStatus')}</span>
           </div>
 
           {group.matched.map(printer => (
@@ -552,7 +559,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
                 {printer.name}
                 {dimmed && (
                   <span style={{ marginLeft: 8, fontSize: 11, color: '#475569', fontWeight: 400 }}>
-                    decommissioned
+                    {t('printers.decommissionedTag')}
                   </span>
                 )}
               </span>
@@ -562,8 +569,8 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
               </span>
               <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace' }}>{printer.ip}</span>
               <span>{dimmed
-                ? <span style={{ fontSize: 11, color: '#475569' }}>offline</span>
-                : statusBadge(printer.status)
+                ? <span style={{ fontSize: 11, color: '#475569' }}>{t('printers.offlineTag')}</span>
+                : statusBadge(printer.status, t)
               }</span>
             </div>
           ))}

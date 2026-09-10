@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 export function useConfirm() {
+  const { t } = useTranslation();
   const [state, setState] = useState(null);
   const [inputValue, setInputValue] = useState('');
 
@@ -45,7 +47,7 @@ export function useConfirm() {
       <div
         role="alertdialog"
         aria-modal="true"
-        aria-label={state.title || 'Confirm'}
+        aria-label={state.title || t('common.confirm')}
         style={{
           background: '#1e2433',
           border: '1px solid #334155',
@@ -108,7 +110,7 @@ export function useConfirm() {
               padding: '8px 18px', fontSize: 13, cursor: 'pointer', fontWeight: 500,
             }}
           >
-            {state.cancelLabel || 'Cancel'}
+            {state.cancelLabel || t('common.cancel')}
           </button>
 
           {state.actions
@@ -150,7 +152,7 @@ export function useConfirm() {
                   transition: 'opacity 0.1s, background 0.1s',
                 }}
               >
-                {state.confirmLabel || 'Confirm'}
+                {state.confirmLabel || t('common.confirm')}
               </button>
             )
           }
