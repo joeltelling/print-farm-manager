@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The app provides:
+The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The production build is installable as a PWA (manifest + service worker). The app provides:
 
 - **Dashboard:** CoMa command center: KPI cards, utilization donut, parts-per-hour bars, clickable fleet grid, active projects, and a Needs Attention queue
 - **Fleet page** — live grid of all active printers with status, filterable and searchable
@@ -32,8 +32,22 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
 | `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
-| `client/index.html` | HTML shell with dark background baseline CSS |
+| `client/index.html` | HTML shell with dark background baseline CSS, PWA meta tags |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
+| `client/public/manifest.webmanifest` | PWA install manifest (name, icons, standalone display) |
+| `client/public/sw.js` | Service worker: caches app shell; never caches `/api/*` |
+| `client/public/icons/` | PWA icons (192 / 512) |
+
+## PWA
+
+Production builds are installable:
+
+- `client/public/manifest.webmanifest` declares name, standalone display, theme colors, and icons
+- `client/public/sw.js` precaches the app shell and never caches `/api/*`
+- `client/src/main.jsx` registers the service worker only when `import.meta.env.PROD` is true (Vite/dev does not register it)
+- Express serves `.webmanifest` as `application/manifest+json`
+
+Use the built client on port 3000 (or HTTPS) to install. Vite hot-reload on 5173 is for development only.
 
 ## Layout
 
@@ -218,7 +232,7 @@ Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Mu
 
 **Backup:** export and restore. See [api.md](api.md).
 
-**About:** upstream credit to Joel / print-farm-manager.
+**About:** CoMa / mdwcoder fork credit with GitHub Sponsors CTA; upstream print-farm-manager (Joel) credit and donation links sit behind a collapsed "Original project" disclosure.
 
 ## Projects Page
 

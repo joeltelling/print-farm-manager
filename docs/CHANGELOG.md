@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-09-16: About tab credits for the CoMa fork
+
+Settings About now leads with CoMa / mdwcoder credits and a GitHub Sponsors link. The upstream print-farm-manager credit and Joel's donation channels stay available behind a collapsed "Original project" disclosure so they are preserved without competing with the fork CTA.
+
+### Changes
+- `client/src/pages/Settings.jsx`: About tab fork credit, Sponsors CTA, original-project disclosure.
+- `docs/web-app.md`: About tab description.
+
+## 2026-09-16: Installable PWA client
+
+The production UI can be installed as a Progressive Web App. A web manifest and service worker ship with the Vite build; the SW caches the app shell and leaves `/api/*` on the network so live farm data stays fresh.
+
+### Changes
+- `client/public/manifest.webmanifest`, `client/public/sw.js`, `client/public/icons/`, `client/public/apple-touch-icon.png`: PWA assets.
+- `client/index.html`, `client/src/main.jsx`, `client/public/favicon.svg`: manifest links, theme meta, production SW registration, CoMa icon.
+- `server/index.js`: serve `.webmanifest` with the correct content type.
+- `docs/web-app.md`, `docs/installation.md`: PWA install notes.
+
 ## 2026-09-16: Dark-theme file pickers in Settings
 
 Native browser file inputs on Backup restore and Hardware CSV import are replaced with a dark Choose file control that matches the rest of Settings.

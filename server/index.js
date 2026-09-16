@@ -73,12 +73,17 @@ if (!fs.existsSync(path.join(clientDist, 'index.html'))) {
   console.error('');
   process.exit(1);
 }
-app.use(express.static(clientDist));
+app.use(express.static(clientDist, {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('.webmanifest')) {
+      res.setHeader('Content-Type', 'application/manifest+json');
+    }
+  },
+}));
 // SPA catch-all — non-API routes serve index.html
 app.get(/^(?!\/api).*/, (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
-
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`[server] Express running on http://localhost:${PORT}`);

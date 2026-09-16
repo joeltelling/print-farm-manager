@@ -253,6 +253,12 @@ hostname -I
 
 The production API listens on port 3000. Native Vite development is localhost-only by default, so use the Docker development service if the hot-reload UI must be reached from another machine.
 
+### Install as a PWA
+
+The production client (`npm run build`, then open the server on port 3000) registers a service worker and ships a web app manifest. On Chromium or Edge (desktop or Android), use Install app / Add to Home screen from the browser menu. Safari on iOS uses Share → Add to Home Screen.
+
+The service worker caches the UI shell only. Live `/api/*` calls are never cached, so printer status stays current. Install works on `localhost` and on HTTPS; plain HTTP on a LAN IP may be blocked by the browser unless you use localhost or terminate TLS.
+
 If a firewall is enabled, allow port 3000 only from the trusted LAN. Example for UFW and a `192.168.1.0/24` network:
 
 ```bash

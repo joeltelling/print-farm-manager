@@ -1416,40 +1416,116 @@ export default function Settings() {
       {/* About */}
       {tab === 'about' && (
       <section style={{ maxWidth: 640, borderTop: '1px solid #1e2433', paddingTop: 24 }}>
-        <p style={{ color: '#475569', fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
-          Hi, I'm Joel — aka <strong style={{ color: '#64748b' }}>3D Printing Nerd</strong>. I built this tool
-          to manage my own print farm and decided to open-source it so the community could benefit too.
-          If it saves you time or headaches, I'd love a coffee — it helps me keep making free content and
-          tools like this one. Thanks for being part of the community. Happy printing!
-        </p>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>
+          <strong style={{ color: '#e2e8f0' }}>CoMa</strong> (core-manufacturing) is maintained by{' '}
           <a
-            href="https://buymeacoffee.com/3dprintingnerd"
+            href="https://github.com/mdwcoder"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: '#a78bfa', textDecoration: 'none', fontWeight: 600 }}
+          >
+            mdwcoder
+          </a>
+          . It is a Linux-focused fork of a fantastic open-source print farm manager: the solid
+          scheduling, multi-brand drivers, and operator safety model are what made this
+          possible. This fork adds CoMa branding, denser UX, Klipper camera proxying, PWA install,
+          and other farm-side tweaks while staying compatible with the upstream ideas.
+        </p>
+        <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+          If CoMa helps your farm run smoother, a sponsorship keeps the lights on for continued
+          work on this fork. Thank you, and happy printing.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 28 }}>
+          <a
+            href="https://github.com/sponsors/mdwcoder"
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7,
-              background: '#FFDD00', color: '#000',
-              padding: '7px 16px', borderRadius: 8,
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: '#8b5cf6', color: '#fff',
+              padding: '9px 18px', borderRadius: 8,
               fontSize: 13, fontWeight: 700, textDecoration: 'none',
             }}
           >
-            ☕ Buy Me a Coffee
+            Sponsor mdwcoder on GitHub
           </a>
           <a
-            href="https://paypal.me/JoelTelling"
+            href="https://github.com/mdwcoder/core-manufacturing"
             target="_blank"
             rel="noopener noreferrer"
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 7,
-              background: '#003087', color: '#fff',
-              padding: '7px 16px', borderRadius: 8,
-              fontSize: 13, fontWeight: 700, textDecoration: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: '#131720', color: '#94a3b8',
+              border: '1px solid #2d3748',
+              padding: '9px 16px', borderRadius: 8,
+              fontSize: 13, fontWeight: 600, textDecoration: 'none',
             }}
           >
-            PayPal
+            GitHub repo
           </a>
         </div>
+
+        <details style={{
+          borderTop: '1px solid #1e2433',
+          paddingTop: 12,
+          color: '#475569',
+        }}>
+          <summary style={{
+            cursor: 'pointer',
+            fontSize: 12,
+            fontWeight: 500,
+            color: '#475569',
+            userSelect: 'none',
+          }}>
+            Original project
+          </summary>
+          <div style={{ marginTop: 12, paddingLeft: 2 }}>
+            <p style={{ color: '#475569', fontSize: 12, lineHeight: 1.65, marginBottom: 12 }}>
+              Upstream is{' '}
+              <a
+                href="https://github.com/joeltelling/print-farm-manager"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: '#64748b', textDecoration: 'underline' }}
+              >
+                print-farm-manager
+              </a>
+              {' '}by Joel (aka 3D Printing Nerd). He built and open-sourced the base tool this
+              fork stands on. If you want to support the original author directly, his channels
+              are below.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <a
+                href="https://buymeacoffee.com/3dprintingnerd"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: 'transparent', color: '#64748b',
+                  border: '1px solid #2d3748',
+                  padding: '5px 12px', borderRadius: 6,
+                  fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                }}
+              >
+                Buy Me a Coffee
+              </a>
+              <a
+                href="https://paypal.me/JoelTelling"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: 'transparent', color: '#64748b',
+                  border: '1px solid #2d3748',
+                  padding: '5px 12px', borderRadius: 6,
+                  fontSize: 12, fontWeight: 600, textDecoration: 'none',
+                }}
+              >
+                PayPal
+              </a>
+            </div>
+          </div>
+        </details>
       </section>
       )}
     </div>
