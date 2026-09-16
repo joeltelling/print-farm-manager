@@ -41,7 +41,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 
 ```
 ┌──────────────────────────────────────────┐
-│ SIDEBAR (220px)   │  MAIN CONTENT         │
+│ SIDEBAR (280px)   │  MAIN CONTENT         │
 │  CoMa / site name │                       │
 │  CoreManufacturing│  <Routes />           │
 │                   │                       │
@@ -98,7 +98,7 @@ TV-optimized command center. Polls `GET /api/dashboard` every 15 seconds. A live
 
 `client/src/pages/Fleet.jsx`
 
-Live printer grid that polls `GET /api/printers` every 15 seconds (matching the server-side poll interval).
+Live printer grid that polls `GET /api/printers` every 15 seconds (matching the server-side poll interval). Model bands are split across two columns with a similar group count in each (first half left, second half right); below ~1100px they stack to one column. Within each band, cards sit in a fixed track (`200px` to `240px` via `auto-fill`) with a `200px` minimum height so they stay near-square mild rectangles. Klipper camera thumbnails are fixed at 88px tall.
 
 **Features:**
 - Status filter chips: All, Printing, Idle, Error, Attention, Offline — each shows live count
@@ -204,13 +204,13 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 `client/src/pages/Settings.jsx`
 
-Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About.
+Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Multi-section tabs (General, Hardware, Materials) use a two-column layout above ~1100px. List rows (models, groups, filament types/colors) sit in a shared bordered list instead of sparse table cells.
 
 **General:** site name (`farm_name`, label "Site name", fallback CoMa), camera mode (`snapshot` or `stream`), dispatch batch size, polling explanation.
 
-**Hardware:** printer models, groups, add printer, CSV import (same flagged-row flow as before).
+**Hardware:** printer models and groups on the left; add printer and CSV import on the right.
 
-**Materials:** Filament Library types and colors.
+**Materials:** Filament Library types and colors side by side.
 
 **Alerts:** in-memory scheduler notifications (`GET /api/notifications`). Also mirrored by the shell alert bell.
 

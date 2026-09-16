@@ -51,7 +51,7 @@ export default function App() {
     <BrowserRouter>
       <style>{`
         #layout { display: flex; min-height: 100vh; height: 100vh; background: ${theme.page}; overflow: hidden; }
-        #sidebar { width: 220px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.border}; display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; height: 100%; box-sizing: border-box; }
+        #sidebar { width: 280px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.border}; display: flex; flex-direction: column; padding: 18px 14px; gap: 4px; height: 100%; box-sizing: border-box; }
         #topbar { display: none; background: ${theme.sidebar}; border-bottom: 1px solid ${theme.border}; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
         #main { flex: 1; padding: 16px 20px; overflow-y: auto; min-width: 0; min-height: 0; background: ${theme.page}; display: flex; flex-direction: column; }
         @media (max-width: 600px) {
@@ -87,7 +87,7 @@ export default function App() {
               {item.label}
             </NavLink>
           ))}
-          <div style={{ marginTop: 'auto', padding: '12px 4px 0', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: 'auto', padding: '12px 0 0', width: '100%' }}>
             <AlertBell dropUp />
           </div>
         </nav>

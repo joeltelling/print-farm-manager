@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-09-16: Settings spacing + wider sidebar alerts
+
+Polling sits in the General left column with the same 16px gap as the other cards. The shell sidebar is 280px so the bottom alert panel can show full messages without clipping.
+
+### Changes
+- `client/src/pages/Settings.jsx`: Polling card in General column stack.
+- `client/src/App.jsx`, `client/src/components/AlertBell.jsx`: wider sidebar; drop-up alert panel fills sidebar width.
+- `docs/web-app.md`: sidebar width note.
+
+## 2026-09-16: Settings two-column tabs and list rows
+
+Settings tabs with multiple cards (General, Hardware, Materials) use a two-column layout. Models, groups, and filament rows sit in a shared bordered list so they read as one block instead of sparse table cells.
+
+### Changes
+- `client/src/pages/Settings.jsx`: two-column tab layouts, cohesive list rows.
+- `docs/web-app.md`: Settings layout note.
+
+## 2026-09-16: Fleet bands fill their row
+
+Fleet model bands sit in two columns with a similar group count on each side. Cards keep a fixed track (`200px` to `240px`) and a `200px` minimum height so they stay near-square. Below ~1100px the columns stack.
+
+### Changes
+- `client/src/pages/Fleet.jsx`: two-column band layout, capped card size, fixed camera preview height.
+- `docs/web-app.md`: Fleet layout note.
+
 ## 2026-09-16: Dashboard fills the viewport and shares space
 
 The dashboard is a CSS grid that fills the main pane height. Charts, fleet, and projects each keep a proportional slot and stretch with the window. Fleet status is one equal-cell auto-fill grid (no crushed model groups). Below ~1100px it stacks and scrolls normally.

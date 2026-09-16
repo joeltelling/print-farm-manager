@@ -15,6 +15,26 @@ const inputStyle = {
   boxSizing: 'border-box',
 };
 
+const sectionStyle = {
+  background: '#1e2433',
+  border: '1px solid #2d3748',
+  borderRadius: 10,
+  padding: 20,
+  marginBottom: 0,
+  boxSizing: 'border-box',
+};
+
+const delBtnStyle = {
+  background: 'none',
+  border: '1px solid #7f1d1d',
+  borderRadius: 4,
+  color: '#f87171',
+  fontSize: 12,
+  padding: '3px 10px',
+  cursor: 'pointer',
+  flexShrink: 0,
+};
+
 const CONNECTOR_OPTIONS = [
   { value: 'prusa',            label: 'Prusa (PrusaLink)' },
   { value: 'elegoo-centauri',  label: 'Elegoo (SDCP)' },
@@ -478,7 +498,50 @@ export default function Settings() {
   }
 
   return (
-    <div>
+    <div className="coma-settings">
+      <style>{`
+        .coma-settings-columns {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px 24px;
+          align-items: start;
+        }
+        .coma-settings-col {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          min-width: 0;
+        }
+        .coma-settings-list {
+          border: 1px solid #2d3748;
+          border-radius: 8px;
+          overflow: hidden;
+          margin-bottom: 16px;
+          background: #121722;
+        }
+        .coma-settings-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 12px;
+          border-bottom: 1px solid #1e2433;
+          min-height: 44px;
+          box-sizing: border-box;
+        }
+        .coma-settings-row:last-child { border-bottom: none; }
+        .coma-settings-row:hover { background: #161b27; }
+        .coma-settings-row-main {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: baseline;
+          gap: 6px 12px;
+        }
+        @media (max-width: 1100px) {
+          .coma-settings-columns { grid-template-columns: 1fr; }
+        }
+      `}</style>
       {toastEl}
       {confirmModal}
       <PageHeader title="Settings" subtitle="Site, hardware, materials, and backup" />
@@ -558,10 +621,11 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Printer Models */}
+      {/* Hardware */}
       {tab === 'hardware' && (
-      <>
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+      <div className="coma-settings-columns">
+      <div className="coma-settings-col">
+<section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Printer Models</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Configure which printer models are available in your farm. Models appear in the G-code upload
@@ -569,43 +633,28 @@ export default function Settings() {
         </p>
 
         {allModels.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>
-            <thead>
-              <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>ID</th>
-                <th style={{ padding: '4px 8px' }}>Label</th>
-                <th style={{ padding: '4px 8px' }}>Connector</th>
-                <th style={{ padding: '4px 8px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {allModels.map(m => (
-                <tr key={m.model_id} style={{ borderBottom: '1px solid #1a2030' }}>
-                  <td style={{ padding: '6px 8px', color: '#94a3b8', fontFamily: 'monospace' }}>{m.model_id}</td>
-                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>{m.label}</td>
-                  <td style={{ padding: '6px 8px', color: '#64748b' }}>{CONNECTOR_LABEL[m.connector] || m.connector}</td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <button
-                      onClick={() => handleDeleteModel(m.model_id)}
-                      style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
-                    >
-                      Delete
-                    </button>
-                    {modelDeleteError[m.model_id] && (
-                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{modelDeleteError[m.model_id]}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="coma-settings-list">
+            {allModels.map(m => (
+              <div key={m.model_id} className="coma-settings-row">
+                <div className="coma-settings-row-main">
+                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{m.label}</span>
+                  <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: 12 }}>{m.model_id}</span>
+                  <span style={{ color: '#64748b', fontSize: 12 }}>{CONNECTOR_LABEL[m.connector] || m.connector}</span>
+                  {modelDeleteError[m.model_id] && (
+                    <span style={{ color: '#fca5a5', fontSize: 12 }}>{modelDeleteError[m.model_id]}</span>
+                  )}
+                </div>
+                <button onClick={() => handleDeleteModel(m.model_id)} style={delBtnStyle}>Delete</button>
+              </div>
+            ))}
+          </div>
         )}
 
         {allModels.length === 0 && (
           <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>No models configured yet. Add your first model below.</p>
         )}
 
-        <form onSubmit={handleAddModel} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+        <form onSubmit={handleAddModel} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'end' }}>
           <div>
             <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model ID *</label>
             <input
@@ -647,9 +696,8 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{modelFormError}</div>
         )}
       </section>
-
-      {/* Groups */}
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+{/* Groups */}
+      <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Groups</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Named groups (e.g. racks or rooms) that projects and G-codes can restrict dispatch to. A group
@@ -659,32 +707,19 @@ export default function Settings() {
         </p>
 
         {allGroups.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 16 }}>
-            <thead>
-              <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Name</th>
-                <th style={{ padding: '4px 8px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {allGroups.map(g => (
-                <tr key={g.name} style={{ borderBottom: '1px solid #1a2030' }}>
-                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>{g.name}</td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <button
-                      onClick={() => handleDeleteGroup(g.name)}
-                      style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
-                    >
-                      Delete
-                    </button>
-                    {groupDeleteError[g.name] && (
-                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{groupDeleteError[g.name]}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="coma-settings-list">
+            {allGroups.map(g => (
+              <div key={g.name} className="coma-settings-row">
+                <div className="coma-settings-row-main">
+                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{g.name}</span>
+                  {groupDeleteError[g.name] && (
+                    <span style={{ color: '#fca5a5', fontSize: 12 }}>{groupDeleteError[g.name]}</span>
+                  )}
+                </div>
+                <button onClick={() => handleDeleteGroup(g.name)} style={delBtnStyle}>Delete</button>
+              </div>
+            ))}
+          </div>
         )}
 
         {allGroups.length === 0 && (
@@ -713,173 +748,9 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{groupFormError}</div>
         )}
       </section>
-      </>
-      )}
-
-      {/* Filament Library */}
-      {tab === 'materials' && (
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
-          Define the filament types and colors available in your farm. Printers and G-codes select from these lists.
-        </p>
-
-        {/* Filament Types */}
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Types</h3>
-        {filamentTypes.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
-            <thead>
-              <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Name</th>
-                <th style={{ padding: '4px 8px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filamentTypes.map(t => (
-                <tr key={t.id} style={{ borderBottom: '1px solid #1a2030' }}>
-                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>{t.name}</td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <button
-                      onClick={() => handleDeleteType(t.id, t.name)}
-                      style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
-                    >
-                      Delete
-                    </button>
-                    {typeDeleteError[t.id] && (
-                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{typeDeleteError[t.id]}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {filamentTypes.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No types yet. Add your first below.</p>
-        )}
-        <form onSubmit={handleAddType} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 24 }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type name *</label>
-            <input
-              value={typeForm.name}
-              onChange={e => setTypeForm(p => ({ ...p, name: e.target.value }))}
-              required
-              placeholder="e.g. PLA, PETG, ASA"
-              style={inputStyle}
-            />
-          </div>
-          <button
-            type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            Add Type
-          </button>
-        </form>
-        {typeFormError && <div style={{ marginTop: -16, marginBottom: 16, color: '#fca5a5', fontSize: 13 }}>{typeFormError}</div>}
-
-        {/* Filament Colors */}
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Colors</h3>
-        {filamentColors.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
-            <thead>
-              <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Type</th>
-                <th style={{ padding: '4px 8px' }}>Color</th>
-                <th style={{ padding: '4px 8px' }}>Name</th>
-                <th style={{ padding: '4px 8px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filamentColors.map(c => (
-                <tr key={c.id} style={{ borderBottom: '1px solid #1a2030' }}>
-                  <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 12 }}>{c.type_name}</td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <span style={{
-                      display: 'inline-block', width: 16, height: 16, borderRadius: '50%',
-                      background: c.hex_color || '#334155',
-                      border: '1px solid #475569',
-                      verticalAlign: 'middle',
-                    }} title={c.hex_color || 'no color set'} />
-                  </td>
-                  <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>
-                    {c.name}
-                    {c.hex_color && <span style={{ color: '#475569', fontSize: 11, marginLeft: 8, fontFamily: 'monospace' }}>{c.hex_color}</span>}
-                  </td>
-                  <td style={{ padding: '6px 8px' }}>
-                    <button
-                      onClick={() => handleDeleteColor(c.id, c.name)}
-                      style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
-                    >
-                      Delete
-                    </button>
-                    {colorDeleteError[c.id] && (
-                      <span style={{ color: '#fca5a5', fontSize: 12, marginLeft: 8 }}>{colorDeleteError[c.id]}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {filamentColors.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No colors yet. Add your first below.</p>
-        )}
-        <form onSubmit={handleAddColor} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, alignItems: 'flex-end' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type *</label>
-            <select
-              value={colorForm.type_id}
-              onChange={e => setColorForm(p => ({ ...p, type_id: e.target.value }))}
-              required
-              style={inputStyle}
-            >
-              <option value="">Select type…</option>
-              {filamentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Color name *</label>
-            <input
-              value={colorForm.name}
-              onChange={e => setColorForm(p => ({ ...p, name: e.target.value }))}
-              required
-              placeholder="e.g. Black, Galaxy Red"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Hex (optional)</label>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type="color"
-                value={colorForm.hex_color || '#000000'}
-                onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
-                style={{ width: 36, height: 34, padding: 2, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer' }}
-                title="Pick a color"
-              />
-              <input
-                value={colorForm.hex_color}
-                onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
-                placeholder="#rrggbb"
-                style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }}
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
-          >
-            Add Color
-          </button>
-        </form>
-        {colorFormError && <div style={{ marginTop: 8, color: '#fca5a5', fontSize: 13 }}>{colorFormError}</div>}
-      </section>
-      )}
-
-      {/* Add Single Printer */}
-      {tab === 'hardware' && (
-      <>
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+      </div>
+      <div className="coma-settings-col">
+<section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Add Printer</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>
           Add a single printer directly without a CSV file.
@@ -1045,9 +916,8 @@ export default function Settings() {
           </div>
         )}
       </section>
-
-      {/* CSV Import */}
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+{/* CSV Import */}
+      <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Import Printer Registry</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>model, name, ip, api_key, group, type</code>.<br />
@@ -1158,14 +1028,155 @@ export default function Settings() {
           </div>
         )}
       </section>
+      </div>
+      </div>
+      )}
 
+
+      {/* Filament Library */}
+      {tab === 'materials' && (
+      <>
+      <div style={{ marginBottom: 12 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
+        <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+          Define the filament types and colors available in your farm. Printers and G-codes select from these lists.
+        </p>
+      </div>
+      <div className="coma-settings-columns">
+      <div className="coma-settings-col">
+      <section style={sectionStyle}>
+{/* Filament Types */}
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Types</h3>
+        {filamentTypes.length > 0 && (
+          <div className="coma-settings-list">
+            {filamentTypes.map(t => (
+              <div key={t.id} className="coma-settings-row">
+                <div className="coma-settings-row-main">
+                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{t.name}</span>
+                  {typeDeleteError[t.id] && (
+                    <span style={{ color: '#fca5a5', fontSize: 12 }}>{typeDeleteError[t.id]}</span>
+                  )}
+                </div>
+                <button onClick={() => handleDeleteType(t.id, t.name)} style={delBtnStyle}>Delete</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {filamentTypes.length === 0 && (
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No types yet. Add your first below.</p>
+        )}
+        <form onSubmit={handleAddType} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type name *</label>
+            <input
+              value={typeForm.name}
+              onChange={e => setTypeForm(p => ({ ...p, name: e.target.value }))}
+              required
+              placeholder="e.g. PLA, PETG, ASA"
+              style={inputStyle}
+            />
+          </div>
+          <button
+            type="submit"
+            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+          >
+            Add Type
+          </button>
+        </form>
+        {typeFormError && <div style={{ marginTop: -16, marginBottom: 16, color: '#fca5a5', fontSize: 13 }}>{typeFormError}</div>}
+      </section>
+      </div>
+      <div className="coma-settings-col">
+      <section style={sectionStyle}>
+{/* Filament Colors */}
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Colors</h3>
+        {filamentColors.length > 0 && (
+          <div className="coma-settings-list">
+            {filamentColors.map(c => (
+              <div key={c.id} className="coma-settings-row">
+                <div className="coma-settings-row-main">
+                  <span style={{
+                    display: 'inline-block', width: 14, height: 14, borderRadius: '50%',
+                    background: c.hex_color || '#334155', border: '1px solid #475569', flexShrink: 0,
+                  }} title={c.hex_color || 'no color set'} />
+                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{c.name}</span>
+                  <span style={{ color: '#64748b', fontSize: 12 }}>{c.type_name}</span>
+                  {c.hex_color && <span style={{ color: '#475569', fontSize: 11, fontFamily: 'monospace' }}>{c.hex_color}</span>}
+                  {colorDeleteError[c.id] && (
+                    <span style={{ color: '#fca5a5', fontSize: 12 }}>{colorDeleteError[c.id]}</span>
+                  )}
+                </div>
+                <button onClick={() => handleDeleteColor(c.id, c.name)} style={delBtnStyle}>Delete</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {filamentColors.length === 0 && (
+          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No colors yet. Add your first below.</p>
+        )}
+        <form onSubmit={handleAddColor} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type *</label>
+            <select
+              value={colorForm.type_id}
+              onChange={e => setColorForm(p => ({ ...p, type_id: e.target.value }))}
+              required
+              style={inputStyle}
+            >
+              <option value="">Select type…</option>
+              {filamentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Color name *</label>
+            <input
+              value={colorForm.name}
+              onChange={e => setColorForm(p => ({ ...p, name: e.target.value }))}
+              required
+              placeholder="e.g. Black, Galaxy Red"
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Hex (optional)</label>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="color"
+                value={colorForm.hex_color || '#000000'}
+                onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
+                style={{ width: 36, height: 34, padding: 2, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer' }}
+                title="Pick a color"
+              />
+              <input
+                value={colorForm.hex_color}
+                onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
+                placeholder="#rrggbb"
+                style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }}
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
+          >
+            Add Color
+          </button>
+        </form>
+        {colorFormError && <div style={{ marginTop: 8, color: '#fca5a5', fontSize: 13 }}>{colorFormError}</div>}
+      </section>
+      </div>
+      </div>
       </>
       )}
 
-      {/* Site name */}
+
+
+
+      {/* General */}
       {tab === 'general' && (
-      <>
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+      <div className="coma-settings-columns">
+      <div className="coma-settings-col">
+<section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Site name</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Shown in the sidebar. Defaults to CoMa if left empty after a restore with no name.
@@ -1190,7 +1201,7 @@ export default function Settings() {
         )}
       </section>
 
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+      <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Camera</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Default feed on the printer incident screen. Snapshot (low) refreshes a still every 5 seconds. Stream uses MJPEG. Klipper printers only; implemented from Moonraker webcam docs, not yet validated on physical hardware.
@@ -1216,8 +1227,19 @@ export default function Settings() {
         )}
       </section>
 
+      <section style={sectionStyle}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Polling</h2>
+        <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+          All printers are polled every <strong style={{ color: '#e2e8f0' }}>15 seconds</strong> via their connector API.
+          Polling runs concurrently — all printers are queried in parallel each tick.
+          Unreachable printers show as <span style={{ color: '#6b7280' }}>OFFLINE</span> and do not affect other printers.
+        </p>
+      </section>
+
       {/* Dispatch Settings */}
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+      </div>
+      <div className="coma-settings-col">
+<section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Dispatch Settings</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           The scheduler keeps this many printers uploading or printing at once, pulling
@@ -1260,12 +1282,14 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{batchSizeError}</div>
         )}
       </section>
-      </>
+      </div>
+      </div>
       )}
+
 
       {/* Farm Backup / Restore */}
       {tab === 'backup' && (
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+      <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Backup</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Export a full snapshot of your printers, projects, parts, G-code files, and job history.
@@ -1351,18 +1375,6 @@ export default function Settings() {
             </div>
           </div>
         )}
-      </section>
-      )}
-
-      {/* Polling interval info */}
-      {tab === 'general' && (
-      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Polling</h2>
-        <p style={{ color: '#64748b', fontSize: 13 }}>
-          All printers are polled every <strong style={{ color: '#e2e8f0' }}>15 seconds</strong> via their connector API.
-          Polling runs concurrently — all printers are queried in parallel each tick.
-          Unreachable printers show as <span style={{ color: '#6b7280' }}>OFFLINE</span> and do not affect other printers.
-        </p>
       </section>
       )}
 

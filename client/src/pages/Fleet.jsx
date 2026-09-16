@@ -114,6 +114,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
 
   return (
     <div
+      className="coma-fleet-card"
       onClick={(needsConfirmation && !needsUploadConfirmation) ? () => onToggleSelect(printer.id) : () => onOpenDetail(printer.id)}
       title={(needsConfirmation && !needsUploadConfirmation) ? (selected ? 'Click to deselect' : 'Click to select for batch Set Ready') : 'Click to open printer details'}
       style={{
@@ -125,6 +126,8 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         flexDirection: 'column',
         gap: 6,
         minWidth: 0,
+        height: '100%',
+        boxSizing: 'border-box',
         cursor: 'pointer',
       }}
     >
@@ -163,7 +166,9 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div style={{
           marginTop: 2, borderRadius: 6, overflow: 'hidden',
           background: '#0a0f1a', border: '1px solid #1e2433',
-          aspectRatio: '16 / 10',
+          height: 88,
+          width: '100%',
+          flexShrink: 0,
         }}>
           <img
             src={`/api/printers/${printer.id}/camera/snapshot?t=${snapTick || Date.now()}`}
@@ -233,6 +238,8 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
             : 'Print stopped from printer screen — returns to service on next dispatch'}
         </div>
       )}
+
+      <div style={{ flex: 1, minHeight: 4 }} />
 
       {needsConfirmation && !needsUploadConfirmation && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
@@ -646,8 +653,85 @@ export default function Fleet() {
     fetchPrinters();
   }
 
+  const bands = Object.entries(grouped);
+  const mid = Math.ceil(bands.length / 2);
+  const bandColumns = [bands.slice(0, mid), bands.slice(mid)];
+
+  function renderBand([model, group]) {
+    return (
+      <div key={model} className="coma-fleet-band">
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          {MODEL_LABELS[model] || model} <span style={{ fontWeight: 400, color: '#475569' }}>({group.length})</span>
+        </h2>
+        <div className="coma-fleet-band-grid">
+          {group.map((printer) => (
+            <PrinterCard
+              key={printer.id}
+              printer={printer}
+              selected={selectedForReady.has(printer.id)}
+              onToggleSelect={toggleSelect}
+              onSetReady={setReady}
+              onBadPrint={badPrint}
+              onUploadFailed={uploadFailed}
+              onDecommission={decommission}
+              onLinkJob={openLinkJobModal}
+              onOpenDetail={(id) => navigate(`/printers/${id}`)}
+              snapTick={lastPolled}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div className="coma-fleet">
+      <style>{`
+        .coma-fleet-columns {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px 28px;
+          align-items: start;
+        }
+        .coma-fleet-column {
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .coma-fleet-band {
+          margin-bottom: 16px;
+        }
+        .coma-fleet-band-grid {
+          display: grid;
+          /* Tight track so cards stay near-square mild rectangles, not wide bars. */
+          grid-template-columns: repeat(auto-fill, minmax(200px, 240px));
+          gap: 10px;
+          justify-content: start;
+          align-items: stretch;
+        }
+        .coma-fleet-band-grid > .coma-fleet-card,
+        .coma-fleet-band-grid > .skeleton {
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .coma-fleet-band-grid > .coma-fleet-card {
+          min-height: 200px;
+        }
+        .coma-fleet-band-grid > .skeleton {
+          height: 200px;
+        }
+        @media (max-width: 1100px) {
+          .coma-fleet-columns {
+            grid-template-columns: 1fr;
+          }
+        }
+        @media (max-width: 600px) {
+          .coma-fleet-band-grid {
+            grid-template-columns: minmax(0, 1fr);
+          }
+        }
+      `}</style>
       {confirmModal}
       {toastEl}
 
@@ -872,13 +956,9 @@ export default function Fleet() {
       </div>
 
       {loading && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: 10,
-        }}>
+        <div className="coma-fleet-band-grid">
           {Array.from({ length: 12 }).map((_, i) => (
-            <div key={i} className="skeleton" style={{ height: 100 }} />
+            <div key={i} className="skeleton" style={{ height: 120 }} />
           ))}
         </div>
       )}
@@ -892,34 +972,15 @@ export default function Fleet() {
         />
       )}
 
-      {Object.entries(grouped).map(([model, group]) => (
-        <div key={model} style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-            {MODEL_LABELS[model] || model} <span style={{ fontWeight: 400, color: '#475569' }}>({group.length})</span>
-          </h2>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: 10,
-          }}>
-            {group.map((printer) => (
-              <PrinterCard
-                key={printer.id}
-                printer={printer}
-                selected={selectedForReady.has(printer.id)}
-                onToggleSelect={toggleSelect}
-                onSetReady={setReady}
-                onBadPrint={badPrint}
-                onUploadFailed={uploadFailed}
-                onDecommission={decommission}
-                onLinkJob={openLinkJobModal}
-                onOpenDetail={(id) => navigate(`/printers/${id}`)}
-                snapTick={lastPolled}
-              />
-            ))}
-          </div>
+      {!loading && bands.length > 0 && (
+        <div className="coma-fleet-columns">
+          {bandColumns.map((col, i) => (
+            <div key={i} className="coma-fleet-column">
+              {col.map(renderBand)}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

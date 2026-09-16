@@ -27,7 +27,7 @@ export default function AlertBell({ dropUp = false }) {
   const count = alerts.length;
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', width: dropUp ? '100%' : undefined }}>
       <button
         onClick={() => setOpen(o => !o)}
         title={count ? `${count} server alert${count === 1 ? '' : 's'}` : 'No server alerts'}
@@ -68,10 +68,8 @@ export default function AlertBell({ dropUp = false }) {
       {open && (
         <div style={{
           position: 'absolute',
-          ...(dropUp ? { bottom: 44 } : { top: 44 }),
-          right: 0,
-          width: 260,
-          maxWidth: 'calc(100vw - 24px)',
+          ...(dropUp ? { bottom: 44, left: 0, right: 0, width: 'auto' } : { top: 44, right: 0, width: 280 }),
+          maxWidth: dropUp ? 'none' : 'calc(100vw - 24px)',
           background: theme.card,
           border: `1px solid ${theme.border}`,
           borderRadius: 12,
