@@ -1,6 +1,6 @@
 # Linux Installation and Development Guide
 
-This guide covers this fork's supported bare-metal workflow on Linux. Docker remains available when an isolated environment is preferable. Print Farm Manager must run on the same trusted local network as the printers and must not be exposed directly to the internet because it has no built-in authentication.
+This guide covers this fork's supported bare-metal workflow on Linux. Docker remains available when an isolated environment is preferable. CoMa must run on the same trusted local network as the printers and must not be exposed directly to the internet because it has no built-in authentication.
 
 ## Supported Runtime
 
@@ -139,7 +139,16 @@ Docker with the Compose plugin is required for the simulator. Start the full env
 ./start.sh --with-simulator
 ```
 
-The simulator exposes Moonraker at `http://localhost:7125` and its dummy webcam at `http://localhost:8110`. In Print Farm Manager, create a printer model that uses the Klipper connector, then add a printer with `127.0.0.1` as its address. The Klipper driver uses Moonraker's port 7125 automatically and does not require an API key for this local simulator.
+The simulator exposes Moonraker at `http://localhost:7125` and its dummy webcam at `http://localhost:8110`. Seed data already includes a **Virtual Klipper** printer at `127.0.0.1` (group Sim Lab). Reset and start with:
+
+```bash
+npm run seed:data
+./start.sh --seed-data --with-simulator
+```
+
+`DEMO_MODE=true` (the `--seed-data` default) keeps the fictional Prusa/Elegoo/Bambu statuses stable for the dashboard and Fleet, but still polls loopback hosts so Virtual Klipper reflects live Moonraker state and the incident camera works. In CoMa, open Virtual Klipper on the printer detail page: snapshot mode (default) refreshes every 5 seconds; stream mode proxies MJPEG through `/api/printers/:id/camera/stream`. Camera support is implemented from Moonraker webcam docs and the simulator, not yet validated on physical Klipper hardware.
+
+To add another Klipper printer by hand, create a model with the Klipper connector and use `127.0.0.1` as its address. The Klipper driver uses Moonraker port 7125 automatically and does not require an API key for this local simulator.
 
 The simulator directory and its printer data stay local and are excluded through `.git/info/exclude`. They are not part of commits from this fork. These commands control whether the lifecycle scripts include it:
 
@@ -149,7 +158,7 @@ The simulator directory and its printer data stay local and are excluded through
 ./restart.sh --without-simulator
 ```
 
-`--without-simulator` restarts only Print Farm Manager and leaves an already running simulator unchanged.
+`--without-simulator` restarts only CoMa and leaves an already running simulator unchanged.
 
 ## Manual Development Commands
 
@@ -206,7 +215,7 @@ Create `/etc/systemd/system/print-farm-manager.service` with the following conte
 
 ```ini
 [Unit]
-Description=Print Farm Manager
+Description=CoreManufacturing (CoMa)
 After=network-online.target
 Wants=network-online.target
 

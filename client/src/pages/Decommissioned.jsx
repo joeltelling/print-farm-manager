@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
+import PageHeader from '../components/PageHeader';
 
 function formatTimestamp(ms) {
   if (!ms) return 'Unknown';
@@ -101,10 +102,10 @@ export default function Decommissioned() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Decommissioned</h1>
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
-        Printers removed from the active fleet. Each requires inspection and manual recommission before receiving jobs.
-      </p>
+      <PageHeader
+        title="Decommissioned"
+        subtitle="Machines removed from the active fleet until an operator recommissions them."
+      />
 
       {printers.length === 0 && (
         <p style={{ color: '#475569', fontSize: 14 }}>No decommissioned printers.</p>

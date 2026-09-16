@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 
 const STATUS_COLORS = {
   IDLE:     { bg: '#1e3a5f', text: '#93c5fd' },
@@ -238,10 +239,10 @@ export default function Printers() {
 
   return (
     <div>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Printers</h1>
-      <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-        All printers — grouped by model. Click any row to view history and add notes.
-      </p>
+      <PageHeader
+        title="Printers"
+        subtitle="Directory of every machine. Click a row for camera, logs, and notes."
+      />
 
       {/* Toolbar */}
       <div style={{

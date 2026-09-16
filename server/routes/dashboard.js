@@ -41,6 +41,23 @@ module.exports = (db) => {
       WHERE status IN ${DONE_STATUSES} AND finished_at >= ?
     `).get(since).total;
 
+    // Parts finished per hour for the last 24 hours. Hour buckets are epoch-ms
+    // floored to the hour so the client can draw a bar chart without a library.
+    const hourRows = db.prepare(`
+      SELECT (finished_at / 3600000) * 3600000 AS hour_start,
+             COALESCE(SUM(parts_per_plate), 0) AS parts
+      FROM jobs
+      WHERE status IN ${DONE_STATUSES} AND finished_at >= ? AND finished_at IS NOT NULL
+      GROUP BY hour_start
+      ORDER BY hour_start
+    `).all(since);
+    const hourMap = new Map(hourRows.map(r => [r.hour_start, r.parts]));
+    const currentHour = Math.floor(now / 3600000) * 3600000;
+    const parts_by_hour = [];
+    for (let h = currentHour - 23 * 3600000; h <= currentHour; h += 3600000) {
+      parts_by_hour.push({ hour_start: h, parts: hourMap.get(h) || 0 });
+    }
+
     // ── Active projects with their parts ──────────────────────────────────────
     // Same order as GET /api/projects and the scheduler's dispatch query (see CLAUDE.md
     // sync pairs) so the dashboard's project order matches what actually dispatches next.
@@ -128,6 +145,7 @@ module.exports = (db) => {
       printers,
       active_projects: projectsWithParts,
       recent_activity: recentActivity,
+      parts_by_hour,
     });
   });
 

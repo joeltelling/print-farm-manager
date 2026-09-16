@@ -21,12 +21,12 @@ usage() {
 Usage: ./start.sh [--with-simulator|--without-simulator] [--organic-data|--seed-data]
 
   --with-simulator     Start the local Virtual Klipper Printer too.
-  --without-simulator  Start only Print Farm Manager.
+  --without-simulator  Start only CoMa.
   --organic-data       Use organic-data.db (default).
   --seed-data          Use seed-data.db and default to DEMO_MODE=true.
 
 Without an option, an interactive terminal asks whether to start the simulator.
-Non-interactive runs default to Print Farm Manager only. The environment variable
+Non-interactive runs default to CoMa only. The environment variable
 WITH_KLIPPER_SIMULATOR=true|false provides the same non-interactive control.
 PFM_DATASET=organic|seed provides the same database selection.
 EOF
@@ -137,9 +137,9 @@ if [[ -f "$PID_FILE" ]]; then
     running_dataset="unknown"
     [[ -f "$DATASET_FILE" ]] && running_dataset="$(<"$DATASET_FILE")"
     if [[ "$running_dataset" != "unknown" && "$running_dataset" != "$database_choice" ]]; then
-      fail "Print Farm Manager is already using $running_dataset data. Run ./restart.sh --$database_choice-data to switch."
+      fail "CoMa is already using $running_dataset data. Run ./restart.sh --$database_choice-data to switch."
     fi
-    printf 'Print Farm Manager is already running (process group %s).\n' "$existing_pid"
+    printf 'CoMa is already running (process group %s).\n' "$existing_pid"
     printf 'Dataset: %s data\n' "$running_dataset"
     printf 'Log: %s\n' "$LOG_FILE"
     [[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\n'
@@ -228,7 +228,7 @@ fi
 
 trap - INT TERM
 
-printf 'Print Farm Manager development services are running.\n'
+printf 'CoMa development services are running.\n'
 printf 'Dataset: %s data (%s-data.db)\n' "$database_choice" "$database_choice"
 printf 'UI:  http://localhost:%s\nAPI: http://localhost:%s\nLog: %s\n' "$vite_port" "$api_port" "$LOG_FILE"
 [[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\nVirtual webcam: http://localhost:8110\n'

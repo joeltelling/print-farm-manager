@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useToast } from '../useToast';
 import EmptyState from '../components/EmptyState';
+import PageHeader from '../components/PageHeader';
 import { useConfirm } from '../useConfirm';
 
 // ── Estimate helpers ──────────────────────────────────────────────────────────
@@ -1326,15 +1327,17 @@ export default function Projects() {
           document.body
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700 }}>Projects</h1>
-          <button
-            onClick={() => setShowNewForm(v => !v)}
-            style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-          >
-            + New Project
-          </button>
-        </div>
+        <PageHeader
+          title="Projects"
+          actions={
+            <button
+              onClick={() => setShowNewForm(v => !v)}
+              style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              + New Project
+            </button>
+          }
+        />
 
         {(draftCount > 0 || pausedCount > 0 || completedCount > 0) && (
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>

@@ -3,6 +3,16 @@ const { getDriver } = require('./drivers');
 
 const POLL_INTERVAL_MS = 15000;
 
+function isLocalSimulatorHost(ip) {
+  const host = String(ip || '')
+    .replace(/^https?:\/\//, '')
+    .replace(/\/+$/, '')
+    .split('/')[0]
+    .split(':')[0]
+    .toLowerCase();
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
 class PrinterPoller extends EventEmitter {
   constructor(db) {
     super();
@@ -24,24 +34,28 @@ class PrinterPoller extends EventEmitter {
   }
 
   async _tick() {
-    if (process.env.DEMO_MODE === 'true') {
-      this.emit('pollComplete');
-      return;
-    }
-
     const printers = this.db
       .prepare('SELECT * FROM printers WHERE is_active = 1')
       .all();
 
-    if (printers.length === 0) return;
+    // DEMO_MODE freezes fictional farm statuses, but still polls loopback hosts so a
+    // Virtual Klipper Printer at 127.0.0.1 stays live for camera and status testing.
+    const toPoll = process.env.DEMO_MODE === 'true'
+      ? printers.filter((p) => isLocalSimulatorHost(p.ip))
+      : printers;
+
+    if (toPoll.length === 0) {
+      this.emit('pollComplete');
+      return;
+    }
 
     const results = await Promise.allSettled(
-      printers.map((printer) => this._pollPrinter(printer))
+      toPoll.map((printer) => this._pollPrinter(printer))
     );
 
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
-        console.error(`[poller] Unexpected error polling ${printers[i].name}:`, result.reason);
+        console.error(`[poller] Unexpected error polling ${toPoll[i].name}:`, result.reason);
       }
     });
 
@@ -127,3 +141,4 @@ class PrinterPoller extends EventEmitter {
 }
 
 module.exports = PrinterPoller;
+module.exports.isLocalSimulatorHost = isLocalSimulatorHost;

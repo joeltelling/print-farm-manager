@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../useToast';
 import { useConfirm } from '../useConfirm';
+import PageHeader from '../components/PageHeader';
 
 const inputStyle = {
   background: '#0f172a',
@@ -43,6 +45,9 @@ const CREDENTIAL_HELP = {
 };
 
 export default function Settings() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') || 'general';
+  function setTab(id) { setSearchParams({ tab: id }); }
   const [showToast, toastEl] = useToast();
   const [confirm, confirmModal] = useConfirm();
   const [importing, setImporting] = useState(false);
@@ -272,6 +277,8 @@ export default function Settings() {
   // Farm name — shown in the sidebar; picked up on next page load
   const [farmName, setFarmName] = useState('');
   const [farmNameError, setFarmNameError] = useState(null);
+  const [cameraMode, setCameraMode] = useState('snapshot');
+  const [cameraModeError, setCameraModeError] = useState(null);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -279,6 +286,7 @@ export default function Settings() {
       .then(data => {
         if (data.dispatch_batch_size) setBatchSize(data.dispatch_batch_size);
         if (data.farm_name) setFarmName(data.farm_name);
+        if (data.camera_mode) setCameraMode(data.camera_mode);
       })
       .catch(() => {});
   }, []);
@@ -310,9 +318,25 @@ export default function Settings() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Save failed');
       window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: data.value }));
-      showToast('Farm name saved');
+      showToast('Site name saved');
     } catch (err) {
       setFarmNameError(err.message);
+    }
+  }
+
+  async function handleSaveCameraMode() {
+    setCameraModeError(null);
+    try {
+      const res = await fetch('/api/settings/camera_mode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: cameraMode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      showToast('Camera mode saved');
+    } catch (err) {
+      setCameraModeError(err.message);
     }
   }
 
@@ -377,7 +401,8 @@ export default function Settings() {
         .then(settingsData => {
           if (settingsData.dispatch_batch_size) setBatchSize(settingsData.dispatch_batch_size);
           setFarmName(settingsData.farm_name || '');
-          window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: settingsData.farm_name || 'Print Farm' }));
+          if (settingsData.camera_mode) setCameraMode(settingsData.camera_mode);
+          window.dispatchEvent(new CustomEvent('farmNameChanged', { detail: settingsData.farm_name || 'CoMa' }));
         })
         .catch(() => {});
     } catch (err) {
@@ -456,14 +481,44 @@ export default function Settings() {
     <div>
       {toastEl}
       {confirmModal}
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Settings</h1>
+      <PageHeader title="Settings" subtitle="Site, hardware, materials, and backup" />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        {[
+          { id: 'general', label: 'General' },
+          { id: 'hardware', label: 'Hardware' },
+          { id: 'materials', label: 'Materials' },
+          { id: 'alerts', label: 'Alerts' },
+          { id: 'backup', label: 'Backup' },
+          { id: 'about', label: 'About' },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              background: tab === t.id ? '#1e40af' : '#1a2332',
+              color: tab === t.id ? '#fff' : '#94a3b8',
+              border: `1px solid ${tab === t.id ? '#1e40af' : '#243044'}`,
+              borderRadius: 999,
+              padding: '6px 14px',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {/* Server Alerts */}
-      {alerts.length > 0 && (
+      {tab === 'alerts' && (
         <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640, border: '1px solid #7f1d1d' }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#fca5a5' }}>
             Server Alerts ({alerts.length})
           </h2>
+          {alerts.length === 0 && (
+            <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>No server alerts right now.</p>
+          )}
           {alerts.map(alert => (
             <div key={alert.id} style={{
               display: 'flex',
@@ -504,6 +559,8 @@ export default function Settings() {
       )}
 
       {/* Printer Models */}
+      {tab === 'hardware' && (
+      <>
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Printer Models</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
@@ -656,8 +713,11 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{groupFormError}</div>
         )}
       </section>
+      </>
+      )}
 
       {/* Filament Library */}
+      {tab === 'materials' && (
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 20 }}>
@@ -814,8 +874,11 @@ export default function Settings() {
         </form>
         {colorFormError && <div style={{ marginTop: 8, color: '#fca5a5', fontSize: 13 }}>{colorFormError}</div>}
       </section>
+      )}
 
       {/* Add Single Printer */}
+      {tab === 'hardware' && (
+      <>
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Add Printer</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>
@@ -1096,17 +1159,22 @@ export default function Settings() {
         )}
       </section>
 
-      {/* Farm Name */}
+      </>
+      )}
+
+      {/* Site name */}
+      {tab === 'general' && (
+      <>
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Name</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Site name</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Shown in the sidebar. Name your farm — or leave blank for the default.
+          Shown in the sidebar. Defaults to CoMa if left empty after a restore with no name.
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             value={farmName}
             onChange={e => setFarmName(e.target.value)}
-            placeholder="My Print Farm"
+            placeholder="CoMa"
             maxLength={40}
             style={{ ...inputStyle, width: 240 }}
           />
@@ -1119,6 +1187,32 @@ export default function Settings() {
         </div>
         {farmNameError && (
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{farmNameError}</div>
+        )}
+      </section>
+
+      <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Camera</h2>
+        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+          Default feed on the printer incident screen. Snapshot (low) refreshes a still every 5 seconds. Stream uses MJPEG. Klipper printers only; implemented from Moonraker webcam docs, not yet validated on physical hardware.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            value={cameraMode}
+            onChange={e => setCameraMode(e.target.value)}
+            style={{ ...inputStyle, width: 180 }}
+          >
+            <option value="snapshot">Low (snapshot)</option>
+            <option value="stream">Stream</option>
+          </select>
+          <button
+            onClick={handleSaveCameraMode}
+            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Save
+          </button>
+        </div>
+        {cameraModeError && (
+          <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{cameraModeError}</div>
         )}
       </section>
 
@@ -1166,8 +1260,11 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{batchSizeError}</div>
         )}
       </section>
+      </>
+      )}
 
       {/* Farm Backup / Restore */}
+      {tab === 'backup' && (
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Backup</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
@@ -1255,8 +1352,10 @@ export default function Settings() {
           </div>
         )}
       </section>
+      )}
 
       {/* Polling interval info */}
+      {tab === 'general' && (
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, maxWidth: 640 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Polling</h2>
         <p style={{ color: '#64748b', fontSize: 13 }}>
@@ -1265,8 +1364,10 @@ export default function Settings() {
           Unreachable printers show as <span style={{ color: '#6b7280' }}>OFFLINE</span> and do not affect other printers.
         </p>
       </section>
+      )}
 
       {/* About */}
+      {tab === 'about' && (
       <section style={{ maxWidth: 640, borderTop: '1px solid #1e2433', paddingTop: 24 }}>
         <p style={{ color: '#475569', fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
           Hi, I'm Joel — aka <strong style={{ color: '#64748b' }}>3D Printing Nerd</strong>. I built this tool
@@ -1303,6 +1404,7 @@ export default function Settings() {
           </a>
         </div>
       </section>
+      )}
     </div>
   );
 }

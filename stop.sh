@@ -17,8 +17,8 @@ usage() {
   cat <<'EOF'
 Usage: ./stop.sh [--with-simulator|--without-simulator]
 
-  --with-simulator     Stop Print Farm Manager and Virtual Klipper Printer.
-  --without-simulator  Stop only Print Farm Manager.
+  --with-simulator     Stop CoMa and Virtual Klipper Printer.
+  --without-simulator  Stop only CoMa.
 
 Without an option, an interactive terminal asks whether to stop the simulator.
 Non-interactive runs stop it when it was started by start.sh. The environment
@@ -69,7 +69,7 @@ fi
 stop_application() {
   if [[ ! -f "$PID_FILE" ]]; then
     rm -f "$DATASET_FILE"
-    printf 'Print Farm Manager is not running through start.sh.\n'
+    printf 'CoMa is not running through start.sh.\n'
     return
   fi
 
@@ -83,17 +83,17 @@ stop_application() {
 
   if ! kill -0 -- "-$dev_pid" 2>/dev/null; then
     rm -f "$PID_FILE" "$DATASET_FILE"
-    printf 'Removed a stale PID file. Print Farm Manager was already stopped.\n'
+    printf 'Removed a stale PID file. CoMa was already stopped.\n'
     return
   fi
 
-  printf 'Stopping Print Farm Manager development services...\n'
+  printf 'Stopping CoMa development services...\n'
   kill -TERM -- "-$dev_pid"
 
   for _ in {1..20}; do
     if ! kill -0 -- "-$dev_pid" 2>/dev/null; then
       rm -f "$PID_FILE" "$DATASET_FILE"
-      printf 'Print Farm Manager stopped.\n'
+      printf 'CoMa stopped.\n'
       return
     fi
     sleep 1
@@ -102,7 +102,7 @@ stop_application() {
   printf 'Graceful shutdown timed out. Forcing the managed process group to stop...\n' >&2
   kill -KILL -- "-$dev_pid" 2>/dev/null || true
   rm -f "$PID_FILE" "$DATASET_FILE"
-  printf 'Print Farm Manager stopped.\n'
+  printf 'CoMa stopped.\n'
 }
 
 stop_simulator() {

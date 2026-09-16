@@ -13,7 +13,7 @@
 
 if (!process.argv.includes('--confirm')) {
   console.error(`
-  PRINT FARM MANAGER — DEMO SEED
+  CoMa: DEMO SEED
 
   This script DELETES all data in seed-data.db and replaces it with demo data.
   organic-data.db is never opened or modified.
@@ -50,11 +50,32 @@ try {
 } catch (_) {}
 
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('dispatch_batch_size', '10')").run();
+db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('farm_name', 'CoMa Lab')").run();
+db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('camera_mode', 'snapshot')").run();
 
 // ─── Time helpers ────────────────────────────────────────────────────────────
 const now = Date.now();
 const hr  = 3600_000;
 const day = 86_400_000;
+
+// ─── Filament library (Materials tab) ─────────────────────────────────────────
+const insertFilamentType = db.prepare('INSERT INTO filament_types (name) VALUES (?)');
+const plaTypeId  = Number(insertFilamentType.run('PLA').lastInsertRowid);
+const petgTypeId = Number(insertFilamentType.run('PETG').lastInsertRowid);
+const insertFilamentColor = db.prepare(
+  'INSERT INTO filament_colors (type_id, name, hex_color) VALUES (?, ?, ?)'
+);
+insertFilamentColor.run(plaTypeId,  'Black',      '#1a1a1a');
+insertFilamentColor.run(plaTypeId,  'Galaxy Red', '#8b0000');
+insertFilamentColor.run(petgTypeId, 'Grey',       '#6b7280');
+
+// ─── Printer groups ───────────────────────────────────────────────────────────
+const insertGroup = db.prepare(
+  'INSERT OR IGNORE INTO printer_groups (name, created_at) VALUES (?, ?)'
+);
+for (const name of ['MK4S Farm', 'Elegoo Farm', 'Bambu Farm', 'Sim Lab']) {
+  insertGroup.run(name, now - 30 * day);
+}
 
 // ─── Printer models ───────────────────────────────────────────────────────────
 const insertModel = db.prepare(
@@ -76,7 +97,7 @@ const insertPrinter = db.prepare(`
 `);
 
 const PRINTERS = [
-  // Prusa MK4S farm — mix of states to demonstrate all card types
+  // Prusa MK4S farm: mix of states to demonstrate all card types
   ['MK4S_01', '192.168.1.101', 'aK3jR7xQ2pLm', 'MK4S Farm', 'prusa', 'mk4s',
     'PRINTING', 0, now - 30*day, 'benchy_4up_mk4s.bgcode',     0.35, 7200,  ''],
   ['MK4S_02', '192.168.1.102', 'bN8wT4yV6cDk', 'MK4S Farm', 'prusa', 'mk4s',
@@ -101,9 +122,10 @@ const PRINTERS = [
   // Bambu X1 Carbon
   ['X1C_01', '192.168.1.200', 'BBLP-DEMO01', 'Bambu Farm', 'bambu', 'x1c',
     'PRINTING', 0, now - 7*day, 'gridfinity_2x4_x1c.3mf', 0.88, 1200, 'DEMO00000001'],
-  // Klipper / Voron
-  ['Voron_01', '192.168.1.250', '', 'Voron Farm', 'klipper', 'voron-24',
-    'IDLE',    0, now - 7*day, null, null, null, ''],
+  // Klipper / Virtual Klipper Printer (Moonraker :7125, webcam :8110)
+  // DEMO_MODE still polls loopback hosts so this row stays live for camera testing.
+  ['Virtual Klipper', '127.0.0.1', '', 'Sim Lab', 'klipper', 'voron-24',
+    'IDLE',    0, now - 1*day, null, null, null, ''],
 ];
 
 const printerIds = {};
@@ -165,13 +187,16 @@ const GCODES = [
   ['gridfinity_2x4_mk4s.bgcode',    grid2x4PartId,    'mk4s',            6,  7200, null],
   ['gridfinity_2x4_x1c.3mf',       grid2x4PartId,    'x1c',             8,  5400,    0],
   ['gridfinity_4x4_mk4s.bgcode',    grid4x4PartId,    'mk4s',            2, 14400, null],
+  // Present for the simulator model list; not linked to an open dispatch-eligible
+  // plate so the live Virtual Klipper stays idle for camera/status testing.
+  ['benchy_voron.gcode',            clipPartId,       'voron-24',        1,  9000, null],
 ];
 
 const gcodeIds = {};
 for (const [filename, partId, model, ppp, secs, amsSlot] of GCODES) {
   const filepath = path.join(gcodeDir, filename);
   if (!fs.existsSync(filepath)) {
-    fs.writeFileSync(filepath, `; Demo placeholder — ${filename}\n`);
+    fs.writeFileSync(filepath, `; Demo placeholder: ${filename}\n`);
   }
   const r = insertGcode.run(partId, model, filename, filepath, ppp, secs, now - 14*day, amsSlot);
   gcodeIds[filename] = Number(r.lastInsertRowid);
@@ -237,48 +262,53 @@ const insertEvent = db.prepare(
   'INSERT INTO printer_events (printer_id, event_type, note, created_at) VALUES (?,?,?,?)'
 );
 
-// MK4S_01 — normal job history
-insertEvent.run(printerIds['MK4S_01'], 'job_done',  '4 parts credited — print confirmed OK', now - 12*day + 3*hr);
-insertEvent.run(printerIds['MK4S_01'], 'job_done',  '4 parts credited — print confirmed OK', now - 9*day  + 3*hr);
+// MK4S_01: normal job history
+insertEvent.run(printerIds['MK4S_01'], 'job_finished', '4 parts credited: print confirmed OK', now - 12*day + 3*hr);
+insertEvent.run(printerIds['MK4S_01'], 'job_finished', '4 parts credited: print confirmed OK', now - 9*day  + 3*hr);
 insertEvent.run(printerIds['MK4S_01'], 'job_start', 'benchy_4up_mk4s.bgcode', now - 3*hr);
 
-// MK4S_04 — finished, awaiting confirmation
-insertEvent.run(printerIds['MK4S_04'], 'job_done',  '2 parts credited — print confirmed OK', now - 4*day + 4*hr);
+// MK4S_04: finished, awaiting confirmation
+insertEvent.run(printerIds['MK4S_04'], 'job_finished', '2 parts credited: print confirmed OK', now - 4*day + 4*hr);
 insertEvent.run(printerIds['MK4S_04'], 'job_start', 'benchy_4up_mk4s.bgcode', now - 3*hr);
 
-// MK4S_07 — error state
+// MK4S_07: error state
 insertEvent.run(printerIds['MK4S_07'], 'job_start', 'benchy_4up_mk4s.bgcode', now - 4*hr);
 insertEvent.run(printerIds['MK4S_07'], 'job_failed','Filament runout detected mid-print',   now - 2*hr);
+insertEvent.run(printerIds['MK4S_07'], 'error', 'Hardware ERROR: filament runout', now - 2*hr + 1000);
 
-// MK4S_08 — went offline
-insertEvent.run(printerIds['MK4S_08'], 'status_change', 'PRINTING → OFFLINE', now - 2*day);
+// MK4S_08: went offline
+insertEvent.run(printerIds['MK4S_08'], 'offline_with_job', 'PRINTING to OFFLINE during gridfinity plate', now - 2*day);
 
-// Centauri_01 — running normally
-insertEvent.run(printerIds['Centauri_01'], 'job_done',  '4 parts credited', now - 8*day + 3*hr);
+// Centauri_01: running normally
+insertEvent.run(printerIds['Centauri_01'], 'job_finished', '4 parts credited', now - 8*day + 3*hr);
 insertEvent.run(printerIds['Centauri_01'], 'job_start', 'benchy_4up_centauri.cws', now - 2*hr);
 
-// X1C_01 — Bambu with AMS
-insertEvent.run(printerIds['X1C_01'], 'job_done',  '8 parts credited — AMS slot 1 (grey PETG)', now - 4*day + 1.5*hr);
-insertEvent.run(printerIds['X1C_01'], 'job_start', 'gridfinity_2x4_x1c.3mf — AMS slot 1', now - 1.5*hr);
+// X1C_01: Bambu with AMS
+insertEvent.run(printerIds['X1C_01'], 'job_finished', '8 parts credited: AMS slot 1 (grey PETG)', now - 4*day + 1.5*hr);
+insertEvent.run(printerIds['X1C_01'], 'job_start', 'gridfinity_2x4_x1c.3mf: AMS slot 1', now - 1.5*hr);
 
-// Voron_01 — recent job history
-insertEvent.run(printerIds['Voron_01'], 'job_done', '6 parts credited', now - 2*day + 2*hr);
+// Virtual Klipper: simulator history for the incident log
+insertEvent.run(printerIds['Virtual Klipper'], 'note', 'Connected to local Virtual Klipper Printer (Moonraker :7125, webcam :8110)', now - 6*hr);
+insertEvent.run(printerIds['Virtual Klipper'], 'job_finished', 'Calibration cube OK (simulator)', now - 5*hr);
+insertEvent.run(printerIds['Virtual Klipper'], 'info_changed', 'IP set to 127.0.0.1 for Sim Lab', now - 4*hr);
 
 db.pragma('foreign_keys = ON');
 
 const totalJobs = DONE_JOBS.length + PRINTING_JOBS.length + 2;
 db.close();
 console.log(`
-  ✓ Seed data written to ${databasePath}
+  Seed data written to ${databasePath}
 
-  Printers : ${PRINTERS.length} (${PRINTERS.filter(p => p[6] === 'PRINTING').length} printing, 1 finished, 2 idle, 1 error, 1 offline)
+  Printers : ${PRINTERS.length} (${PRINTERS.filter(p => p[6] === 'PRINTING').length} printing, 1 finished, idle mix, 1 error, 1 offline)
+  Live sim : Virtual Klipper at 127.0.0.1 (Moonraker :7125 / webcam :8110)
   Projects : 3 (2 active, 1 draft)
   Parts    : ${[benchyPartId, miniBenchyPartId, grid2x4PartId, grid4x4PartId, grid1x2PartId, clipPartId].length}
   G-codes  : ${GCODES.length}
   Jobs     : ${totalJobs} (${DONE_JOBS.length} done, ${PRINTING_JOBS.length + 2} active/failed)
+  Settings : farm_name=CoMa Lab, camera_mode=snapshot
 
-  Start with seed data (poller skips network calls so seeded statuses hold):
-    ./start.sh --seed-data
+  Start with seed data + simulator (DEMO_MODE keeps fictional statuses, still polls 127.0.0.1):
+    ./start.sh --seed-data --with-simulator
 
-  Open http://localhost:3000
+  Open http://localhost:5173 and open Virtual Klipper for the camera.
 `);

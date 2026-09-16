@@ -4,11 +4,11 @@
 
 The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The app provides:
 
-- **Dashboard** — TV-optimized command center: fleet utilization, stat cards, printer grid, active project progress, and a needs-attention panel
+- **Dashboard:** CoMa command center: KPI cards, utilization donut, parts-per-hour bars, clickable fleet grid, active projects, and a Needs Attention queue
 - **Fleet page** — live grid of all active printers with status, filterable and searchable
 - **Printers page** — searchable directory of all printers (active and decommissioned); click any row to open the detail view
-- **Printer detail view** — per-machine event timeline, inline note form, printer header
-- **Settings page** — CSV import UI for the printer registry, with flagged-row resolution
+- **Printer detail / incident view:** camera (Klipper), event log, stats, notes, job history
+- **Settings page:** tabbed site, hardware, materials, alerts, backup, and about
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 
@@ -20,12 +20,17 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/App.jsx` | Layout shell, sidebar/topbar nav, `<Routes>` |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
-| `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline and note form |
-| `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
-| `client/src/pages/Settings.jsx` | CSV import, flagged-row resolution, printer models |
-| `client/src/pages/Dashboard.jsx` | TV command center dashboard |
+| `client/src/theme.js` | Shared navy palette and card/input tokens |
+| `client/src/pages/PrinterDetail.jsx` | Incident view: camera, event timeline, notes |
+| `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, models, CSV, backup) |
+| `client/src/pages/Dashboard.jsx` | Command center dashboard |
+| `client/src/components/CameraFeed.jsx` | Snapshot (5s) or MJPEG stream for Klipper cameras |
+| `client/src/components/AlertBell.jsx` | Shell bell for in-memory server alerts |
+| `client/src/components/DonutChart.jsx` | Handmade SVG donut |
+| `client/src/components/BarChart.jsx` | Handmade SVG bars |
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
+| `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -36,43 +41,45 @@ The React single-page application served by Vite. In development, Vite runs on p
 
 ```
 ┌──────────────────────────────────────────┐
-│ SIDEBAR (180px)   │  MAIN CONTENT         │
-│  Print Farm       │                       │
-│  Manager          │  <Routes />           │
+│ SIDEBAR (220px)   │  MAIN CONTENT         │
+│  CoMa / site name │                       │
+│  CoreManufacturing│  <Routes />           │
 │                   │                       │
 │  Dashboard        │                       │
 │  Fleet            │                       │
 │  Printers         │                       │
 │  Projects         │                       │
 │  Jobs             │                       │
-│  Decommissioned   │                       │
 │  Settings         │                       │
+│  [alert bell]     │                       │
 └───────────────────┴───────────────────────┘
 ```
 
-**Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar. All page content is still fully accessible on mobile.
+**Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar. All page content is still fully accessible on mobile. Decommissioned printers stay reachable at `/decommissioned` and via the Printers page toggle.
 
-Navigation uses `react-router-dom` `<NavLink>` — active links are highlighted in blue (`#1e40af`).
+The sidebar shows the operator-configured site name (`farm_name`, default CoMa) with a CoreManufacturing subtitle. Active links use a rounded pill (`#1e40af`).
 
 ## Dashboard Page
 
 `client/src/pages/Dashboard.jsx`
 
-TV-optimized command center intended to be shown full-screen on a large monitor or TV in the print farm. Polls `GET /api/dashboard` every 15 seconds (matching the Fleet page). A live clock ticks every second client-side.
+TV-optimized command center. Polls `GET /api/dashboard` every 15 seconds. A live clock ticks every second client-side. Failed polls keep the last successful payload (same pattern as Fleet). The header uses the configured site name, not a hardcoded brand.
 
-**⛶ TV Mode button:** calls `element.requestFullscreen()` on the dashboard container — the sidebar disappears and the dashboard fills the screen. Use the browser's Escape key or fullscreen API to exit.
+**TV Mode button:** calls `element.requestFullscreen()` on the dashboard container.
 
 **Sections:**
 
 | Section | Description |
 |---|---|
-| Header | Branding, fleet utilization % (printing / total), live HH:MM:SS clock and date |
-| Hero stat cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) — large tabular numerals |
-| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend |
-| Active Projects | All active projects, ordered by dispatch priority (same order as the Projects page), with **all parts** listed: per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
-| Needs Attention | Every printer requiring a human, sorted by priority: AWAITING → ERROR → STOPPED → PAUSED → OFFLINE, then longest-waiting first. Each row shows a reason badge, printer name, and wait time derived from `last_event_at`. Empty state renders a green "✓ All clear" badge. |
+| Header | Site name, CoreManufacturing subtitle, utilization %, live clock |
+| KPI cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) |
+| Parts last 24h | Handmade SVG bar chart from `parts_by_hour` |
+| Fleet mix | Handmade SVG donut of live status counts |
+| Needs Attention | Printers requiring a human, sorted AWAITING, ERROR, STOPPED, PAUSED, OFFLINE, then longest-waiting first. Click opens `/printers/:id`. Empty state: All clear. |
+| Fleet grid | Color-coded cells; click opens the incident view |
+| Active Projects | All active projects with per-part 3-segment progress bars |
 
-The bottom row is a 2-column grid (`2fr 1fr`): Active Projects takes two-thirds, Needs Attention takes one-third on the right. Recent Activity is no longer rendered on the dashboard — finished/failed jobs are listed in detail on the Jobs page.
+`recent_activity` remains in the API payload for compatibility and is not rendered.
 
 **Fleet cell colors:**
 
@@ -164,20 +171,15 @@ Click any row to navigate to `/printers/:id` (the Printer Detail view).
 
 `client/src/pages/PrinterDetail.jsx`
 
-Per-machine history and annotation screen. Reached by clicking a printer card in the Fleet page, clicking a row in the Printers page, or via the "View History" button in the Decommissioned page.
+Incident and history screen. Reached from Dashboard Needs Attention, Fleet cards, Printers rows, or Decommissioned "View History". Polls printer + events every 15 seconds.
 
-**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable.
+**Layout:** two columns on desktop (camera left, notes and event log right). Single column below 900px.
 
-**Rename:** a **Rename** button next to the printer name swaps the header into an inline edit form. Save sends `PUT /api/printers/:id` with the new `name`; the server's UNIQUE-name 409 is surfaced inline. Escape or the Cancel button closes the form without saving.
+**Camera:** `CameraFeed` calls `GET /api/printers/:id/camera`. Klipper printers proxy snapshot (refresh every 5 seconds) or MJPEG stream through CoMa. Other connectors show "Camera not available" plus a link to `http://{ip}`. Bambu streaming is not implemented. Default mode comes from the `camera_mode` setting; the operator can toggle Low/Stream on the page.
 
-**Edit Details form:** includes a Group field with a `<datalist>` autocomplete sourced from `GET /api/groups`, same free-text-plus-suggestions behavior as the Printers page bulk-edit and the Settings Add Printer form.
+**Header card:** printer name, live status badge, model, IP, connector, decommissioned timestamp if applicable. Operator Set Ready / Bad Print stay on the Fleet page; a text link points there.
 
-**Add note form:** freeform textarea → `POST /api/printers/:id/events`. Submitted note appears immediately at the top of the timeline.
-
-**Event timeline:** all `printer_events` rows for this printer, newest first. Each entry shows:
-- Color-coded type badge (`Job Finished` / `Job Failed` / `Decommissioned` / `Recommissioned` / `Note`)
-- Note text (if any)
-- Formatted timestamp
+**Event timeline:** all `printer_events` rows, newest first, including `error`, `job_cancelled`, `offline_with_job`, and `recovered`.
 
 **← All Printers** back button returns to the Printers list.
 
@@ -202,27 +204,19 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 `client/src/pages/Settings.jsx`
 
-**Server Alerts section:** shown only when unresolved notifications exist. Polls `GET /api/notifications` every 15 seconds. Each alert shows the message, timestamp, and an × dismiss button (`DELETE /api/notifications/:id`). Alerts are generated by the scheduler when it encounters a recoverable error (e.g. a missing G-code file) — the affected printer is held and the alert tells the operator exactly which file to re-upload and for which part/project.
+Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About.
 
-**CSV Import flow:**
-1. Operator picks a `.csv` file and clicks "Import CSV"
-2. `POST /api/printers/import` (multipart)
-3. Result summary shown: imported count, skipped count, flagged count
-4. Flagged rows with "Cannot infer model" show a model dropdown + Save button
-5. Clicking Save calls `POST /api/printers` with the operator-selected model
-6. Saved rows are removed from the flagged list and the imported count increments
+**General:** site name (`farm_name`, label "Site name", fallback CoMa), camera mode (`snapshot` or `stream`), dispatch batch size, polling explanation.
 
-**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
+**Hardware:** printer models, groups, add printer, CSV import (same flagged-row flow as before).
 
-**Groups section:** lists every registered group (`GET /api/groups`) with a Delete button per row and a name-only add form (`POST /api/groups`). Modeled on the Printer Models section, minus the type/color hierarchy Filament Library has. Deleting a group is blocked with an inline error naming the printer/G-code/project count still referencing it (`DELETE /api/groups/:name`, `409`). A group doesn't have to be created here first: typing a new name on a printer (Add Printer form, Printers bulk-edit, PrinterDetail, or CSV import) registers it automatically; this section exists for pre-creating a group before any printer uses it, and for cleanup.
+**Materials:** Filament Library types and colors.
 
-**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail.
+**Alerts:** in-memory scheduler notifications (`GET /api/notifications`). Also mirrored by the shell alert bell.
 
-**Farm Name section:** saves the `farm_name` setting (`PUT /api/settings/farm_name`); `App.jsx` fetches it on load and shows it in the sidebar/topbar, falling back to "Print Farm".
+**Backup:** export and restore. See [api.md](api.md).
 
-**Farm Backup section:** Export and Restore buttons — see [api.md](api.md) for the backup endpoints.
-
-**Polling info section:** displays the 15-second interval and explains concurrent polling behavior.
+**About:** upstream credit to Joel / print-farm-manager.
 
 ## Projects Page
 

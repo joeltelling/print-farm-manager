@@ -47,6 +47,13 @@ deleteFile(printer, filename)
   → if exported, the scheduler calls it after a job finishes to clean the
     file off the printer's storage (see bambu.js). Fire-and-forget: errors
     are swallowed by the caller.
+
+getCameraInfo(printer)
+  → if exported, GET /api/printers/:id/camera uses it. Return
+    { available, name, snapshotUrl, streamUrl, rotation,
+      flipHorizontal, flipVertical }. Never throw. Do not touch the DB.
+    snapshotUrl/streamUrl are used only by the CoMa proxy; they are not
+    sent to the browser. See klipper.js and the Moonraker webcam API.
 ```
 
 ### The `printer` row

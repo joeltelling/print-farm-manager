@@ -662,7 +662,10 @@ class JobScheduler extends EventEmitter {
     if (job) {
       this.db.prepare(`UPDATE jobs SET status = 'failed', finished_at = ? WHERE id = ?`)
         .run(Date.now(), job.id);
+      events.insert(printer.id, 'error', `Job ${job.id} failed: printer entered ${printer.status}`);
       console.warn(`[scheduler] Marked job ${job.id} failed — ${printer.name} went ${printer.status}`);
+    } else {
+      events.insert(printer.id, 'error', `Printer entered ${printer.status}`);
     }
 
     // Hold the printer — any error or offline state requires operator sign-off.

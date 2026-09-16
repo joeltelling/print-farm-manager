@@ -76,6 +76,33 @@ Returns `[]` if no active Bambu printer of that model is connected or the model 
 
 Returns a single printer by ID. `404` if not found.
 
+### `GET /api/printers/:id/camera`
+
+Camera metadata for the incident view. Does not return raw printer URLs; the browser loads frames through the proxy endpoints below.
+
+```json
+{
+  "available": true,
+  "name": "webcam",
+  "mode": "snapshot",
+  "rotation": 0,
+  "flipHorizontal": false,
+  "flipVertical": false
+}
+```
+
+`mode` is the site-wide `camera_mode` setting (`snapshot` or `stream`). `available` is `false` when the connector has no `getCameraInfo` (or Moonraker is unreachable). `404` if the printer does not exist.
+
+Klipper uses Moonraker `GET /server/webcams/list` and `POST /server/webcams/test` (see [Moonraker webcam API](https://moonraker.readthedocs.io/en/stable/external_api/webcams/)). If the list is empty, CoMa falls back to `http://{ip}:8110/?action=snapshot` (Virtual Klipper Printer dummy webcam). Implemented from protocol docs; not yet validated on physical hardware.
+
+### `GET /api/printers/:id/camera/snapshot`
+
+Proxies one JPEG from the printer webcam. `404` if no camera. `502` if the upstream snapshot fails.
+
+### `GET /api/printers/:id/camera/stream`
+
+Pipes the upstream MJPEG stream. `404` if no camera. `502` if the upstream stream fails to connect.
+
 ### `POST /api/printers`
 
 Create a single printer.
@@ -548,7 +575,8 @@ Body: `{ "value": "..." }`. Allowed keys:
 | Key | Validation | Used by |
 |---|---|---|
 | `dispatch_batch_size` | integer 1-100 | How many printers the scheduler keeps uploading or printing at once (a concurrency target, not a fixed group size; it draws deeper into the ready queue to fill the target if some printers have no dispatchable candidate) |
-| `farm_name` | ≤ 40 chars | Sidebar branding (falls back to "Print Farm") |
+| `farm_name` | ≤ 40 chars | Sidebar branding (falls back to "CoMa") |
+| `camera_mode` | `snapshot` or `stream` | Default camera feed on printer detail (Klipper). Snapshot refreshes every 5 seconds. |
 
 Returns `400` for unknown keys or failed validation.
 
@@ -588,6 +616,9 @@ Single endpoint that returns all data required by the TV dashboard in one call. 
       "part_name": "Left Bracket",
       "printer_name": "MK4_07"
     }
+  ],
+  "parts_by_hour": [
+    { "hour_start": 1774892400000, "parts": 12 }
   ]
 }
 ```
@@ -606,7 +637,9 @@ Single endpoint that returns all data required by the TV dashboard in one call. 
 - `material_used_grams` — total material consumed in grams: sum of `gcode.material_grams / gcode.parts_per_plate * job.parts_per_plate` across all `finished` jobs that have a linked gcode with `material_grams` set. `null` if no jobs have gcode material data.
 - `model_breakdown` — array of per-printer-model summaries for all finished jobs: `{ printer_model, jobs_count, parts_printed, material_grams, elapsed_secs }`, ordered by `parts_printed DESC`.
 
-`recent_activity` is the 12 most recent `finished` or `failed` jobs, each with `part_name` and `printer_name` joined in. (Retained in the payload for compatibility; the dashboard UI no longer renders this list — see [web-app.md](web-app.md).)
+`recent_activity` is the 12 most recent `finished` or `failed` jobs, each with `part_name` and `printer_name` joined in. (Retained in the payload for compatibility; the dashboard UI no longer renders this list.)
+
+`parts_by_hour` is an array of 24 objects `{ hour_start, parts }` covering the rolling 24-hour window, one bucket per hour (epoch ms floored to the hour). Hours with no finished jobs have `parts: 0`. Used by the dashboard bar chart.
 
 ---
 

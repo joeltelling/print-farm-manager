@@ -122,3 +122,40 @@ describe('GET /api/dashboard: active project ordering', () => {
     expect(res.body.active_projects.map(p => p.name)).toEqual(['Active']);
   });
 });
+
+describe('GET /api/dashboard: parts_by_hour', () => {
+  test('returns 24 hourly buckets', async () => {
+    const res = await request(app).get('/api/dashboard');
+    expect(res.status).toBe(200);
+    expect(res.body.parts_by_hour).toHaveLength(24);
+    expect(res.body.parts_by_hour[0]).toEqual(
+      expect.objectContaining({ hour_start: expect.any(Number), parts: expect.any(Number) })
+    );
+  });
+
+  test('places finished parts into the current hour bucket', async () => {
+    const now = Date.now();
+    const hour = Math.floor(now / 3600000) * 3600000;
+    const printerId = db.prepare(
+      `INSERT INTO printers (name, ip, api_key, model, created_at) VALUES ('HourPrinter', '10.0.0.9', '', 'mk4s', ?)`
+    ).run(now).lastInsertRowid;
+    const projectId = seedProject('HourProj', { status: 'active' });
+    const partId = db.prepare(
+      `INSERT INTO parts (project_id, name, target_qty, completed_qty, status, sort_order, created_at, updated_at)
+       VALUES (?, 'Bracket', 10, 0, 'open', 0, ?, ?)`
+    ).run(projectId, now, now).lastInsertRowid;
+    const gcodeId = db.prepare(
+      `INSERT INTO gcodes (part_id, printer_model, filename, filepath, parts_per_plate, created_at)
+       VALUES (?, 'mk4s', 'a.gcode', '/tmp/a.gcode', 4, ?)`
+    ).run(partId, now).lastInsertRowid;
+    db.prepare(
+      `INSERT INTO jobs (part_id, printer_id, gcode_id, parts_per_plate, status, started_at, finished_at, created_at)
+       VALUES (?, ?, ?, 4, 'finished', ?, ?, ?)`
+    ).run(partId, printerId, gcodeId, hour, hour + 1000, now);
+
+    const res = await request(app).get('/api/dashboard');
+    const bucket = res.body.parts_by_hour.find(b => b.hour_start === hour);
+    expect(bucket).toBeTruthy();
+    expect(bucket.parts).toBeGreaterThanOrEqual(4);
+  });
+});

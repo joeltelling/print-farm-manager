@@ -207,6 +207,59 @@ describe('checkIfPrinting', () => {
   });
 });
 
+describe('getCameraInfo', () => {
+  test('uses Moonraker webcam list plus test-resolved URLs', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: {
+        result: {
+          webcams: [{
+            name: 'Bed cam',
+            enabled: true,
+            uid: 'abc-1',
+            snapshot_url: '/webcam/?action=snapshot',
+            stream_url: '/webcam/?action=stream',
+            rotation: 90,
+            flip_horizontal: true,
+            flip_vertical: false,
+          }],
+        },
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      data: {
+        snapshot_url: 'http://192.168.1.250/webcam/?action=snapshot',
+        stream_url: 'http://192.168.1.250/webcam/?action=stream',
+      },
+    });
+    const info = await klipper.getCameraInfo(fakePrinter);
+    expect(info.available).toBe(true);
+    expect(info.name).toBe('Bed cam');
+    expect(info.snapshotUrl).toBe('http://192.168.1.250/webcam/?action=snapshot');
+    expect(info.streamUrl).toBe('http://192.168.1.250/webcam/?action=stream');
+    expect(info.rotation).toBe(90);
+    expect(info.flipHorizontal).toBe(true);
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://192.168.1.250:7125/server/webcams/list',
+      expect.objectContaining({ timeout: 8000 })
+    );
+  });
+
+  test('falls back to port 8110 when Moonraker lists no webcams', async () => {
+    axios.get.mockResolvedValueOnce({ data: { result: { webcams: [] } } });
+    const info = await klipper.getCameraInfo(fakePrinter);
+    expect(info.available).toBe(true);
+    expect(info.snapshotUrl).toBe('http://192.168.1.250:8110/?action=snapshot');
+    expect(info.streamUrl).toBe('http://192.168.1.250:8110/?action=stream');
+  });
+
+  test('returns unavailable when Moonraker is unreachable', async () => {
+    axios.get.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const info = await klipper.getCameraInfo(fakePrinter);
+    expect(info.available).toBe(false);
+    expect(info.snapshotUrl).toBeNull();
+  });
+});
+
 // ─── Driver registry ──────────────────────────────────────────────────────────
 
 describe('driver registry', () => {
@@ -218,5 +271,6 @@ describe('driver registry', () => {
     expect(typeof driver.uploadAndPrint).toBe('function');
     expect(typeof driver.cancelJob).toBe('function');
     expect(typeof driver.checkIfPrinting).toBe('function');
+    expect(typeof driver.getCameraInfo).toBe('function');
   });
 });

@@ -1,6 +1,6 @@
-# Print Farm Manager — Documentation
+# CoMa documentation
 
-A locally-hosted web app for managing a multi-brand 3D printer farm. Replaces manual USB job distribution with centralized status monitoring and automated job dispatch. Supports Prusa (PrusaLink), Elegoo Centauri (SDCP), Bambu (MQTT), Klipper (Moonraker), and OctoPrint printers.
+A locally-hosted web app for managing a multi-brand 3D printer fleet (this fork of Print Farm Manager). Supports Prusa (PrusaLink), Elegoo Centauri (SDCP), Bambu (MQTT), Klipper (Moonraker), and OctoPrint printers.
 
 ## Quick Start
 

@@ -123,6 +123,10 @@ poller.start();   // begins polling immediately
 poller.stop();    // clears the interval (for clean shutdown / tests)
 ```
 
+## DEMO_MODE
+
+When `DEMO_MODE=true` (default for `./start.sh --seed-data`), the poller does **not** query fictional LAN IPs, so seeded PRINTING / FINISHED / ERROR statuses stay put for UI work. Loopback hosts (`127.0.0.1`, `localhost`, `::1`) are still polled so a Virtual Klipper Printer row at `127.0.0.1` stays live for status and camera testing. Set `DEMO_MODE=false` to poll the entire active fleet.
+
 ## Dependencies
 
 | Package | Purpose |

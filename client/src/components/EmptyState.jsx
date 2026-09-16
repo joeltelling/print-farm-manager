@@ -5,9 +5,9 @@ import { Link } from 'react-router-dom';
 export default function EmptyState({ title, hint, actionLabel, actionTo, children }) {
   return (
     <div style={{
-      background: '#131720',
-      border: '1px dashed #2a3347',
-      borderRadius: 10,
+      background: '#151c2c',
+      border: '1px dashed #243044',
+      borderRadius: 14,
       padding: '32px 24px',
       textAlign: 'center',
       color: '#94a3b8',

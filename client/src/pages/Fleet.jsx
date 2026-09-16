@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PollTimer from '../components/PollTimer';
 import EmptyState from '../components/EmptyState';
+import PageHeader from '../components/PageHeader';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
 
@@ -55,7 +56,7 @@ function formatEta(secs) {
   return `done ${time}`;
 }
 
-function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail }) {
+function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail, snapTick }) {
   const shownStatus = displayStatus(printer);
   const style = statusStyle(shownStatus);
   const isUploading = shownStatus === 'UPLOADING';
@@ -143,6 +144,14 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
           {printer.model}
         </span>
         {printer.group_name && <span style={{ color: '#475569' }}>{printer.group_name}</span>}
+        {printer.type === 'klipper' && (
+          <span style={{
+            background: '#0c4a6e', color: '#7dd3fc', borderRadius: 3,
+            padding: '1px 6px', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+          }}>
+            CAM
+          </span>
+        )}
         {(printer.loaded_material || printer.loaded_color) && (
           <span style={{ color: '#7dd3fc', fontSize: 11 }}>
             {[printer.loaded_material, printer.loaded_color].filter(Boolean).join(' · ')}
@@ -150,7 +159,23 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         )}
       </div>
 
-      {/* Upload in progress — file is being transferred to the printer */}
+      {printer.type === 'klipper' && (
+        <div style={{
+          marginTop: 2, borderRadius: 6, overflow: 'hidden',
+          background: '#0a0f1a', border: '1px solid #1e2433',
+          aspectRatio: '16 / 10',
+        }}>
+          <img
+            src={`/api/printers/${printer.id}/camera/snapshot?t=${snapTick || Date.now()}`}
+            alt=""
+            onClick={(e) => { e.stopPropagation(); onOpenDetail(printer.id); }}
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        </div>
+      )}
+
+      {/* Upload in progress: file is being transferred to the printer */}
       {isUploading && (
         <div style={{ marginTop: 2 }}>
           {printer.uploading_job_name && (
@@ -696,19 +721,22 @@ export default function Fleet() {
           </div>
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Fleet</h1>
-          <PollTimer lastPolled={lastPolled} intervalMs={15000} />
-        </div>
-        <button
-          onClick={sweep}
-          title="Manually trigger job dispatch now. This normally happens automatically — use it to start jobs on idle machines without waiting for the next cycle."
-          style={{ background: '#1e2433', color: '#94a3b8', border: '1px solid #2d3748', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}
-        >
-          Sweep for Jobs
-        </button>
-      </div>
+      <PageHeader
+        title="Fleet"
+        subtitle="Live floor view. Click a printer for camera and logs."
+        actions={
+          <>
+            <PollTimer lastPolled={lastPolled} intervalMs={15000} />
+            <button
+              onClick={sweep}
+              title="Manually trigger job dispatch now. This normally happens automatically. Use it to start jobs on idle machines without waiting for the next cycle."
+              style={{ background: '#1a2332', color: '#94a3b8', border: '1px solid #243044', borderRadius: 8, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}
+            >
+              Sweep for Jobs
+            </button>
+          </>
+        }
+      />
 
       {/* Offline-with-job banner */}
       {awaitingOfflineReview.length > 0 && (
@@ -886,6 +914,7 @@ export default function Fleet() {
                 onDecommission={decommission}
                 onLinkJob={openLinkJobModal}
                 onOpenDetail={(id) => navigate(`/printers/${id}`)}
+                snapTick={lastPolled}
               />
             ))}
           </div>

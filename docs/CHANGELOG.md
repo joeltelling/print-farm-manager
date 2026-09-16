@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-09-16: Seed data wired to Virtual Klipper Printer
+
+The demo seed now includes a live Sim Lab printer at `127.0.0.1` plus site settings, filament library, and richer incident events so CoMa can be tested against the local simulator without hand-adding printers. `DEMO_MODE` still freezes fictional LAN statuses, but continues to poll loopback hosts so Virtual Klipper stays live.
+
+### Changes
+- `server/seed-demo.js`: Virtual Klipper at `127.0.0.1`, `farm_name` / `camera_mode`, filament types/colors, Sim Lab group, voron gcode placeholder, incident events.
+- `server/poller.js`: in `DEMO_MODE`, poll only `127.0.0.1` / `localhost` / `::1`.
+- `server/tests/poller-demo-mode.test.js`: covers the loopback filter.
+- `docs/installation.md`, `docs/poller.md`: seed + simulator workflow.
+
+## 2026-09-16: CoMa visual refresh, incident camera, and tabbed settings
+
+This fork now presents as CoMa / CoreManufacturing in the UI and onboarding docs while keeping internal keys (`farm_name`) and Docker service names. The dashboard uses handmade SVG charts (no new client dependencies) and restores a clickable Needs Attention queue. Printer detail is an incident view with a Klipper camera proxy (Moonraker webcam list/test, fallback to port 8110) in snapshot or stream mode. Settings are split into tabs. Bambu camera streaming remains parked.
+
+Camera support is implemented from Moonraker protocol docs. It is intended to be checked against Virtual Klipper Printer, not yet validated on physical Klipper hardware.
+
+### Changes
+- `client/src/theme.js`, `client/src/App.jsx`, `client/index.html`, `client/public/favicon.svg`: CoMa shell, 220px sidebar, alert bell, default site name CoMa.
+- `client/src/components/*`: Card, KpiCard, DonutChart, BarChart, PageHeader, CameraFeed, AlertBell.
+- `client/src/pages/Dashboard.jsx`, `server/routes/dashboard.js`: KPI cards, donut, 24h bars (`parts_by_hour`), Needs Attention, clickable cells, site name in the header.
+- `server/drivers/klipper.js`, `server/routes/printers.js`: optional `getCameraInfo`, camera metadata/snapshot/stream proxy.
+- `server/routes/settings.js`: `camera_mode` (`snapshot` | `stream`).
+- `server/scheduler.js`: write a `printer_events` row on ERROR transitions so the incident log is not empty.
+- `client/src/pages/PrinterDetail.jsx`: two-column camera + event log, 15s poll.
+- `client/src/pages/Settings.jsx`: General / Hardware / Materials / Alerts / Backup / About tabs.
+- `client/src/pages/Fleet.jsx`, `Printers.jsx`, `Projects.jsx`, `Jobs.jsx`, `Decommissioned.jsx`: shared page headers; Decommissioned dropped from the sidebar.
+- `server/tests/klipper-driver.test.js`, `server/tests/camera-route.test.js`, `server/tests/settings.test.js`, `server/tests/dashboard.test.js`: camera, settings, and hourly parts coverage.
+- `docs/web-app.md`, `docs/api.md`, `docs/driver-authoring.md`, `README.md`, `docs/installation.md`, `docs/README.md`: product name, camera endpoints, dashboard charts.
+
 ## 2026-09-16: Separate organic and seed databases
 
 Local development now stores user-entered data and generated fixtures in separate, clearly named SQLite files. Organic data is the safe default, while the seed command can repeatedly reset its dedicated database without opening or modifying normal farm data. Lifecycle flags make the selected dataset explicit and seed mode disables printer polling by default so fictional statuses remain stable.

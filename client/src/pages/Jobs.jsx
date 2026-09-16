@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useConfirm } from '../useConfirm';
 import EmptyState from '../components/EmptyState';
+import PageHeader from '../components/PageHeader';
 
 // Colors match the Fleet page conventions: blue = printing, green = done.
 // Cancelled gets a line-through as a non-color cue against Queued.
@@ -119,7 +120,7 @@ export default function Jobs() {
   return (
     <div>
       {confirmModal}
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Job Queue</h1>
+      <PageHeader title="Job Queue" subtitle="Uploads, active prints, and recently finished work." />
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>

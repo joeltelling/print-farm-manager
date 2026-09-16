@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import CameraFeed from '../components/CameraFeed';
 
 function formatTimestamp(ms) {
   if (!ms) return '—';
@@ -25,12 +26,16 @@ function formatHours(ms) {
 }
 
 const EVENT_META = {
-  decommission:  { label: 'Decommissioned', bg: '#7f1d1d', color: '#fca5a5' },
-  recommission:  { label: 'Recommissioned', bg: '#14532d', color: '#86efac' },
-  job_finished:  { label: 'Job Finished',   bg: '#1e3a5f', color: '#93c5fd' },
-  job_failed:    { label: 'Job Failed',      bg: '#78350f', color: '#fcd34d' },
-  note:          { label: 'Note',            bg: '#1e2433', color: '#94a3b8' },
-  info_changed:  { label: 'Info Updated',   bg: '#1e2a3a', color: '#7dd3fc' },
+  decommission:     { label: 'Decommissioned', bg: '#7f1d1d', color: '#fca5a5' },
+  recommission:     { label: 'Recommissioned', bg: '#14532d', color: '#86efac' },
+  job_finished:     { label: 'Job Finished',   bg: '#1e3a5f', color: '#93c5fd' },
+  job_failed:       { label: 'Job Failed',      bg: '#78350f', color: '#fcd34d' },
+  job_cancelled:    { label: 'Job Cancelled',   bg: '#431407', color: '#fb923c' },
+  offline_with_job: { label: 'Went Offline',    bg: '#1e2433', color: '#94a3b8' },
+  recovered:        { label: 'Recovered',       bg: '#14532d', color: '#86efac' },
+  error:            { label: 'Error',           bg: '#7f1d1d', color: '#fca5a5' },
+  note:             { label: 'Note',            bg: '#1e2433', color: '#94a3b8' },
+  info_changed:     { label: 'Info Updated',   bg: '#1e2a3a', color: '#7dd3fc' },
 };
 
 function EventBadge({ type }) {
@@ -52,6 +57,7 @@ const STATUS_COLORS = {
   PRINTING: { bg: '#14532d', text: '#86efac' },
   FINISHED: { bg: '#14532d', text: '#86efac' },
   PAUSED:   { bg: '#78350f', text: '#fcd34d' },
+  STOPPED:  { bg: '#431407', text: '#fb923c' },
   ERROR:    { bg: '#7f1d1d', text: '#fca5a5' },
   OFFLINE:  { bg: '#1e2433', text: '#475569' },
   UNKNOWN:  { bg: '#1e2433', text: '#475569' },
@@ -121,7 +127,11 @@ export default function PrinterDetail() {
     if (res.ok) setJobHistory(await res.json());
   }, [id]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+    const id = setInterval(fetchData, 15000);
+    return () => clearInterval(id);
+  }, [fetchData]);
   useEffect(() => { fetchJobPage(jobPage); }, [fetchJobPage, jobPage]);
 
   async function submitNote(e) {
@@ -239,7 +249,11 @@ export default function PrinterDetail() {
   const sc = STATUS_COLORS[printer.status] || STATUS_COLORS.UNKNOWN;
 
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div>
+      <style>{`
+        .coma-incident { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.1fr); gap: 16px; align-items: start; }
+        @media (max-width: 900px) { .coma-incident { grid-template-columns: 1fr; } }
+      `}</style>
       {/* Back link */}
       <button
         onClick={() => navigate('/printers')}
@@ -496,6 +510,16 @@ export default function PrinterDetail() {
             Decommissioned: {formatTimestamp(printer.decommissioned_at)}
           </div>
         )}
+        <div style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>
+          Operator sign-off (Set Ready / Bad Print) lives on the{' '}
+          <button
+            onClick={() => navigate('/fleet')}
+            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, fontSize: 12 }}
+          >
+            Fleet
+          </button>
+          {' '}page.
+        </div>
       </div>
 
       {/* Stats card */}
@@ -522,9 +546,16 @@ export default function PrinterDetail() {
       )}
 
       {/* Add note form */}
+      <div className="coma-incident" style={{ marginBottom: 24 }}>
+        <CameraFeed
+          printerId={printer.id}
+          printerType={printer.type}
+          printerIp={printer.ip}
+        />
+        <div>
       <div style={{
         background: '#131720', border: '1px solid #1e2433',
-        borderRadius: 8, padding: '14px 18px', marginBottom: 24,
+        borderRadius: 8, padding: '14px 18px', marginBottom: 16,
       }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 8 }}>Add operator note</div>
         <form onSubmit={submitNote} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -565,7 +596,7 @@ export default function PrinterDetail() {
 
       {events.length === 0 && (
         <p style={{ color: '#475569', fontSize: 14 }}>
-          No history yet — events are recorded automatically as this printer receives jobs, finishes prints, or changes status.
+          No history yet: events are recorded automatically as this printer receives jobs, finishes prints, or changes status.
         </p>
       )}
 
@@ -589,6 +620,8 @@ export default function PrinterDetail() {
             </div>
           </div>
         ))}
+      </div>
+        </div>
       </div>
       {/* Job history */}
       {jobHistory.total > 0 && (

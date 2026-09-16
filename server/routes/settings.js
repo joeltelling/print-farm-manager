@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const ALLOWED_KEYS = new Set(['dispatch_batch_size', 'farm_name']);
+const ALLOWED_KEYS = new Set(['dispatch_batch_size', 'farm_name', 'camera_mode']);
 
 module.exports = (db) => {
   // GET /api/settings — returns all settings as { key: value, ... }
@@ -32,6 +32,13 @@ module.exports = (db) => {
 
     if (key === 'farm_name' && String(value).trim().length > 40) {
       return res.status(400).json({ error: 'farm_name must be 40 characters or fewer' });
+    }
+
+    if (key === 'camera_mode') {
+      const mode = String(value).trim();
+      if (mode !== 'stream' && mode !== 'snapshot') {
+        return res.status(400).json({ error: 'camera_mode must be stream or snapshot' });
+      }
     }
 
     db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(value));

@@ -1,8 +1,8 @@
-# Print Farm Manager
+# CoMa / CoreManufacturing
 
-A self-hosted web app for managing a multi-brand 3D printer farm. Replaces manual USB job distribution with centralized status monitoring and automated job dispatch — built to run 24/7 on a dedicated machine on your local network.
+A self-hosted web app for managing a multi-brand 3D printer fleet. This repository is a Linux-focused fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager). The original project and its contributors remain the upstream source.
 
-This repository is a Linux-focused fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager). The original project and its contributors remain the upstream source.
+The operator-facing product name is **CoMa** (short) / **CoreManufacturing** (long). Internal keys such as `farm_name` and Docker service names stay unchanged so existing installs keep working.
 
 No cloud. No subscriptions. No vendor lock-in.
 
@@ -19,8 +19,9 @@ No cloud. No subscriptions. No vendor lock-in.
 - **Operator confirmation flow** — every finished print requires a human sign-off before the next job dispatches, preventing runaway failures
 - **Multi-brand support** — Prusa, Elegoo, Bambu, and Klipper printers in the same fleet, managed from one interface
 - **CSV fleet import** — add 50 printers at once from a spreadsheet
-- **TV dashboard mode** — a heads-up fleet summary designed for a monitor on the shop wall
-- **Farm backup and restore** — export your entire farm config and job history as a single JSON file
+- **TV dashboard:** utilization donut, parts-per-hour bars, clickable fleet grid, and a Needs Attention queue
+- **Incident view:** per-printer camera (Klipper) plus event log
+- **Site backup and restore:** export config and job history as a single JSON file
 
 ![Fleet view — per-printer cards with operator confirmation](docs/images/fleet.png)
 
@@ -83,7 +84,7 @@ cd core-manufacturing
 
 `start.sh` validates Node.js, installs the locked server and client dependencies when needed, builds the initial client bundle, and starts both development services in the background. Use `./stop.sh` and `./restart.sh` to manage them. Logs are written to `.run/dev.log`.
 
-Development keeps real entries and generated test fixtures in separate local databases. `./start.sh --organic-data` uses `organic-data.db` and is the default. Run `npm run seed:data` once, then use `./start.sh --seed-data` to open the clearly labeled `seed-data.db` without polling real printers. Both files live under the Git-ignored `server/data/` directory.
+Development keeps real entries and generated test fixtures in separate local databases. `./start.sh --organic-data` uses `organic-data.db` and is the default. Run `npm run seed:data` once, then use `./start.sh --seed-data --with-simulator` to open `seed-data.db` with a live Virtual Klipper row at `127.0.0.1` while fictional LAN printers keep their seeded statuses. Both database files live under the Git-ignored `server/data/` directory.
 
 The scripts can also manage a local [Virtual Klipper Printer](https://github.com/mainsail-crew/virtual-klipper-printer) for development without physical hardware. In a terminal they ask whether to include it. Use `--with-simulator` or `--without-simulator` to choose explicitly, including in automated workflows. See the [Linux installation guide](docs/installation.md#virtual-klipper-printer) for the one-time local clone and application setup.
 

@@ -74,3 +74,21 @@ describe('PUT /api/settings/dispatch_batch_size', () => {
     expect(res.body.error).toMatch(/unknown setting key/i);
   });
 });
+
+describe('PUT /api/settings/camera_mode', () => {
+  test('saves stream or snapshot', async () => {
+    const res = await request(app)
+      .put('/api/settings/camera_mode')
+      .send({ value: 'stream' });
+    expect(res.status).toBe(200);
+    expect(res.body.value).toBe('stream');
+  });
+
+  test('rejects an unknown mode', async () => {
+    const res = await request(app)
+      .put('/api/settings/camera_mode')
+      .send({ value: 'rtsp' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/stream or snapshot/i);
+  });
+});

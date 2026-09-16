@@ -14,8 +14,8 @@ usage() {
   cat <<'EOF'
 Usage: ./restart.sh [--with-simulator|--without-simulator] [--organic-data|--seed-data]
 
-  --with-simulator     Restart Print Farm Manager and Virtual Klipper Printer.
-  --without-simulator  Restart only Print Farm Manager and leave the simulator unchanged.
+  --with-simulator     Restart CoMa and Virtual Klipper Printer.
+  --without-simulator  Restart only CoMa and leave the simulator unchanged.
   --organic-data       Restart with organic-data.db (default).
   --seed-data          Restart with seed-data.db and default to DEMO_MODE=true.
 

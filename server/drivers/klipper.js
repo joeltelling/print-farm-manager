@@ -120,4 +120,75 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+function hostOf(printer) {
+  return printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '').split('/')[0].split(':')[0];
+}
+
+function resolveWebcamUrl(url, printer) {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `http://${hostOf(printer)}${path}`;
+}
+
+function fallbackCamera(printer) {
+  const host = hostOf(printer);
+  return {
+    available: true,
+    name: 'webcam',
+    snapshotUrl: `http://${host}:8110/?action=snapshot`,
+    streamUrl: `http://${host}:8110/?action=stream`,
+    rotation: 0,
+    flipHorizontal: false,
+    flipVertical: false,
+  };
+}
+
+// Moonraker webcam API: https://moonraker.readthedocs.io/en/stable/external_api/webcams/
+// Moonraker does not serve the video itself; it lists snapshot/stream URLs.
+async function getCameraInfo(printer) {
+  try {
+    const res = await axios.get(`${base(printer)}/server/webcams/list`, { timeout: 8000 });
+    const webcams = res.data?.result?.webcams || res.data?.webcams || [];
+    const cam = webcams.find(w => w.enabled !== false) || webcams[0];
+    if (!cam) return fallbackCamera(printer);
+
+    let snapshotUrl = cam.snapshot_url || '';
+    let streamUrl = cam.stream_url || '';
+    if (cam.uid) {
+      try {
+        const test = await axios.post(
+          `${base(printer)}/server/webcams/test`,
+          null,
+          { params: { uid: cam.uid }, timeout: 8000 }
+        );
+        const body = test.data?.result || test.data || {};
+        if (body.snapshot_url) snapshotUrl = body.snapshot_url;
+        if (body.stream_url) streamUrl = body.stream_url;
+      } catch (_) { /* keep list URLs */ }
+    }
+
+    const fallback = fallbackCamera(printer);
+    return {
+      available: true,
+      name: cam.name || 'webcam',
+      snapshotUrl: resolveWebcamUrl(snapshotUrl, printer) || fallback.snapshotUrl,
+      streamUrl: resolveWebcamUrl(streamUrl, printer) || fallback.streamUrl,
+      rotation: cam.rotation || 0,
+      flipHorizontal: !!cam.flip_horizontal,
+      flipVertical: !!cam.flip_vertical,
+    };
+  } catch (_) {
+    return {
+      available: false,
+      name: null,
+      snapshotUrl: null,
+      streamUrl: null,
+      rotation: 0,
+      flipHorizontal: false,
+      flipVertical: false,
+    };
+  }
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraInfo };

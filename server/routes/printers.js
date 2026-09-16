@@ -4,6 +4,7 @@ const Papa = require('papaparse');
 const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
+const { getDriver } = require('../drivers');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -564,6 +565,90 @@ module.exports = (db) => {
 
     console.log(`[printers] Job ${job.id} manually linked to ${printer.name} by operator`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
+  });
+
+  async function cameraInfoFor(printer) {
+    let driver;
+    try {
+      driver = getDriver(printer.type);
+    } catch (_) {
+      return null;
+    }
+    if (typeof driver.getCameraInfo !== 'function') return null;
+    return driver.getCameraInfo(printer);
+  }
+
+  // GET /api/printers/:id/camera: metadata only (no raw printer URLs)
+  router.get('/:id/camera', async (req, res) => {
+    const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+    if (!printer) return res.status(404).json({ error: 'Printer not found' });
+    const info = await cameraInfoFor(printer);
+    let mode = 'snapshot';
+    try {
+      const setting = db.prepare("SELECT value FROM settings WHERE key = 'camera_mode'").get();
+      if (setting?.value === 'stream') mode = 'stream';
+    } catch (_) { /* settings table missing in some test fixtures */ }
+    if (!info || !info.available) {
+      return res.json({
+        available: false,
+        name: null,
+        mode,
+        rotation: 0,
+        flipHorizontal: false,
+        flipVertical: false,
+      });
+    }
+    res.json({
+      available: true,
+      name: info.name,
+      mode,
+      rotation: info.rotation || 0,
+      flipHorizontal: !!info.flipHorizontal,
+      flipVertical: !!info.flipVertical,
+    });
+  });
+
+  router.get('/:id/camera/snapshot', async (req, res) => {
+    const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+    if (!printer) return res.status(404).json({ error: 'Printer not found' });
+    const info = await cameraInfoFor(printer);
+    if (!info?.available || !info.snapshotUrl) {
+      return res.status(404).json({ error: 'Camera not available' });
+    }
+    try {
+      const img = await axios.get(info.snapshotUrl, {
+        responseType: 'arraybuffer',
+        timeout: 8000,
+      });
+      res.set('Content-Type', img.headers['content-type'] || 'image/jpeg');
+      res.set('Cache-Control', 'no-store');
+      res.send(Buffer.from(img.data));
+    } catch (err) {
+      res.status(502).json({ error: 'Camera snapshot failed' });
+    }
+  });
+
+  router.get('/:id/camera/stream', async (req, res) => {
+    const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+    if (!printer) return res.status(404).json({ error: 'Printer not found' });
+    const info = await cameraInfoFor(printer);
+    if (!info?.available || !info.streamUrl) {
+      return res.status(404).json({ error: 'Camera not available' });
+    }
+    try {
+      const upstream = await axios.get(info.streamUrl, {
+        responseType: 'stream',
+        timeout: 0,
+      });
+      res.set('Content-Type', upstream.headers['content-type'] || 'multipart/x-mixed-replace');
+      res.set('Cache-Control', 'no-store');
+      upstream.data.pipe(res);
+      req.on('close', () => {
+        if (typeof upstream.data.destroy === 'function') upstream.data.destroy();
+      });
+    } catch (err) {
+      if (!res.headersSent) res.status(502).json({ error: 'Camera stream failed' });
+    }
   });
 
   // Mount events sub-router — GET/POST /api/printers/:id/events
