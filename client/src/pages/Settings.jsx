@@ -24,6 +24,21 @@ const sectionStyle = {
   boxSizing: 'border-box',
 };
 
+const filePickStyle = {
+  background: '#0f172a',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  padding: '8px 12px',
+  color: '#94a3b8',
+  fontSize: 13,
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  maxWidth: '100%',
+  boxSizing: 'border-box',
+};
+
 const delBtnStyle = {
   background: 'none',
   border: '1px solid #7f1d1d',
@@ -75,6 +90,8 @@ export default function Settings() {
   const [error, setError] = useState(null);
   const [flaggedModels, setFlaggedModels] = useState({});
   const fileRef = useRef(null);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [restoreFileName, setRestoreFileName] = useState('');
 
   // Add single printer
   // Printer models — fetched from DB, used throughout this page
@@ -430,6 +447,7 @@ export default function Settings() {
     } finally {
       setRestoring(false);
       if (restoreFileRef.current) restoreFileRef.current.value = '';
+      setRestoreFileName('');
     }
   }
 
@@ -466,6 +484,7 @@ export default function Settings() {
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = '';
+      setCsvFileName('');
     }
   }
 
@@ -930,16 +949,24 @@ export default function Settings() {
             type="file"
             accept=".csv"
             required
-            style={{
-              background: '#0f172a',
-              border: '1px solid #334155',
-              borderRadius: 6,
-              padding: '6px 10px',
-              color: '#e2e8f0',
-              fontSize: 13,
-              flex: '1 1 200px',
-            }}
+            style={{ display: 'none' }}
+            onChange={e => setCsvFileName(e.target.files?.[0]?.name || '')}
           />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            style={{ ...filePickStyle, flex: '1 1 220px', color: csvFileName ? '#e2e8f0' : '#94a3b8' }}
+          >
+            <span style={{
+              background: '#1e293b', border: '1px solid #334155', borderRadius: 4,
+              padding: '2px 8px', fontSize: 12, color: '#93c5fd', fontWeight: 600, flexShrink: 0,
+            }}>
+              Choose file
+            </span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {csvFileName || 'No file selected'}
+            </span>
+          </button>
           <button
             type="submit"
             disabled={importing}
@@ -1315,22 +1342,30 @@ export default function Settings() {
           </button>
 
           {/* Restore */}
-          <form onSubmit={handleRestore} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <form onSubmit={handleRestore} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', flex: '1 1 280px' }}>
             <input
               ref={restoreFileRef}
               type="file"
               accept=".json"
               required
-              style={{
-                background: '#0f172a',
-                border: '1px solid #334155',
-                borderRadius: 6,
-                padding: '6px 10px',
-                color: '#e2e8f0',
-                fontSize: 13,
-                flex: '1 1 200px',
-              }}
+              style={{ display: 'none' }}
+              onChange={e => setRestoreFileName(e.target.files?.[0]?.name || '')}
             />
+            <button
+              type="button"
+              onClick={() => restoreFileRef.current?.click()}
+              style={{ ...filePickStyle, flex: '1 1 200px', color: restoreFileName ? '#e2e8f0' : '#94a3b8' }}
+            >
+              <span style={{
+                background: '#1e293b', border: '1px solid #334155', borderRadius: 4,
+                padding: '2px 8px', fontSize: 12, color: '#93c5fd', fontWeight: 600, flexShrink: 0,
+              }}>
+                Choose file
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {restoreFileName || 'No file selected'}
+              </span>
+            </button>
             <button
               type="submit"
               disabled={restoring}

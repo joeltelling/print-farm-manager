@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-09-16: Dark-theme file pickers in Settings
+
+Native browser file inputs on Backup restore and Hardware CSV import are replaced with a dark Choose file control that matches the rest of Settings.
+
+### Changes
+- `client/src/pages/Settings.jsx`: styled file pickers for CSV import and farm restore.
+
 ## 2026-09-16: Fleet Needs attention modal
 
 Fleet no longer stacks full-width amber/green banners. A header chip shows the attention count; clicking it opens a modal with grouped lists (failed upload, offline with job, awaiting confirmation) and batch Set Ready.
