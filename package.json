@@ -26,6 +26,7 @@
     "client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
     "start": "node server/index.js",
+    "seed:data": "node server/seed-demo.js --confirm",
     "test": "jest --testPathPatterns=server/tests",
     "postinstall": "patch-package"
   },

@@ -83,6 +83,8 @@ cd core-manufacturing
 
 `start.sh` validates Node.js, installs the locked server and client dependencies when needed, builds the initial client bundle, and starts both development services in the background. Use `./stop.sh` and `./restart.sh` to manage them. Logs are written to `.run/dev.log`.
 
+Development keeps real entries and generated test fixtures in separate local databases. `./start.sh --organic-data` uses `organic-data.db` and is the default. Run `npm run seed:data` once, then use `./start.sh --seed-data` to open the clearly labeled `seed-data.db` without polling real printers. Both files live under the Git-ignored `server/data/` directory.
+
 The scripts can also manage a local [Virtual Klipper Printer](https://github.com/mainsail-crew/virtual-klipper-printer) for development without physical hardware. In a terminal they ask whether to include it. Use `--with-simulator` or `--without-simulator` to choose explicitly, including in automated workflows. See the [Linux installation guide](docs/installation.md#virtual-klipper-printer) for the one-time local clone and application setup.
 
 ### Prefer Docker instead of a local Node.js install?

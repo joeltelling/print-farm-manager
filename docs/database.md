@@ -6,6 +6,12 @@
 
 On startup, `db.js` also runs one-time idempotent data migrations: seeding `printer_models` from existing printer/gcode records, and backfilling `printer_events` decommission entries for printers that were decommissioned before the events table existed.
 
+## Local Dataset Files
+
+`server/database-path.js` selects one of two clearly named SQLite files. `PFM_DATASET=organic` opens `server/data/organic-data.db` and is the default. `PFM_DATASET=seed` opens `server/data/seed-data.db`. Any other value stops startup with an error instead of silently creating another database.
+
+The seed file is generated or reset with `npm run seed:data`. That command loads the current schema from `server/db.js`, clears only the seed database, and inserts a repeatable fictional fleet. It never opens the organic database. Both files, including their WAL and shared-memory companions, stay under the Git-ignored `server/data/` directory.
+
 ## Driver
 
 `better-sqlite3` — synchronous SQLite. All queries are blocking calls that return results directly (no promises, no callbacks). This simplifies the entire server-side codebase: no `async/await` is needed for database operations.

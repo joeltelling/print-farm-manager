@@ -12,18 +12,27 @@ fail() {
 
 usage() {
   cat <<'EOF'
-Usage: ./restart.sh [--with-simulator|--without-simulator]
+Usage: ./restart.sh [--with-simulator|--without-simulator] [--organic-data|--seed-data]
 
   --with-simulator     Restart Print Farm Manager and Virtual Klipper Printer.
   --without-simulator  Restart only Print Farm Manager and leave the simulator unchanged.
+  --organic-data       Restart with organic-data.db (default).
+  --seed-data          Restart with seed-data.db and default to DEMO_MODE=true.
 
 Without an option, an interactive terminal asks whether to restart the simulator.
 Non-interactive runs restart it when it was previously managed by start.sh. The
 environment variable WITH_KLIPPER_SIMULATOR=true|false overrides that behavior.
+PFM_DATASET=organic|seed provides the same database selection.
 EOF
 }
 
 simulator_choice="auto"
+database_choice="${PFM_DATASET:-organic}"
+case "$database_choice" in
+  organic|seed) ;;
+  *) fail "PFM_DATASET must be organic or seed." ;;
+esac
+
 case "${WITH_KLIPPER_SIMULATOR:-}" in
   true|1|yes) simulator_choice="yes" ;;
   false|0|no) simulator_choice="no" ;;
@@ -35,6 +44,8 @@ while (( $# > 0 )); do
   case "$1" in
     --with-simulator) simulator_choice="yes" ;;
     --without-simulator) simulator_choice="no" ;;
+    --organic-data) database_choice="organic" ;;
+    --seed-data) database_choice="seed" ;;
     -h|--help) usage; exit 0 ;;
     *) fail "Unknown option: $1. Run ./restart.sh --help for usage." ;;
   esac
@@ -63,10 +74,12 @@ if [[ "$simulator_choice" == "auto" ]]; then
   fi
 fi
 
+database_flag="--$database_choice-data"
+
 if [[ "$simulator_choice" == "yes" ]]; then
   "$PROJECT_DIR/stop.sh" --with-simulator
-  "$PROJECT_DIR/start.sh" --with-simulator
+  "$PROJECT_DIR/start.sh" --with-simulator "$database_flag"
 else
   "$PROJECT_DIR/stop.sh" --without-simulator
-  "$PROJECT_DIR/start.sh" --without-simulator
+  "$PROJECT_DIR/start.sh" --without-simulator "$database_flag"
 fi

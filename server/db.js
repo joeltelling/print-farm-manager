@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const { getDatasetName, getDatabasePath } = require('./database-path');
 
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
@@ -12,7 +13,10 @@ if (!fs.existsSync(gcodeDir)) {
   fs.mkdirSync(gcodeDir, { recursive: true });
 }
 
-const db = new Database(path.join(dataDir, 'farm.db'));
+const datasetName = getDatasetName();
+const databasePath = getDatabasePath();
+const db = new Database(databasePath);
+console.log(`[db] Using ${datasetName} data: ${databasePath}`);
 
 // Enable WAL mode for better concurrent read performance
 db.pragma('journal_mode = WAL');

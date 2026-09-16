@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-09-16: Separate organic and seed databases
+
+Local development now stores user-entered data and generated fixtures in separate, clearly named SQLite files. Organic data is the safe default, while the seed command can repeatedly reset its dedicated database without opening or modifying normal farm data. Lifecycle flags make the selected dataset explicit and seed mode disables printer polling by default so fictional statuses remain stable.
+
+### Changes
+- `server/database-path.js`, `server/db.js`: validate the selected dataset and open either `organic-data.db` or `seed-data.db`.
+- `server/seed-demo.js`, `package.json`: seed only `seed-data.db` through `npm run seed:data`, using the current application schema.
+- `start.sh`, `stop.sh`, `restart.sh`: add dataset selection, record the active choice, and support safe switching with `--organic-data` and `--seed-data`.
+- `server/tests/database-path.test.js`: cover the organic default, explicit seed selection, and invalid dataset rejection.
+- `README.md`, `docs/installation.md`, `docs/database.md`: document file naming, isolation, commands, and Git exclusion.
+
 ## 2026-09-16: Optional Virtual Klipper lifecycle
 
 Linux developers can now test the Klipper integration without a physical printer by running the locally cloned Virtual Klipper Printer alongside Print Farm Manager. The development lifecycle scripts offer an interactive choice and explicit flags, while automated runs can use the same behavior without prompts. Simulator data stays local and stopping the container preserves it for the next session.

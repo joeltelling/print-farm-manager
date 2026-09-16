@@ -2,7 +2,7 @@
 /**
  * Demo seed script — populates a fresh install with a realistic mixed-fleet scenario.
  *
- * WARNING: Clears ALL existing farm data. Only run on a clean or dedicated demo install.
+ * WARNING: Clears ALL data in the dedicated seed-data.db database.
  *
  * Usage:
  *   node server/seed-demo.js --confirm
@@ -15,8 +15,8 @@ if (!process.argv.includes('--confirm')) {
   console.error(`
   PRINT FARM MANAGER — DEMO SEED
 
-  This script DELETES ALL farm data and replaces it with demo data.
-  Only run this on a clean or dedicated demo install.
+  This script DELETES all data in seed-data.db and replaces it with demo data.
+  organic-data.db is never opened or modified.
 
   To proceed:
     node server/seed-demo.js --confirm
@@ -24,68 +24,29 @@ if (!process.argv.includes('--confirm')) {
   process.exit(1);
 }
 
-const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const { getDatabasePath } = require('./database-path');
 
-const dataDir = path.join(__dirname, 'data');
 const gcodeDir = path.join(__dirname, 'gcode');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(gcodeDir)) fs.mkdirSync(gcodeDir, { recursive: true });
 
-const db = new Database(path.join(dataDir, 'farm.db'));
-db.pragma('journal_mode = WAL');
+process.env.PFM_DATASET = 'seed';
+const databasePath = getDatabasePath({ PFM_DATASET: 'seed' });
+const db = require('./db');
 db.pragma('foreign_keys = OFF');
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS printers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, ip TEXT NOT NULL,
-    api_key TEXT NOT NULL, group_name TEXT, type TEXT DEFAULT 'prusa', model TEXT NOT NULL,
-    status TEXT DEFAULT 'UNKNOWN', is_held INTEGER DEFAULT 1, is_active INTEGER DEFAULT 1,
-    created_at INTEGER NOT NULL, decommissioned_at INTEGER, decommission_note TEXT,
-    job_name TEXT, job_progress REAL, job_time_remaining INTEGER, serial_number TEXT DEFAULT ''
-  );
-  CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT,
-    status TEXT DEFAULT 'draft', priority INTEGER DEFAULT 0,
-    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS parts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
-    name TEXT NOT NULL, target_qty INTEGER NOT NULL, completed_qty INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'open', sort_order INTEGER NOT NULL DEFAULT 0,
-    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS gcodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, part_id INTEGER NOT NULL REFERENCES parts(id),
-    printer_model TEXT NOT NULL, filename TEXT NOT NULL, filepath TEXT NOT NULL,
-    parts_per_plate INTEGER NOT NULL, est_print_secs INTEGER, created_at INTEGER NOT NULL,
-    ams_slot INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, part_id INTEGER NOT NULL REFERENCES parts(id),
-    printer_id INTEGER NOT NULL REFERENCES printers(id), gcode_id INTEGER REFERENCES gcodes(id),
-    parts_per_plate INTEGER NOT NULL, status TEXT DEFAULT 'queued',
-    started_at INTEGER, finished_at INTEGER, created_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS printer_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, printer_id INTEGER NOT NULL,
-    event_type TEXT NOT NULL, note TEXT, created_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS printer_models (
-    model_id TEXT PRIMARY KEY, label TEXT NOT NULL, connector TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-`);
-
-// Clear all farm data in FK-safe order
-for (const t of ['jobs', 'printer_events', 'gcodes', 'parts', 'projects', 'printers', 'printer_models']) {
+// Clear all seed data in FK-safe order. The organic database is never opened.
+for (const t of [
+  'jobs', 'printer_events', 'gcodes', 'parts', 'projects', 'printers',
+  'printer_models', 'filament_colors', 'filament_types', 'printer_groups', 'settings',
+]) {
   db.prepare(`DELETE FROM ${t}`).run();
 }
 // Reset autoincrement counters so IDs start from 1
 try {
   db.exec(`DELETE FROM sqlite_sequence WHERE name IN
-    ('printers','projects','parts','gcodes','jobs','printer_events')`);
+    ('printers','projects','parts','gcodes','jobs','printer_events','filament_types','filament_colors')`);
 } catch (_) {}
 
 db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('dispatch_batch_size', '10')").run();
@@ -306,8 +267,9 @@ insertEvent.run(printerIds['Voron_01'], 'job_done', '6 parts credited', now - 2*
 db.pragma('foreign_keys = ON');
 
 const totalJobs = DONE_JOBS.length + PRINTING_JOBS.length + 2;
+db.close();
 console.log(`
-  ✓ Demo data seeded
+  ✓ Seed data written to ${databasePath}
 
   Printers : ${PRINTERS.length} (${PRINTERS.filter(p => p[6] === 'PRINTING').length} printing, 1 finished, 2 idle, 1 error, 1 offline)
   Projects : 3 (2 active, 1 draft)
@@ -315,8 +277,8 @@ console.log(`
   G-codes  : ${GCODES.length}
   Jobs     : ${totalJobs} (${DONE_JOBS.length} done, ${PRINTING_JOBS.length + 2} active/failed)
 
-  Start in demo mode (poller skips network calls — seeded statuses hold):
-    DEMO_MODE=true npm start
+  Start with seed data (poller skips network calls so seeded statuses hold):
+    ./start.sh --seed-data
 
   Open http://localhost:3000
 `);

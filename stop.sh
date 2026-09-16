@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PID_FILE="$PROJECT_DIR/.run/dev.pid"
+DATASET_FILE="$PROJECT_DIR/.run/dev.dataset"
 SIMULATOR_DIR="$PROJECT_DIR/tools/virtual-klipper-printer"
 SIMULATOR_MARKER="$PROJECT_DIR/.run/klipper-simulator.enabled"
 
@@ -67,6 +68,7 @@ fi
 
 stop_application() {
   if [[ ! -f "$PID_FILE" ]]; then
+    rm -f "$DATASET_FILE"
     printf 'Print Farm Manager is not running through start.sh.\n'
     return
   fi
@@ -74,13 +76,13 @@ stop_application() {
   local dev_pid
   dev_pid="$(<"$PID_FILE")"
   if [[ ! "$dev_pid" =~ ^[0-9]+$ ]]; then
-    rm -f "$PID_FILE"
+    rm -f "$PID_FILE" "$DATASET_FILE"
     printf 'Removed an invalid PID file. No process was stopped.\n'
     return
   fi
 
   if ! kill -0 -- "-$dev_pid" 2>/dev/null; then
-    rm -f "$PID_FILE"
+    rm -f "$PID_FILE" "$DATASET_FILE"
     printf 'Removed a stale PID file. Print Farm Manager was already stopped.\n'
     return
   fi
@@ -90,7 +92,7 @@ stop_application() {
 
   for _ in {1..20}; do
     if ! kill -0 -- "-$dev_pid" 2>/dev/null; then
-      rm -f "$PID_FILE"
+      rm -f "$PID_FILE" "$DATASET_FILE"
       printf 'Print Farm Manager stopped.\n'
       return
     fi
@@ -99,7 +101,7 @@ stop_application() {
 
   printf 'Graceful shutdown timed out. Forcing the managed process group to stop...\n' >&2
   kill -KILL -- "-$dev_pid" 2>/dev/null || true
-  rm -f "$PID_FILE"
+  rm -f "$PID_FILE" "$DATASET_FILE"
   printf 'Print Farm Manager stopped.\n'
 }
 

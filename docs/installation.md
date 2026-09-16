@@ -84,6 +84,32 @@ The scripts ask whether to include the local Virtual Klipper Printer when run fr
 
 The scripts store only local runtime files in `.run/`, which is excluded from Git. `stop.sh` targets the isolated process group created by `start.sh`; it does not search for and terminate unrelated Node.js processes. Stopping the simulator preserves its local printer data.
 
+### Organic and Seed Databases
+
+Local development separates normal data from generated test fixtures:
+
+| Dataset | File | Purpose |
+|---|---|---|
+| Organic | `server/data/organic-data.db` | Printers, projects, and history entered through normal use |
+| Seed | `server/data/seed-data.db` | Fictional repeatable data created by the seed command |
+
+Organic data is the default:
+
+```bash
+./start.sh --organic-data
+```
+
+Create or reset only the seed database, then start with it:
+
+```bash
+npm run seed:data
+./start.sh --seed-data
+```
+
+`--seed-data` defaults to `DEMO_MODE=true`, so the poller does not replace the fictional printer states. Set `DEMO_MODE=false` explicitly if a test needs real polling. `restart.sh` accepts the same `--organic-data` and `--seed-data` options. Automated workflows can use `PFM_DATASET=organic` or `PFM_DATASET=seed` instead.
+
+Both database files and their SQLite WAL files remain local because the entire `server/data/` directory is excluded from Git. The seed command never opens or modifies `organic-data.db`.
+
 Environment variables can be set for a single start. For example, development without real printer polling is available with:
 
 ```bash
@@ -247,10 +273,11 @@ Persistent bare-metal data is stored in:
 
 | Path | Contents |
 |---|---|
-| `server/data/farm.db` | SQLite database with farm configuration and job history |
+| `server/data/organic-data.db` | Normal local farm configuration and job history |
+| `server/data/seed-data.db` | Replaceable fictional data for development and UI testing |
 | `server/gcode/` | Uploaded G-code files |
 
-Use Settings, Farm Backup to export a portable JSON backup. For a filesystem-level backup, stop the service before copying `server/data/farm.db` and `server/gcode/`.
+Use Settings, Farm Backup to export a portable JSON backup. For a filesystem-level backup, stop the service before copying the selected database and `server/gcode/`.
 
 Never copy `node_modules` between machines or operating systems. Restore the data, then run `npm ci` on the destination so native packages match its Node.js ABI and Linux architecture.
 

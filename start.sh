@@ -5,6 +5,7 @@ set -Eeuo pipefail
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_DIR="$PROJECT_DIR/.run"
 PID_FILE="$RUNTIME_DIR/dev.pid"
+DATASET_FILE="$RUNTIME_DIR/dev.dataset"
 LOG_FILE="$RUNTIME_DIR/dev.log"
 DEPENDENCY_STAMP="$RUNTIME_DIR/dependencies.sha256"
 SIMULATOR_DIR="$PROJECT_DIR/tools/virtual-klipper-printer"
@@ -17,18 +18,27 @@ fail() {
 
 usage() {
   cat <<'EOF'
-Usage: ./start.sh [--with-simulator|--without-simulator]
+Usage: ./start.sh [--with-simulator|--without-simulator] [--organic-data|--seed-data]
 
   --with-simulator     Start the local Virtual Klipper Printer too.
   --without-simulator  Start only Print Farm Manager.
+  --organic-data       Use organic-data.db (default).
+  --seed-data          Use seed-data.db and default to DEMO_MODE=true.
 
 Without an option, an interactive terminal asks whether to start the simulator.
 Non-interactive runs default to Print Farm Manager only. The environment variable
 WITH_KLIPPER_SIMULATOR=true|false provides the same non-interactive control.
+PFM_DATASET=organic|seed provides the same database selection.
 EOF
 }
 
 simulator_choice="auto"
+database_choice="${PFM_DATASET:-organic}"
+case "$database_choice" in
+  organic|seed) ;;
+  *) fail "PFM_DATASET must be organic or seed." ;;
+esac
+
 case "${WITH_KLIPPER_SIMULATOR:-}" in
   true|1|yes) simulator_choice="yes" ;;
   false|0|no) simulator_choice="no" ;;
@@ -40,11 +50,18 @@ while (( $# > 0 )); do
   case "$1" in
     --with-simulator) simulator_choice="yes" ;;
     --without-simulator) simulator_choice="no" ;;
+    --organic-data) database_choice="organic" ;;
+    --seed-data) database_choice="seed" ;;
     -h|--help) usage; exit 0 ;;
     *) fail "Unknown option: $1. Run ./start.sh --help for usage." ;;
   esac
   shift
 done
+
+export PFM_DATASET="$database_choice"
+if [[ "$database_choice" == "seed" && -z "${DEMO_MODE+x}" ]]; then
+  export DEMO_MODE=true
+fi
 
 if [[ "$simulator_choice" == "auto" ]]; then
   simulator_choice="no"
@@ -117,12 +134,19 @@ fi
 if [[ -f "$PID_FILE" ]]; then
   existing_pid="$(<"$PID_FILE")"
   if [[ "$existing_pid" =~ ^[0-9]+$ ]] && kill -0 -- "-$existing_pid" 2>/dev/null; then
+    running_dataset="unknown"
+    [[ -f "$DATASET_FILE" ]] && running_dataset="$(<"$DATASET_FILE")"
+    if [[ "$running_dataset" != "unknown" && "$running_dataset" != "$database_choice" ]]; then
+      fail "Print Farm Manager is already using $running_dataset data. Run ./restart.sh --$database_choice-data to switch."
+    fi
     printf 'Print Farm Manager is already running (process group %s).\n' "$existing_pid"
+    printf 'Dataset: %s data\n' "$running_dataset"
     printf 'Log: %s\n' "$LOG_FILE"
     [[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\n'
     exit 0
   fi
   rm -f "$PID_FILE"
+  rm -f "$DATASET_FILE"
 fi
 
 node - "$api_port" "$vite_port" <<'NODE' || fail "PORT $api_port or VITE_PORT $vite_port is already in use. Stop the conflicting service or choose alternate ports."
@@ -173,10 +197,11 @@ cd "$PROJECT_DIR"
 python3 -c 'import os; os.setsid(); os.execvp("npm", ["npm", "run", "dev"])' >> "$LOG_FILE" 2>&1 < /dev/null &
 dev_pid=$!
 printf '%s\n' "$dev_pid" > "$PID_FILE"
+printf '%s\n' "$database_choice" > "$DATASET_FILE"
 
 cleanup_interrupted_start() {
   kill -TERM -- "-$dev_pid" 2>/dev/null || kill -TERM "$dev_pid" 2>/dev/null || true
-  rm -f "$PID_FILE"
+  rm -f "$PID_FILE" "$DATASET_FILE"
   exit 130
 }
 trap cleanup_interrupted_start INT TERM
@@ -195,7 +220,7 @@ done
 
 if [[ "$ready" != true ]]; then
   kill -TERM -- "-$dev_pid" 2>/dev/null || kill -TERM "$dev_pid" 2>/dev/null || true
-  rm -f "$PID_FILE"
+  rm -f "$PID_FILE" "$DATASET_FILE"
   printf 'Development services did not become ready. Recent log output:\n' >&2
   tail -n 40 "$LOG_FILE" >&2 || true
   exit 1
@@ -204,6 +229,7 @@ fi
 trap - INT TERM
 
 printf 'Print Farm Manager development services are running.\n'
+printf 'Dataset: %s data (%s-data.db)\n' "$database_choice" "$database_choice"
 printf 'UI:  http://localhost:%s\nAPI: http://localhost:%s\nLog: %s\n' "$vite_port" "$api_port" "$LOG_FILE"
 [[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\nVirtual webcam: http://localhost:8110\n'
 printf 'Stop them with: %s/stop.sh\n' "$PROJECT_DIR"
