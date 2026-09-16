@@ -566,7 +566,7 @@ Dismisses a notification. Returns `{ "ok": true }`. Returns `404` if not found.
 
 ### `GET /api/settings`
 
-Returns all operator settings as a flat object, e.g. `{ "dispatch_batch_size": "10", "farm_name": "My Farm" }`.
+Returns all operator settings as a flat object, e.g. `{ "dispatch_batch_size": "10", "farm_name": "CoMa Lab" }`.
 
 ### `PUT /api/settings/:key`
 
@@ -663,7 +663,7 @@ All error responses use this shape:
 
 ### `GET /api/backup`
 
-Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
+Downloads a full shopfloor snapshot as `shopfloor-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). Older `farm-backup-*.json` files still restore. No request body.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 

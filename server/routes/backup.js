@@ -61,7 +61,7 @@ function makeInserter(db, table, rows) {
 }
 
 module.exports = (db) => {
-  // GET /api/backup — export full farm as a downloadable JSON bundle
+  // GET /api/backup — export full shopfloor snapshot as a downloadable JSON bundle
   router.get('/', (req, res) => {
     const printers        = db.prepare('SELECT * FROM printers').all();
     const projects        = db.prepare('SELECT * FROM projects').all();
@@ -102,12 +102,12 @@ module.exports = (db) => {
     };
 
     const date = new Date().toISOString().slice(0, 10);
-    res.setHeader('Content-Disposition', `attachment; filename="farm-backup-${date}.json"`);
+    res.setHeader('Content-Disposition', `attachment; filename="shopfloor-backup-${date}.json"`);
     res.setHeader('Content-Type', 'application/json');
     res.json(backup);
   });
 
-  // POST /api/backup/restore — replace all farm data from a backup JSON file
+  // POST /api/backup/restore — replace all shopfloor data from a backup JSON file
   router.post('/restore', async (req, res) => {
     let tmpPath = null;
     try {
@@ -212,7 +212,7 @@ module.exports = (db) => {
 
       restore();
 
-      console.log(`[backup] Farm restored: ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.printer_groups || []).length} groups, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
+      console.log(`[backup] Shopfloor restored: ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.printer_groups || []).length} groups, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
 
       res.json({
         ok: true,

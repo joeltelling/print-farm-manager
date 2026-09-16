@@ -1407,7 +1407,7 @@ export default function Projects() {
             title="Create your first project"
             hint={
               <>
-                Projects are how work flows through the farm:&nbsp;
+                Projects are how work flows through the shopfloor:&nbsp;
                 a <strong style={{ color: '#cbd5e1' }}>Project</strong> contains{' '}
                 <strong style={{ color: '#cbd5e1' }}>Parts</strong> (what to print and how many),
                 each part gets <strong style={{ color: '#cbd5e1' }}>G-code</strong> uploaded per printer model,

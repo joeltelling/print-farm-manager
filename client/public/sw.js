@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  // Live farm data must always hit the network.
+  // Live shopfloor data must always hit the network.
   if (url.pathname.startsWith('/api/')) return;
 
   event.respondWith(

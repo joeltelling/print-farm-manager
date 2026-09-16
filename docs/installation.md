@@ -292,7 +292,7 @@ Persistent bare-metal data is stored in:
 | `server/data/seed-data.db` | Replaceable fictional data for development and UI testing |
 | `server/gcode/` | Uploaded G-code files |
 
-Use Settings, Farm Backup to export a portable JSON backup. For a filesystem-level backup, stop the service before copying the selected database and `server/gcode/`.
+Use Settings → Backup → Shopfloor Backup to export a portable JSON backup. For a filesystem-level backup, stop the service before copying the selected database and `server/gcode/`.
 
 Never copy `node_modules` between machines or operating systems. Restore the data, then run `npm ci` on the destination so native packages match its Node.js ABI and Linux architecture.
 

@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-16: Retire operator-facing "Farm" wording
+
+Operator UI and surface docs now say shopfloor / manufacturing / site instead of "Farm", matching the ERP-first product shape. Internal setting key `farm_name` is unchanged. Backup download filename is `shopfloor-backup-YYYY-MM-DD.json` (older `farm-backup-*.json` files still restore).
+
+### Changes
+- `client/src/pages/Settings.jsx`, `Fleet.jsx`, `Projects.jsx`, `Erp.jsx`: Backup and copy updates.
+- `server/routes/backup.js`: download filename and log wording.
+- `client/index.html`, `client/public/manifest.webmanifest`, `client/public/sw.js`: product description.
+- `docs/api.md`, `docs/installation.md`, `docs/web-app.md`: Backup and shopfloor wording.
+
+## 2026-09-16: ERP architecture doc and nav home
+
+Recorded the ERP-first placement decision: production ERP (articles, BOM, inventory, costing, invoices) is the parent product; the current print farm is the first shopfloor connector (`3d_printer`). The shell nav is grouped into ERP and Shopfloor, with an Overview placeholder at `/erp`. No ERP API or database yet.
+
+### Changes
+- `docs/erp/README.md`: domain boundary, planned modules, machine-type approach, bridge event sketch.
+- `docs/README.md`, `docs/web-app.md`: index and nav notes.
+- `client/src/App.jsx`, `client/src/pages/Erp.jsx`: sectioned nav and ERP Overview placeholder.
+
 ## 2026-09-16: About tab credits for the CoMa fork
 
 Settings About now leads with CoMa / mdwcoder credits and a GitHub Sponsors link. The upstream print-farm-manager credit and Joel's donation channels stay available behind a collapsed "Original project" disclosure so they are preserved without competing with the fork CTA.

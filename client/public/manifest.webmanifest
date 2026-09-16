@@ -1,7 +1,7 @@
 {
   "name": "CoMa · CoreManufacturing",
   "short_name": "CoMa",
-  "description": "Local multi-brand 3D print farm manager",
+  "description": "ERP-ready manufacturing and multi-brand shopfloor",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

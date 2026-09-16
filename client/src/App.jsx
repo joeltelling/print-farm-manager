@@ -8,17 +8,32 @@ import Projects from './pages/Projects';
 import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
+import Erp from './pages/Erp';
 import AlertBell from './components/AlertBell';
 import { theme } from './theme';
 
-const NAV_ITEMS = [
-  { to: '/',        label: 'Dashboard' },
-  { to: '/fleet',   label: 'Fleet' },
-  { to: '/printers', label: 'Printers', end: true },
-  { to: '/projects', label: 'Projects' },
-  { to: '/jobs',    label: 'Jobs' },
-  { to: '/settings', label: 'Settings' },
+const NAV_SECTIONS = [
+  {
+    id: 'erp',
+    label: 'ERP',
+    items: [
+      { to: '/erp', label: 'Overview' },
+    ],
+  },
+  {
+    id: 'shopfloor',
+    label: 'Shopfloor',
+    items: [
+      { to: '/',         label: 'Dashboard' },
+      { to: '/fleet',    label: 'Fleet' },
+      { to: '/printers', label: 'Printers', end: true },
+      { to: '/projects', label: 'Projects' },
+      { to: '/jobs',     label: 'Jobs' },
+    ],
+  },
 ];
+
+const SETTINGS_ITEM = { to: '/settings', label: 'Settings' };
 
 const navLinkStyle = ({ isActive }) => ({
   display: 'block',
@@ -33,6 +48,46 @@ const navLinkStyle = ({ isActive }) => ({
   whiteSpace: 'nowrap',
   boxShadow: isActive ? `0 0 20px ${theme.limeGlow}` : 'none',
 });
+
+const sectionLabelStyle = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: theme.textFaint,
+  padding: '12px 14px 4px',
+  userSelect: 'none',
+};
+
+function NavSections({ linkStyle, compact }) {
+  return (
+    <>
+      {NAV_SECTIONS.map((section) => (
+        <div key={section.id} style={{ display: 'flex', flexDirection: compact ? 'row' : 'column', flexWrap: compact ? 'wrap' : 'nowrap', alignItems: compact ? 'center' : 'stretch', gap: compact ? 8 : 0 }}>
+          {!compact && <div style={sectionLabelStyle}>{section.label}</div>}
+          {compact && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+              textTransform: 'uppercase', color: theme.textFaint, marginLeft: 4,
+            }}>
+              {section.label}
+            </span>
+          )}
+          {section.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/' || !!item.end}
+              style={linkStyle}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
 
 export default function App() {
   const [farmName, setFarmName] = useState('CoMa');
@@ -64,7 +119,7 @@ export default function App() {
 
       <div id="layout">
         <nav id="sidebar">
-          <div style={{ padding: '4px 8px 16px', borderBottom: `1px solid ${theme.border}`, marginBottom: 10 }}>
+          <div style={{ padding: '4px 8px 16px', borderBottom: `1px solid ${theme.border}`, marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
                 width: 34, height: 34, borderRadius: 12,
@@ -82,11 +137,15 @@ export default function App() {
               </div>
             </div>
           </div>
-          {NAV_ITEMS.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/' || !!item.end} style={navLinkStyle}>
-              {item.label}
+
+          <NavSections linkStyle={navLinkStyle} />
+
+          <div style={{ marginTop: 8, borderTop: `1px solid ${theme.border}`, paddingTop: 8 }}>
+            <NavLink to={SETTINGS_ITEM.to} style={navLinkStyle}>
+              {SETTINGS_ITEM.label}
             </NavLink>
-          ))}
+          </div>
+
           <div style={{ marginTop: 'auto', padding: '12px 0 0', width: '100%' }}>
             <AlertBell dropUp />
           </div>
@@ -94,24 +153,32 @@ export default function App() {
 
         <nav id="topbar">
           <span style={{ fontWeight: 800, fontSize: 14, color: theme.text, marginRight: 4 }}>{farmName}</span>
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/' || !!item.end}
-              style={({ isActive }) => ({
-                padding: '5px 10px',
-                borderRadius: 8,
-                background: isActive ? theme.lime : theme.cardAlt,
-                color: isActive ? '#0a0a0a' : theme.textMuted,
-                textDecoration: 'none',
-                fontSize: 13,
-                fontWeight: isActive ? 700 : 400,
-              })}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          <NavSections
+            compact
+            linkStyle={({ isActive }) => ({
+              padding: '5px 10px',
+              borderRadius: 8,
+              background: isActive ? theme.lime : theme.cardAlt,
+              color: isActive ? '#0a0a0a' : theme.textMuted,
+              textDecoration: 'none',
+              fontSize: 13,
+              fontWeight: isActive ? 700 : 400,
+            })}
+          />
+          <NavLink
+            to={SETTINGS_ITEM.to}
+            style={({ isActive }) => ({
+              padding: '5px 10px',
+              borderRadius: 8,
+              background: isActive ? theme.lime : theme.cardAlt,
+              color: isActive ? '#0a0a0a' : theme.textMuted,
+              textDecoration: 'none',
+              fontSize: 13,
+              fontWeight: isActive ? 700 : 400,
+            })}
+          >
+            {SETTINGS_ITEM.label}
+          </NavLink>
           <div style={{ marginLeft: 'auto' }}>
             <AlertBell />
           </div>
@@ -120,6 +187,7 @@ export default function App() {
         <main id="main">
           <Routes>
             <Route path="/"                element={<Dashboard />} />
+            <Route path="/erp"             element={<Erp />} />
             <Route path="/fleet"           element={<Fleet />} />
             <Route path="/printers"        element={<Printers />} />
             <Route path="/printers/:id"    element={<PrinterDetail />} />

@@ -4,6 +4,7 @@
 
 The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The production build is installable as a PWA (manifest + service worker). The app provides:
 
+- **ERP Overview:** placeholder for the production ERP (catalog, inventory, costing, invoices). Architecture lives in [erp/README.md](erp/README.md). No ERP API yet.
 - **Dashboard:** CoMa command center: KPI cards, utilization donut, parts-per-hour bars, clickable fleet grid, active projects, and a Needs Attention queue
 - **Fleet page** — live grid of all active printers with status, filterable and searchable
 - **Printers page** — searchable directory of all printers (active and decommissioned); click any row to open the detail view
@@ -12,12 +13,15 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 
+Nav is grouped into **ERP** (Overview) and **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs), with Settings below.
+
 ## Key Files
 
 | File | Responsibility |
 |---|---|
 | `client/src/main.jsx` | React root — mounts `<App />` into `#root` |
-| `client/src/App.jsx` | Layout shell, sidebar/topbar nav, `<Routes>` |
+| `client/src/App.jsx` | Layout shell, sectioned sidebar/topbar nav (ERP / Shopfloor), `<Routes>` |
+| `client/src/pages/Erp.jsx` | ERP Overview placeholder (architecture pointer, planned modules) |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
 | `client/src/theme.js` | Shared navy palette and card/input tokens |
@@ -166,7 +170,7 @@ When a held printer shows the partial-plate `Good: N / M` input, the count is ca
 
 `client/src/pages/Printers.jsx`
 
-Searchable directory of every active printer registered in the farm, grouped by model. Each model is a collapsible section with a header showing the count and compact status-summary pills (e.g. `5 printing · 2 idle · 1 offline`). Designed to scale to hundreds of printers.
+Searchable directory of every active printer on the shopfloor, grouped by model. Each model is a collapsible section with a header showing the count and compact status-summary pills (e.g. `5 printing · 2 idle · 1 offline`). Designed to scale to hundreds of printers.
 
 **Toolbar:**
 - Search box — filters by name, model, group, or IP (case-insensitive)
@@ -230,7 +234,7 @@ Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Mu
 
 **Alerts:** in-memory scheduler notifications (`GET /api/notifications`). Also mirrored by the shell alert bell.
 
-**Backup:** export and restore. See [api.md](api.md).
+**Backup:** Shopfloor export/restore (printers, projects, jobs, settings). ERP will get its own backup later. See [api.md](api.md).
 
 **About:** CoMa / mdwcoder fork credit with GitHub Sponsors CTA; upstream print-farm-manager (Joel) credit and donation links sit behind a collapsed "Original project" disclosure.
 
@@ -241,7 +245,7 @@ Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Mu
 Primary operator screen for setting up and launching print runs.
 
 **List view (default):**
-- Only `active` projects show by default, ordered by dispatch priority (drag the ⠿ handle to reorder → `PUT /api/projects/reorder`). `draft`, `paused`, and `completed` projects are each hidden behind their own "Show X (count)" checkbox above the list, so a farm with a long project history doesn't bury the in-flight work; a checkbox only appears when at least one project has that status. State persists per browser (`localStorage`), same pattern as the Printers page's "Show decommissioned". If every project is filtered out, an empty-state prompts to check a box rather than showing the first-run "create your first project" message.
+- Only `active` projects show by default, ordered by dispatch priority (drag the ⠿ handle to reorder → `PUT /api/projects/reorder`). `draft`, `paused`, and `completed` projects are each hidden behind their own "Show X (count)" checkbox above the list, so a site with a long project history doesn't bury the in-flight work; a checkbox only appears when at least one project has that status. State persists per browser (`localStorage`), same pattern as the Printers page's "Show decommissioned". If every project is filtered out, an empty-state prompts to check a box rather than showing the first-run "create your first project" message.
 - Each row shows name and status badge, click to open detail
 - "New Project" inline form: name + optional description → `POST /api/projects`
 

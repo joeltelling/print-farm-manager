@@ -311,7 +311,7 @@ export default function Settings() {
   const [batchSize, setBatchSize] = useState('');
   const [batchSizeError, setBatchSizeError] = useState(null);
 
-  // Farm name — shown in the sidebar; picked up on next page load
+  // Site name — shown in the sidebar; picked up on next page load
   const [farmName, setFarmName] = useState('');
   const [farmNameError, setFarmNameError] = useState(null);
   const [cameraMode, setCameraMode] = useState('snapshot');
@@ -410,8 +410,8 @@ export default function Settings() {
     const file = restoreFileRef.current?.files[0];
     if (!file) return;
     const ok = await confirm({
-      title: 'Restore Farm Data',
-      message: 'This will replace ALL current farm data with the backup. This cannot be undone.',
+      title: 'Restore Shopfloor Data',
+      message: 'This will replace ALL current shopfloor data (printers, projects, jobs, settings) with the backup. This cannot be undone.',
       confirmLabel: 'Restore',
       danger: true,
     });
@@ -431,7 +431,7 @@ export default function Settings() {
       setRestoreResult(data);
 
       // Restore replaces printer_models/groups/filament library/settings wholesale:
-      // refresh this page's state (and the sidebar's farm name) instead of requiring a reload.
+      // refresh this page's state (and the sidebar site name) instead of requiring a reload.
       fetchModels();
       fetch('/api/settings')
         .then(r => r.json())
@@ -647,7 +647,7 @@ export default function Settings() {
 <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Printer Models</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Configure which printer models are available in your farm. Models appear in the G-code upload
+          Configure which printer models are available on your shopfloor. Models appear in the G-code upload
           selector and the Add Printer form. Deleting a model is blocked if active printers use it.
         </p>
 
@@ -1066,7 +1066,7 @@ export default function Settings() {
       <div style={{ marginBottom: 12 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
         <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
-          Define the filament types and colors available in your farm. Printers and G-codes select from these lists.
+          Define the filament types and colors available on your shopfloor. Printers and G-codes select from these lists.
         </p>
       </div>
       <div className="coma-settings-columns">
@@ -1314,13 +1314,14 @@ export default function Settings() {
       )}
 
 
-      {/* Farm Backup / Restore */}
+      {/* Shopfloor Backup / Restore */}
       {tab === 'backup' && (
       <section style={sectionStyle}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Farm Backup</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Shopfloor Backup</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
           Export a full snapshot of your printers, projects, parts, G-code files, and job history.
-          Use the same file to restore on another machine or recover from data loss.
+          ERP data (when added) will use a separate backup. Use this file to restore on another
+          machine or recover from data loss.
         </p>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1338,7 +1339,7 @@ export default function Settings() {
               cursor: 'pointer',
             }}
           >
-            Export Farm
+            Export Shopfloor
           </button>
 
           {/* Restore */}
@@ -1381,7 +1382,7 @@ export default function Settings() {
                 opacity: restoring ? 0.7 : 1,
               }}
             >
-              {restoring ? 'Restoring…' : 'Restore Farm'}
+              {restoring ? 'Restoring…' : 'Restore Shopfloor'}
             </button>
           </form>
         </div>
@@ -1395,7 +1396,7 @@ export default function Settings() {
         {restoreResult && (
           <div style={{ marginTop: 14 }}>
             <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
-              Farm restored successfully
+              Shopfloor restored successfully
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Chip color="#4ade80" label={`${restoreResult.printers} printers`} />
@@ -1428,12 +1429,13 @@ export default function Settings() {
           </a>
           . It is a Linux-focused fork of a fantastic open-source print farm manager: the solid
           scheduling, multi-brand drivers, and operator safety model are what made this
-          possible. This fork adds CoMa branding, denser UX, Klipper camera proxying, PWA install,
-          and other farm-side tweaks while staying compatible with the upstream ideas.
+          possible. This fork grows CoMa into manufacturing (ERP + shopfloor), with denser UX,
+          Klipper camera proxying, PWA install, and more, while staying compatible with the
+          upstream ideas.
         </p>
         <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-          If CoMa helps your farm run smoother, a sponsorship keeps the lights on for continued
-          work on this fork. Thank you, and happy printing.
+          If CoMa helps your manufacturing run smoother, a sponsorship keeps the lights on for
+          continued work on this fork. Thank you, and happy printing.
         </p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 28 }}>
           <a

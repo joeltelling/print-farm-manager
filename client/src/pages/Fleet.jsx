@@ -1152,7 +1152,7 @@ export default function Fleet() {
       {!loading && printers.length === 0 && (
         <EmptyState
           title="No printers yet"
-          hint="Your fleet will appear here as live status cards. Add printers one at a time or import your whole farm from a CSV — both are on the Settings page."
+          hint="Your fleet will appear here as live status cards. Add printers one at a time or import the whole fleet from a CSV — both are on the Settings page."
           actionLabel="Go to Settings"
           actionTo="/settings"
         />
