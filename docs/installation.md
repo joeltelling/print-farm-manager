@@ -1,483 +1,293 @@
-# Installation Guide
+# Linux Installation and Development Guide
 
-This guide covers installing Print Farm Manager on a dedicated machine that sits on the same local network as your printer fleet. Steps that differ between **Windows** and **macOS** are clearly labelled. Where instructions are the same on both platforms, no label is shown.
+This guide covers this fork's supported bare-metal workflow on Linux. Docker remains available when an isolated environment is preferable. Print Farm Manager must run on the same trusted local network as the printers and must not be exposed directly to the internet because it has no built-in authentication.
 
-> **Running in Docker instead?** This guide covers a bare-metal Node.js + PM2 install. If you'd rather run the app in a container (no local Node.js or build tooling required), see the **Docker** section in the [README](../README.md#installation-production) — it uses the `Dockerfile` and `docker-compose.yml` at the repo root and handles everything below (build, port, auto-restart, persistent data) through Docker instead.
+## Supported Runtime
 
----
+- Linux on x86-64 or ARM64
+- Node.js 22 or 23, with Node.js 22 LTS recommended
+- npm from the Node.js installation
+- Git
+- Python 3, `make`, and a C++ compiler for the native `better-sqlite3` package
+- `sha256sum` from GNU coreutils for dependency change detection
 
-## Prerequisites
+Node.js 24 is intentionally rejected because the project declares `>=22 <24` in `package.json`.
 
-### Node.js
+## Install System Packages
 
-Print Farm Manager requires **Node.js 22 LTS**. Use the 22 LTS release specifically — Node 24+ has known issues compiling the native SQLite dependency on Windows.
+### Debian and Ubuntu
 
-**Windows**
-1. Go to [https://nodejs.org](https://nodejs.org) and download the **22 LTS** installer (`.msi`).
-2. Run the installer with default options. Ensure **"Add to PATH"** is checked (it is by default).
-3. Open a new Command Prompt and verify:
-   ```
-   node --version
-   npm --version
-   ```
-   If either command is not found, restart your machine and try again.
-
-**macOS**
-The recommended approach is [Homebrew](https://brew.sh). If you do not have Homebrew installed, the one-line installer is at [https://brew.sh](https://brew.sh).
-
-```
-brew install node@22
+```bash
+sudo apt update
+sudo apt install -y git curl ca-certificates build-essential python3 coreutils iproute2
 ```
 
-Alternatively, download the macOS `.pkg` installer from [https://nodejs.org](https://nodejs.org).
+### Fedora and RHEL-compatible distributions
 
-Verify in Terminal:
+```bash
+sudo dnf install -y git curl ca-certificates gcc-c++ make python3 coreutils iproute
 ```
+
+Install Node.js 22 using your distribution's supported Node.js repository or a version manager such as `nvm`. After installation, verify the complete toolchain:
+
+```bash
 node --version
 npm --version
+git --version
+python3 --version
+make --version
+g++ --version
+sha256sum --version
 ```
 
----
+The Node.js version must begin with `v22.` or `v23.`.
 
-### Native Build Dependencies
+## Clone This Fork
 
-`better-sqlite3` compiles a native binary during `npm install`. Each platform needs the right build tools available or the install will fail.
-
-**Windows**
-`better-sqlite3` requires a C++ compiler. The easiest way to get one is during the Node.js install itself:
-
-When running the Node.js installer, you will see a screen titled **"Tools for Native Modules"**. Check the box labelled **"Automatically install the necessary tools"** and complete the installer. A separate PowerShell window will open after Node finishes and install Python and Visual Studio Build Tools — let it run to completion.
-
-If you already installed Node.js without checking that box, install the build tools manually:
-
-1. Install **Visual Studio Build Tools 2022** (free). The fastest way is with Windows Package Manager — run this in an Administrator PowerShell:
-   ```
-   winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet"
-   ```
-   Alternatively, download the installer from [https://visualstudio.microsoft.com/downloads/](https://visualstudio.microsoft.com/downloads/) (scroll to "Tools for Visual Studio" → "Build Tools for Visual Studio 2022") and select the **"Desktop development with C++"** workload.
-
-2. Install Python 3 from [https://python.org/downloads/](https://python.org/downloads/).
-
-3. Open a new **Administrator** Command Prompt and run:
-   ```
-   npm install -g node-gyp
-   ```
-
-> **Note:** The old `npm install --global windows-build-tools` command is deprecated and broken on modern Node.js — do not use it.
-
-**macOS**
-Install the Xcode Command Line Tools. Run in Terminal and follow the on-screen prompt:
-```
-xcode-select --install
-```
-This is a one-time step. If you have already installed Xcode or the CLI tools previously, you can skip it.
-
----
-
-### Git (recommended)
-
-Git makes updating the software straightforward. If you prefer to download a ZIP instead, skip this step.
-
-**Windows**
-Download from [https://git-scm.com/download/win](https://git-scm.com/download/win) and install with default options.
-
-**macOS**
-Git is installed as part of the Xcode Command Line Tools (see above). If you skipped that step:
-```
-brew install git
+```bash
+git clone https://github.com/mdwcoder/core-manufacturing.git
+cd core-manufacturing
 ```
 
----
+This repository is a fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager). To track the original project explicitly, add it as an upstream remote:
 
-### What You Will Need From Each Printer
-
-Before adding printers to the app, gather the following credentials. The app will ask for these during setup.
-
-| Brand | What the app needs | Where to find it |
-|---|---|---|
-| **Prusa** | IP address + API key | Printer touchscreen: **Settings → Network** shows the IP. PrusaLink web UI (open the IP in a browser) → **Settings → API Key** shows the key. |
-| **Bambu Lab** | IP address + serial number + access code | Enable **LAN Mode** on the printer first. The access code is on the printer screen under **Settings → WLAN**; the serial number is under **Settings → Device**. The access code changes every time LAN Mode is toggled. |
-| **Elegoo Centauri Carbon** | IP address only | Printer touchscreen: **Settings → Network**. No access code required. |
-| **Elegoo Centauri Carbon 2** | IP address + serial number + access code | Enable LAN mode on the printer. The access code and serial number are shown on the printer's network settings screen. |
-| **Klipper (Voron, etc.)** | IP address of the Klipper host | The IP of the machine running Moonraker (same machine as Klipper). Port 7125 is used automatically. No API key required. |
-| **OctoPrint** | IP address (with port) + API key | In OctoPrint: **Settings → API** shows the key. If OctoPrint is not on port 80, include the port in the IP field — e.g. `192.168.1.50:5000` (OctoPi commonly uses `:5000`). |
-
----
-
-## Getting the Code
-
-### Option A — Git clone (recommended)
-
-**Windows** — open Command Prompt or PowerShell in the folder where you want to install (e.g. `C:\PrintFarm`):
-```
-git clone https://github.com/joeltelling/print-farm-manager.git
-cd print-farm-manager
+```bash
+git remote add upstream https://github.com/joeltelling/print-farm-manager.git
+git fetch upstream
 ```
 
-**macOS** — open Terminal and navigate to your preferred location (e.g. `~/PrintFarm`):
-```
-mkdir -p ~/PrintFarm && cd ~/PrintFarm
-git clone https://github.com/joeltelling/print-farm-manager.git
-cd print-farm-manager
-```
+## Development Workflow
 
-### Option B — Download ZIP
+Start the API and Vite development server:
 
-1. Go to the GitHub repository page.
-2. Click **Code → Download ZIP**.
-3. Extract the ZIP:
-   - **Windows:** to a folder such as `C:\PrintFarm\print-farm-manager`
-   - **macOS:** to a folder such as `~/PrintFarm/print-farm-manager`
-4. Open a terminal and `cd` into that folder.
-
----
-
-## Installation
-
-Run the following from inside the `print-farm-manager` folder:
-
-```
-npm install
+```bash
+./start.sh
 ```
 
-Then install client dependencies. On Windows, use the `--legacy-peer-deps` flag to avoid peer dependency conflicts:
+On the first run, or after either lockfile or the Node/npm version changes, the script runs `npm ci` for the server and client. It also builds `client/dist` once because the API checks that the production client exists even while Vite serves the development UI.
 
-**Windows:**
-```
-cd client
-npm install --legacy-peer-deps
-cd ..
+The services start in the background:
+
+- Development UI with hot reload: `http://localhost:5173`
+- API and built UI: `http://localhost:3000`
+- Combined log: `.run/dev.log`
+
+Manage the environment with:
+
+```bash
+./stop.sh
+./restart.sh
+tail -f .run/dev.log
 ```
 
-**macOS:**
-```
-cd client && npm install && cd ..
+The scripts store only local runtime files in `.run/`, which is excluded from Git. `stop.sh` targets the isolated process group created by `start.sh`; it does not search for and terminate unrelated Node.js processes.
+
+Environment variables can be set for a single start. For example, development without real printer polling is available with:
+
+```bash
+DEMO_MODE=true ./start.sh
 ```
 
-### Build the client
+If the service is already running, stop it before changing environment variables.
 
-Before running in production, build the React client into static files:
+Use alternate ports when the defaults are already assigned to another local service:
 
+```bash
+PORT=3100 VITE_PORT=5174 ./start.sh
 ```
+
+## Manual Development Commands
+
+The scripts are the preferred workflow, but their equivalent setup commands are:
+
+```bash
+npm ci
+npm ci --prefix client
+npm run build
+npm run dev
+```
+
+The manual `npm run dev` command stays in the foreground. Press `Ctrl+C` to stop both development services.
+
+## Tests and Production Build
+
+Run the complete server test suite and client production build before submitting changes:
+
+```bash
+npm test
 npm run build
 ```
 
-This only needs to be re-run after an update — see [Updating](#updating).
+## Docker Development
 
----
+Docker avoids installing Node.js and native build tools directly on the host:
 
-## Network Setup
-
-The machine running Print Farm Manager must be on the **same local network** as your printers. All communication happens over HTTP directly to each printer's IP address — no internet connection is required.
-
-Print Farm Manager runs as a single server on **port 3000** that serves both the API and the web UI. Any browser on the same network can access it.
-
-### Finding the machine's IP address
-
-**Windows:**
-```
-ipconfig
-```
-Look for **IPv4 Address** under your active network adapter (e.g. `192.168.1.50`).
-
-**macOS:**
-```
-ipconfig getifaddr en0
-```
-Use `en1` if you are on Wi-Fi and `en0` returns nothing, or check **System Settings → Network**.
-
-Once the server is running, open **`http://[machine-ip]:3000`** from any browser on the network.
-
-### Firewall configuration
-
-**Windows**
-Windows Firewall may block connections from other devices on the network. To allow them:
-
-1. Open **Windows Defender Firewall with Advanced Security** (search in the Start menu).
-2. Click **Inbound Rules → New Rule**.
-3. Select **Port**, click Next.
-4. Select **TCP**, enter `3000`, click Next.
-5. Select **Allow the connection**, click Next through the remaining steps and name the rule `Print Farm Manager`.
-
-**macOS**
-macOS does not block outbound connections and generally allows LAN traffic by default. If you have manually enabled the macOS Application Firewall (System Settings → Network → Firewall), you may need to add an exception, but most users will not need to do anything here.
-
----
-
-## Running the Server
-
-From the `print-farm-manager` folder:
-
-```
-npm start
+```bash
+docker compose up --build print-farm-manager-dev
 ```
 
-You should see:
+Open `http://localhost:5173`. Stop the container with `Ctrl+C`, or use `docker compose stop print-farm-manager-dev` if it was started in the background.
 
-```
-[server] Express running on http://localhost:3000
-[poller] Starting poll loop (interval: 15000ms)
-[scheduler] Starting job scheduler
-```
+Do not run the production and development Compose services together because both publish port 3000.
 
-- On the **local machine**: open a browser to **http://localhost:3000**
-- From **any other device on the network**: use the machine's IP address — e.g. **http://192.168.1.50:3000**
+## Production on Linux
 
-To stop the server, press `Ctrl + C` in the terminal.
+For the simplest production deployment, use the production service from `docker-compose.yml`:
 
-> **Development mode:** If you are actively developing the app, `npm run dev` starts both the Express server and the Vite dev server with hot reload. This is not needed for normal farm operation. Prefer Docker? `docker compose up --build print-farm-manager-dev` runs the same workflow in a container — see the **[README](../README.md#quick-start-development)**.
-
----
-
-## First Run: Adding Your First Printer
-
-When you open the app for the first time, the Fleet view will be empty. This is expected — no printers have been configured yet. Follow these steps:
-
-### Step 1 — Add a Printer Model
-
-Go to **Settings → Printer Models** and add a model entry for each type of printer you have. A model entry links a display name (e.g. "MK4S") to a brand connector (Prusa, Bambu, Elegoo Centauri Carbon, Elegoo Centauri Carbon 2, Klipper). A fresh install starts with an empty model list — add whichever models your farm uses.
-
-Model IDs are free-form and only used internally — choose something descriptive (e.g. `voron-24` for a Klipper printer). One exception: CSV import can infer a printer's model from its name prefix, but only for the Prusa IDs `mk4s`, `mk4`, `c1`, `c1l`, and `xl` (e.g. a printer named `MK4S_01` resolves to `mk4s`).
-
-### Step 2 — Add a Printer
-
-Still in **Settings**, click **Add Printer**. Fill in:
-
-- **Name** — a short identifier (e.g. `MK4S_01`). Used throughout the UI.
-- **IP Address** — the local IP of the printer (see credential table above).
-- **API Key / Access Code** — see credential table above. The field is labelled **Access Code** for Bambu and Centauri Carbon 2 printers. Not needed for Elegoo Centauri Carbon (original) or Klipper.
-- **Serial Number** — Bambu and Elegoo Centauri Carbon 2 printers only.
-- **Group** — optional, for organizing multiple printers (e.g. `MK4S Farm`).
-- **Model** — select from the models you added in Step 1.
-
-Click **Save**. The printer will appear in the Fleet view within 15 seconds as the poller makes its first contact.
-
-### Step 3 — Verify the Connection
-
-Open the **Fleet** page. If the printer is reachable, its status will change from `UNKNOWN` to its actual state (e.g. `IDLE` or `PRINTING`) within one poll cycle (15 seconds).
-
-If the printer stays `OFFLINE` or `UNKNOWN`:
-- Confirm the IP address is correct by opening `http://<printer-ip>` in a browser on the same machine.
-- For Prusa: confirm the API key matches what PrusaLink shows.
-- For Bambu: confirm LAN Mode is enabled and the access code matches.
-- Check that the farm machine and the printer are on the same network subnet.
-
-### Step 4 — Import a Large Fleet via CSV
-
-For farms with many printers, use the **CSV Import** on the Settings page instead of adding them one by one. See the [CSV Import Format](../README.md#csv-import-format) section in the README for the required column names.
-
----
-
-## Keeping It Running (Auto-start on Boot)
-
-Running `npm start` manually is fine for testing, but a farm machine should start the server automatically on boot and restart it if it crashes. **PM2** is a Node.js process manager that handles this on both platforms.
-
-### Install PM2
-
-**Windows:**
-```
-npm install --global pm2
-npm install --global pm2-windows-startup
+```bash
+docker compose up -d --build print-farm-manager
+docker compose logs -f print-farm-manager
 ```
 
-**macOS:**
-```
-npm install --global pm2
+For bare-metal production, install and build the exact dependencies first:
+
+```bash
+npm ci
+npm ci --prefix client
+npm run build
 ```
 
-### Start Print Farm Manager with PM2
+Create `/etc/systemd/system/print-farm-manager.service` with the following content. Replace `YOUR_USER` and `/opt/core-manufacturing` with the actual Linux user and checkout path:
 
-From the `print-farm-manager` folder (same on both platforms):
-```
-pm2 start npm --name "print-farm-manager" -- start
-```
+```ini
+[Unit]
+Description=Print Farm Manager
+After=network-online.target
+Wants=network-online.target
 
-Verify it is running:
-```
-pm2 list
-```
-You should see `print-farm-manager` with status `online`.
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/opt/core-manufacturing
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=5
 
-### Enable Auto-start on Boot
-
-**Windows:**
-```
-pm2-startup install
-pm2 save
-```
-
-**macOS:**
-```
-pm2 startup
-```
-PM2 will print a command beginning with `sudo env PATH=...` — copy and run that exact command, then:
-```
-pm2 save
+[Install]
+WantedBy=multi-user.target
 ```
 
-Print Farm Manager will now start automatically whenever the machine boots, with no login required.
+Then enable and start it:
 
-### Useful PM2 Commands
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now print-farm-manager
+sudo systemctl status print-farm-manager
+journalctl -u print-farm-manager -f
+```
 
-| Command | What it does |
+Confirm the path to npm with `command -v npm`. If it is not `/usr/bin/npm`, use the returned absolute path in `ExecStart`. Node version managers installed only in an interactive shell are usually unsuitable for a system service unless their absolute runtime paths are configured explicitly.
+
+## Network Access
+
+The local machine uses `http://localhost:3000` in production or `http://localhost:5173` in development. Other trusted LAN devices need the Linux host's address:
+
+```bash
+hostname -I
+```
+
+The production API listens on port 3000. Native Vite development is localhost-only by default, so use the Docker development service if the hot-reload UI must be reached from another machine.
+
+If a firewall is enabled, allow port 3000 only from the trusted LAN. Example for UFW and a `192.168.1.0/24` network:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 3000 proto tcp
+```
+
+Adjust the subnet to match the real network. Do not create an unrestricted public firewall rule.
+
+## Printer Credentials
+
+Gather these values before adding printers:
+
+| Brand | Required values |
 |---|---|
-| `pm2 list` | Show all running processes and their status |
-| `pm2 logs print-farm-manager` | Stream live server logs |
-| `pm2 logs print-farm-manager --lines 100` | Show last 100 log lines |
-| `pm2 restart print-farm-manager` | Restart the server |
-| `pm2 stop print-farm-manager` | Stop the server |
-| `pm2 delete print-farm-manager` | Remove it from PM2 entirely |
+| Prusa | IP address and PrusaLink API key |
+| Bambu Lab | IP address, serial number, LAN access code, and LAN Mode enabled |
+| Elegoo Centauri Carbon | IP address |
+| Elegoo Centauri Carbon 2 | IP address, serial number, and LAN access code |
+| Klipper | IP address of the Moonraker host, which normally uses port 7125 |
+| OctoPrint | IP address with port when needed, plus API key |
 
----
+Add printer models and printers from Settings. A new printer should move from `UNKNOWN` to its current state within one 15-second poll cycle.
 
-## Data & File Storage
+## Data and Backups
 
-All persistent data lives inside the `print-farm-manager` folder:
+Persistent bare-metal data is stored in:
 
 | Path | Contents |
 |---|---|
-| `server/data/farm.db` | SQLite database — all printers, projects, parts, jobs |
+| `server/data/farm.db` | SQLite database with farm configuration and job history |
 | `server/gcode/` | Uploaded G-code files |
 
-Neither folder is tracked by Git — they are created automatically on first run.
+Use Settings, Farm Backup to export a portable JSON backup. For a filesystem-level backup, stop the service before copying `server/data/farm.db` and `server/gcode/`.
 
-### Backup
+Never copy `node_modules` between machines or operating systems. Restore the data, then run `npm ci` on the destination so native packages match its Node.js ABI and Linux architecture.
 
-Use the **Farm Backup** tool in the app's Settings page to export a full snapshot of your farm (printers, projects, parts, G-code files, and job history) as a single `.json` file. You can restore from this file on any machine running Print Farm Manager.
+## Updating the Fork
 
-For an additional low-level backup, copy `server/data/farm.db` and `server/gcode/` to a safe location. Restoring is as simple as copying them back.
+For development:
 
-### Moving to a new machine
-
-1. On the old machine, go to **Settings → Farm Backup → Export Farm** and save the `.json` file.
-2. Install Print Farm Manager on the new machine following this guide.
-3. Go to **Settings → Farm Backup**, select the `.json` file, and click **Restore Farm**.
-
-Alternatively, copy the entire `print-farm-manager` folder to the new machine — the database and G-code files are included. After copying, delete `node_modules` and `client/node_modules` and run `npm install` fresh (native dependencies must be compiled for the new machine's OS and Node version).
-
----
-
-## Updating
-
-### Windows — using update.bat
-
-Double-click `update.bat` in the repo root (or run it from a Command Prompt). It will:
-1. Discard any local `package-lock.json` drift, then `git pull` the latest code
-2. `npm install` server dependencies
-3. Build the React client (`client/npm install` + `npm run build`)
-4. Kill the process on port 3000 and start the server in the foreground
-
-The lockfile discard in step 1 exists because `npm install` rewrites `package-lock.json` whenever the machine's npm version differs from the one that generated it. Without the discard, `git pull` fails with "Your local changes to the following files would be overwritten by merge: package-lock.json" the next time the lockfile changes upstream. If you hit that error on an older copy of `update.bat`, run `git restore package-lock.json` in the repo folder and update again.
-
-The server runs in the bat's window — closing the window stops the server.
-
-> **Note:** `update.bat` uses `call npm ...` for all npm commands. If you are writing your own Windows batch scripts that invoke npm, you must use `call npm` — without `call`, the batch script exits silently when npm finishes because `npm.cmd` is a `.cmd` file.
-
-### macOS / Linux — manual steps
-
+```bash
+./stop.sh
+git pull --ff-only
+./start.sh
 ```
-git pull
-npm install
-cd client && npm install && cd ..
+
+`start.sh` automatically detects lockfile changes and refreshes dependencies. Run the tests after updating.
+
+For the systemd production service:
+
+```bash
+sudo systemctl stop print-farm-manager
+git pull --ff-only
+npm ci
+npm ci --prefix client
 npm run build
-pm2 restart print-farm-manager
+sudo systemctl start print-farm-manager
 ```
-
-### ZIP install
-
-1. Download the new ZIP from GitHub.
-2. Extract it to a **new** folder — do not overwrite the existing one.
-3. Copy `server/data/` and `server/gcode/` from the old folder into the new one.
-4. Run the install and build steps in the new folder:
-   ```
-   npm install
-   cd client && npm install --legacy-peer-deps && cd ..
-   npm run build
-   ```
-5. Update PM2 to point at the new folder:
-
-**Windows:**
-```
-pm2 delete print-farm-manager
-cd C:\PrintFarm\print-farm-manager-NEW
-pm2 start npm --name "print-farm-manager" -- start
-pm2 save
-```
-
-**macOS:**
-```
-pm2 delete print-farm-manager
-cd ~/PrintFarm/print-farm-manager-NEW
-pm2 start npm --name "print-farm-manager" -- start
-pm2 save
-```
-
----
 
 ## Troubleshooting
 
-**`node` or `npm` not found after installing Node.js**
-Restart your machine. The PATH change from the installer requires a full restart to take effect.
+### A required command is missing
 
-**`npm install` fails with a native build error**
+Install the package listed in [Install System Packages](#install-system-packages). `sha256sum` is normally supplied by coreutils.
 
-*Windows* — install Visual Studio Build Tools 2022. Run this in an Administrator PowerShell:
-```
-winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet"
-```
-Then install `node-gyp` in a new Administrator Command Prompt:
-```
-npm install -g node-gyp
-```
-> Do not use `npm install --global windows-build-tools` — it is deprecated and fails on modern Node.js.
+### Node.js version is rejected
 
-*macOS* — install Xcode Command Line Tools:
-```
-xcode-select --install
+Run `node --version` and install Node.js 22 LTS. The scripts intentionally reject Node.js versions outside the range declared by the project.
+
+### A native package fails to build
+
+Verify Python 3, `make`, and `g++` are installed. Then remove only generated dependencies and reinstall from the lockfiles:
+
+```bash
+rm -rf node_modules client/node_modules
+npm ci
+npm ci --prefix client
 ```
 
-Then retry `npm install`.
+### Development services do not become ready
 
-**`better_sqlite3.node is not a valid Win32 application`**
-The native SQLite binary was compiled for a different operating system (e.g. the `node_modules` folder was copied from a Mac). Delete it and reinstall on the Windows machine:
-```
-rmdir /s /q node_modules
-rmdir /s /q client\node_modules
-npm install
-cd client && npm install --legacy-peer-deps && cd ..
-npm run build
+Read the combined log:
+
+```bash
+tail -n 100 .run/dev.log
 ```
 
-**`npm install` in `client/` reports dependency conflicts on Windows**
-Run with the `--legacy-peer-deps` flag:
-```
-npm install --legacy-peer-deps
-```
+Typical causes are another application already using port 3000 or 5173, a failed native dependency build, or a missing client bundle. `start.sh` reports the last log lines when readiness fails.
 
-**UI loads but shows no printers / API errors**
-- Confirm the server is running: `pm2 list`
-- Check server logs: `pm2 logs print-farm-manager`
-- Confirm port 3000 is not blocked (Windows: check Firewall rules; macOS: check if Application Firewall is on)
+To inspect the ports without stopping anything:
 
-**Printers show as OFFLINE**
-- Confirm the farm machine and the printers are on the same network subnet.
-- Open `http://<printer-ip>/api/v1/status` in a browser on the farm machine. If it loads, the server can reach the printer. If not, it is a network or switch issue.
-
-**Port 3000 already in use**
-
-*Windows:*
-```
-netstat -ano | findstr :3000
-taskkill /PID <PID> /F
+```bash
+ss -ltnp | grep -E ':(3000|5173)\\b'
 ```
 
-*macOS:*
-```
-lsof -i :3000
-kill -9 <PID>
-```
+### A stale PID file is reported
 
-**Server starts but UI does not load on another device**
-- Use the machine's LAN IP address — `localhost` only resolves on the machine itself.
-- Windows: confirm the Firewall inbound rule covers port 3000.
-- Check that both devices are on the same network VLAN. Some managed switches isolate VLANs from each other.
+Run `./stop.sh`. It safely removes stale or invalid PID state. Then use `./start.sh` again.
+
+### Printers remain offline
+
+Confirm the Linux host and printers are on the same LAN and VLAN, verify the saved IP address and credentials, and check that local firewall rules allow outbound printer traffic. Do not expose the application to the public internet as a workaround.

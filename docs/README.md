@@ -5,9 +5,7 @@ A locally-hosted web app for managing a multi-brand 3D printer farm. Replaces ma
 ## Quick Start
 
 ```bash
-npm install
-cd client && npm install && cd ..
-npm run dev
+./start.sh
 ```
 
 - API: `http://localhost:3000`
@@ -19,7 +17,7 @@ Prefer Docker over a local Node.js install? `docker compose up --build print-far
 
 | File | What it covers |
 |---|---|
-| [docs/installation.md](installation.md) | Windows install guide — prerequisites, setup, auto-start with PM2, updating, troubleshooting |
+| [docs/installation.md](installation.md) | Linux prerequisites, development scripts, production setup, updating, and troubleshooting |
 | [docs/server.md](server.md) | Express entry point, scheduler wiring, port config, route mounting, startup sequence |
 | [docs/database.md](database.md) | SQLite schema — all tables, column types, conventions, migrations |
 | [docs/poller.md](poller.md) | Printer polling loop, concurrency model, event emissions |

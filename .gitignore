@@ -4,6 +4,7 @@ server/gcode/
 server/data/
 dist/
 .env
+.run/
 *.csv
 .claude/*
 !.claude/skills/

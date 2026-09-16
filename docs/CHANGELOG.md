@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-09-16: Linux development setup and lifecycle scripts
+
+This fork is now ready for a reproducible Linux development workflow. A fresh checkout can be started with one command without manually installing the root and client packages or remembering the initial client build. The managed process group keeps the API and Vite server together, so stopping or restarting the environment does not rely on killing every Node.js process or whichever process happens to own a port.
+
+The scripts require Node.js 22 or 23, use both committed lockfiles through `npm ci`, and repeat dependency installation only when a lockfile or the Node/npm version changes. Runtime PID, dependency stamp, and logs stay under the ignored `.run/` directory.
+
+### Changes
+- `start.sh`: validates the Linux toolchain and ports, synchronizes locked dependencies, creates the initial client build, launches the API and Vite development servers in an isolated process group, and verifies both endpoints are ready. `PORT` and `VITE_PORT` support local port conflicts.
+- `stop.sh`: gracefully stops only the process group created by `start.sh`, with a bounded forced-shutdown fallback and stale PID cleanup.
+- `restart.sh`: composes the stop and start operations.
+- `.gitignore`: ignores local lifecycle state and logs in `.run/`.
+- `package.json`: identifies this fork as `mdwcoder/core-manufacturing`.
+- `client/vite.config.js`: reads the optional API and Vite development ports used by the Linux scripts.
+- `README.md`, `docs/README.md`, `docs/installation.md`: document the Linux-first fork, required system packages, script workflow, production service setup, and troubleshooting.
+
+---
+
 ## 2026-09-01: printerIdle bypass let dispatch exceed dispatch_batch_size
 
 Joel batch-confirmed a stack of held printers via Set Ready (N) with `dispatch_batch_size` set to 5, then individually confirmed roughly ten more printers that had shown a false failed-upload hold (the upload attempt was reported failed on our side, but the printer had actually completed the print). Fleet's uploading count briefly showed 7 concurrent uploads against the configured limit of 5.

@@ -2,6 +2,8 @@
 
 A self-hosted web app for managing a multi-brand 3D printer farm. Replaces manual USB job distribution with centralized status monitoring and automated job dispatch — built to run 24/7 on a dedicated machine on your local network.
 
+This repository is a Linux-focused fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager). The original project and its contributors remain the upstream source.
+
 No cloud. No subscriptions. No vendor lock-in.
 
 ![Dashboard — live fleet status and active projects](docs/images/dashboard.png)
@@ -66,27 +68,26 @@ No cloud. No subscriptions. No vendor lock-in.
 
 ---
 
-## Quick Start (Development)
+## Quick Start (Linux Development)
 
-Requires **Node.js 22 LTS** — Node 24+ has known issues compiling the native SQLite dependency on Windows (see the [Installation Guide](docs/installation.md) for details).
+Requires Linux, Git, Node.js 22 or 23, npm, Python 3, `make`, and a C++ compiler. The [Linux installation guide](docs/installation.md) includes commands for Debian, Ubuntu, Fedora, and RHEL-compatible systems.
 
 ```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
-cd print-farm-manager
-npm install
-cd client && npm install && cd ..
-npm run build
-npm run dev
+git clone https://github.com/mdwcoder/core-manufacturing.git
+cd core-manufacturing
+./start.sh
 ```
 
 - API server: `http://localhost:3000`
 - Web UI (hot reload): `http://localhost:5173`
 
+`start.sh` validates Node.js, installs the locked server and client dependencies when needed, builds the initial client bundle, and starts both development services in the background. Use `./stop.sh` and `./restart.sh` to manage them. Logs are written to `.run/dev.log`.
+
 ### Prefer Docker instead of a local Node.js install?
 
 ```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
-cd print-farm-manager
+git clone https://github.com/mdwcoder/core-manufacturing.git
+cd core-manufacturing
 docker compose up --build print-farm-manager-dev
 ```
 
@@ -106,6 +107,8 @@ Requires [Docker](https://docs.docker.com/get-docker/) (and Compose, bundled wit
 #### Quickest start — pull the published image
 
 No clone, no local build. A multi-arch image (`linux/amd64` + `linux/arm64`) is published automatically to GitHub Container Registry on every release — see [docs/docker-publish.md](docs/docker-publish.md). Save this as `docker-compose.yml`:
+
+This image is published by the upstream project. To run this fork's changes, use the source-build option below until the fork publishes its own image.
 
 ```yaml
 services:
@@ -155,8 +158,8 @@ Pin to a specific release instead of always tracking `latest` by using a version
 If you're testing local changes rather than running a release, clone the repo and build with the `docker-compose.yml` at its root (uses `build:` instead of `image:`):
 
 ```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
-cd print-farm-manager
+git clone https://github.com/mdwcoder/core-manufacturing.git
+cd core-manufacturing
 docker compose up -d --build
 ```
 
@@ -181,13 +184,13 @@ docker run -d --name print-farm-manager --restart unless-stopped \
 
 ### Option B — Bare metal (Node.js on the host)
 
-For a full walkthrough covering prerequisites, network setup, auto-start with PM2, backup, updating, and troubleshooting on both Windows and macOS, see the **[Installation Guide](docs/installation.md)**.
+For a full Linux walkthrough covering prerequisites, the development scripts, network setup, systemd, backup, updating, and troubleshooting, see the **[Installation Guide](docs/installation.md)**.
 
 The short version:
 
 ```bash
-npm install
-cd client && npm install && cd ..
+npm ci
+npm ci --prefix client
 npm run build
 npm start
 ```

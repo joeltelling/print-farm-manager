@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/joeltelling/print-farm-manager.git"
+    "url": "https://github.com/mdwcoder/core-manufacturing.git"
   },
   "engines": {
     "node": ">=22.0.0 <24"
