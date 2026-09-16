@@ -5,6 +5,7 @@ import EmptyState from '../components/EmptyState';
 import PageHeader from '../components/PageHeader';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
+import { theme } from '../theme';
 
 const STATUS_COLORS = {
   PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
@@ -365,6 +366,7 @@ export default function Fleet() {
   const [allModels, setAllModels]             = useState([]);
   // { printerId, printerName, jobs, selectedJobId, isHeld }
   const [linkJobModal, setLinkJobModal]       = useState(null);
+  const [attentionOpen, setAttentionOpen]     = useState(false);
 
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(setAllModels).catch(() => {});
@@ -648,6 +650,9 @@ export default function Fleet() {
   const otherModels = filtered.filter((p) => !modelOrder.includes(p.model));
   if (otherModels.length > 0) grouped['other'] = otherModels;
 
+  const attentionCount =
+    awaitingOfflineReview.length + awaitingUploadReview.length + awaitingConfirmation.length;
+
   async function sweep() {
     await fetch('/api/scheduler/dispatch', { method: 'POST' });
     fetchPrinters();
@@ -810,6 +815,43 @@ export default function Fleet() {
         subtitle="Live floor view. Click a printer for camera and logs."
         actions={
           <>
+            {attentionCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setAttentionOpen(true)}
+                title="Open attention list"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: theme.cardAlt,
+                  color: theme.text,
+                  border: `1px solid ${theme.borderStrong}`,
+                  borderRadius: 999,
+                  padding: '6px 12px 6px 10px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{
+                  background: theme.lime,
+                  color: '#0a0a0a',
+                  borderRadius: 999,
+                  minWidth: 22,
+                  height: 22,
+                  padding: '0 6px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}>
+                  {attentionCount}
+                </span>
+                Needs attention
+              </button>
+            )}
             <PollTimer lastPolled={lastPolled} intervalMs={15000} />
             <button
               onClick={sweep}
@@ -822,83 +864,227 @@ export default function Fleet() {
         }
       />
 
-      {/* Offline-with-job banner */}
-      {awaitingOfflineReview.length > 0 && (
-        <div style={{
-          background: '#292113',
-          border: '1px solid #92400e',
-          borderRadius: 8,
-          padding: '10px 16px',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}>
-          <span style={{ color: '#fbbf24', fontWeight: 600, fontSize: 14 }}>
-            {awaitingOfflineReview.length} printer{awaitingOfflineReview.length !== 1 ? 's' : ''} went offline with a job in progress
-          </span>
-          <span style={{ color: '#78350f', fontSize: 13 }}>
-            — will auto-clear if they come back printing
-          </span>
-        </div>
-      )}
-
-      {/* Upload-stalled banner */}
-      {awaitingUploadReview.length > 0 && (
-        <div style={{
-          background: '#292113',
-          border: '1px solid #92400e',
-          borderRadius: 8,
-          padding: '10px 16px',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-        }}>
-          <span style={{ color: '#fbbf24', fontWeight: 600, fontSize: 14 }}>
-            {awaitingUploadReview.length} printer{awaitingUploadReview.length !== 1 ? 's' : ''} had a failed upload — check each machine
-          </span>
-        </div>
-      )}
-
-      {/* Confirmation banner */}
-      {awaitingConfirmation.length > 0 && (
-        <div style={{
-          background: '#14532d',
-          border: '1px solid #15803d',
-          borderRadius: 8,
-          padding: '10px 16px',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          flexWrap: 'wrap',
-        }}>
-          <span style={{ color: '#86efac', fontWeight: 600, fontSize: 14 }}>
-            {awaitingConfirmation.length} printer{awaitingConfirmation.length !== 1 ? 's' : ''} awaiting confirmation
-          </span>
-          <button
-            onClick={selectAll}
-            style={{ background: '#166534', color: '#4ade80', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+      {attentionOpen && (
+        <div
+          onClick={() => setAttentionOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)',
+            zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: `linear-gradient(160deg, ${theme.card} 0%, ${theme.cardAlt} 100%)`,
+              border: `1px solid ${theme.border}`,
+              borderRadius: theme.radius,
+              boxShadow: theme.shadow,
+              width: 520,
+              maxWidth: '100%',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
           >
-            Select All
-          </button>
-          {selectedForReady.size > 0 && (
-            <>
+            <div style={{
+              padding: '16px 18px',
+              borderBottom: `1px solid ${theme.border}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: theme.text }}>Needs attention</div>
+                <div style={{ fontSize: 12, color: theme.textDim, marginTop: 2 }}>
+                  {attentionCount} item{attentionCount === 1 ? '' : 's'} requiring an operator
+                </div>
+              </div>
               <button
-                onClick={deselectAll}
-                style={{ background: '#1f2937', color: '#9ca3af', border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}
+                type="button"
+                onClick={() => setAttentionOpen(false)}
+                style={{
+                  background: theme.cardAlt, color: theme.textMuted,
+                  border: `1px solid ${theme.border}`, borderRadius: 8,
+                  width: 32, height: 32, cursor: 'pointer', fontSize: 18, lineHeight: 1,
+                }}
               >
-                Deselect All
+                ×
               </button>
+            </div>
+
+            <div style={{ padding: 14, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {awaitingUploadReview.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: theme.orange, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    Failed upload ({awaitingUploadReview.length})
+                  </div>
+                  <div style={{ border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', background: theme.page }}>
+                    {awaitingUploadReview.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => { setAttentionOpen(false); navigate(`/printers/${p.id}`); }}
+                        style={{
+                          display: 'flex', width: '100%', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', background: 'transparent', border: 'none',
+                          borderBottom: `1px solid ${theme.border}`, cursor: 'pointer', textAlign: 'left',
+                        }}
+                      >
+                        <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: theme.text }}>{p.name}</span>
+                        <span style={{ fontSize: 11, color: theme.orange, fontWeight: 700 }}>UPLOAD</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.textDim, marginTop: 6 }}>
+                    Check each machine on the floor, then resolve on its card.
+                  </div>
+                </div>
+              )}
+
+              {awaitingOfflineReview.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: theme.orange, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    Offline with job ({awaitingOfflineReview.length})
+                  </div>
+                  <div style={{ border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', background: theme.page }}>
+                    {awaitingOfflineReview.map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => { setAttentionOpen(false); navigate(`/printers/${p.id}`); }}
+                        style={{
+                          display: 'flex', width: '100%', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', background: 'transparent', border: 'none',
+                          borderBottom: `1px solid ${theme.border}`, cursor: 'pointer', textAlign: 'left',
+                        }}
+                      >
+                        <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: theme.text }}>{p.name}</span>
+                        <span style={{ fontSize: 11, color: theme.orange, fontWeight: 700 }}>OFFLINE</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: theme.textDim, marginTop: 6 }}>
+                    Clears automatically if the printer comes back printing.
+                  </div>
+                </div>
+              )}
+
+              {awaitingConfirmation.length > 0 && (
+                <div>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: 8, marginBottom: 8, flexWrap: 'wrap',
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: theme.lime, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      Awaiting confirmation ({awaitingConfirmation.length})
+                    </div>
+                    <button
+                      type="button"
+                      onClick={selectAll}
+                      style={{
+                        background: '#14532d', color: theme.lime, border: 'none',
+                        borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      Select all
+                    </button>
+                  </div>
+                  <div style={{ border: `1px solid ${theme.border}`, borderRadius: 10, overflow: 'hidden', background: theme.page }}>
+                    {awaitingConfirmation.map(p => {
+                      const selected = selectedForReady.has(p.id);
+                      return (
+                        <div
+                          key={p.id}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '10px 12px',
+                            borderBottom: `1px solid ${theme.border}`,
+                            background: selected ? '#1c2a1c' : 'transparent',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleSelect(p.id)}
+                            style={{
+                              width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                              border: `1px solid ${selected ? theme.limeDeep : theme.borderStrong}`,
+                              background: selected ? theme.limeDeep : 'transparent',
+                              cursor: 'pointer', color: '#0a0a0a', fontSize: 11, fontWeight: 800,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                            }}
+                          >
+                            {selected ? '✓' : ''}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setAttentionOpen(false); navigate(`/printers/${p.id}`); }}
+                            style={{
+                              flex: 1, background: 'none', border: 'none', padding: 0,
+                              textAlign: 'left', cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, fontSize: 13, color: theme.text }}>{p.name}</span>
+                          </button>
+                          <span style={{ fontSize: 11, color: theme.lime, fontWeight: 700 }}>
+                            {p.status === 'FINISHED' ? 'FINISHED' : 'IDLE'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{
+              padding: '12px 16px',
+              borderTop: `1px solid ${theme.border}`,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}>
+              {selectedForReady.size > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={deselectAll}
+                    style={{
+                      background: theme.cardAlt, color: theme.textMuted,
+                      border: `1px solid ${theme.border}`, borderRadius: 8,
+                      padding: '7px 12px', fontSize: 13, cursor: 'pointer',
+                    }}
+                  >
+                    Deselect
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAttentionOpen(false); setReadyForSelected(); }}
+                    style={{
+                      background: '#15803d', color: '#fff', border: 'none', borderRadius: 8,
+                      padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    Set Ready ({selectedForReady.size})
+                  </button>
+                </>
+              )}
               <button
-                onClick={setReadyForSelected}
-                style={{ background: '#15803d', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                type="button"
+                onClick={() => setAttentionOpen(false)}
+                style={{
+                  background: theme.cardAlt, color: theme.text,
+                  border: `1px solid ${theme.border}`, borderRadius: 8,
+                  padding: '7px 14px', fontSize: 13, cursor: 'pointer',
+                }}
               >
-                ✓ Set Ready ({selectedForReady.size})
+                Close
               </button>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       )}
 

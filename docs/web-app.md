@@ -134,11 +134,13 @@ Filter chips in the Fleet header derive their text color from the same `STATUS_C
 
 A STOPPED printer that is **not** held (its outcome was already resolved, or the stopped print was never a farm job) shows no buttons — instead it is dispatch-eligible: `sweepIdlePrinters` includes unheld STOPPED printers, so it returns to service on the next sweep (server start, project activation, or Sweep for Jobs). The card notes this.
 
-**OFFLINE-with-job handling:** when `is_held === 1` AND `status` is `OFFLINE` AND `has_active_job === 1`, an amber card and separate amber banner appear instead of the green confirmation UI. Two buttons are shown:
+**Needs attention:** instead of full-width banners, Fleet shows a compact header chip with the count (`N Needs attention`). Clicking it opens a modal listing failed uploads, offline-with-job printers, and awaiting-confirmation printers. Batch Select all / Set Ready live in that modal. Clicking a printer name opens its detail view.
+
+**OFFLINE-with-job handling:** when `is_held === 1` AND `status` is `OFFLINE` AND `has_active_job === 1`, an amber card appears (and the printer is listed in the Needs attention modal) instead of the green confirmation UI. Two buttons are shown:
 - **✓ Job OK** — releases the hold via `POST /api/printers/:id/set-ready`. The job stays as `printing` and resolves naturally when the printer finishes. No qty is credited.
 - **✗ Job Failed** — calls `POST /api/printers/:id/mark-job-failure`, marking the job failed and decommissioning the printer for investigation.
 
-If the printer recovers and transitions back to `PRINTING` on its own, the scheduler auto-releases the hold with no operator action required. The amber banner includes a note explaining this.
+If the printer recovers and transitions back to `PRINTING` on its own, the scheduler auto-releases the hold with no operator action required. The Needs attention modal notes this.
 
 **Partial plate confirmation:** when a job's `last_parts_per_plate` is known, a `Good: [N] / M` number input appears between the Include checkbox and the Set Ready button. It pre-fills with the full plate count. If the operator reduces it (e.g. 24 of 25 parts came out good), clicking Set Ready applies the delta to `completed_qty` and the Include checkbox is hidden — the printer cannot be batch-confirmed and must be set ready individually. Bad Print remains for full/catastrophic failures that also decommission the printer.
 

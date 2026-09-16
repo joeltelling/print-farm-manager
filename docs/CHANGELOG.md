@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-16: Fleet Needs attention modal
+
+Fleet no longer stacks full-width amber/green banners. A header chip shows the attention count; clicking it opens a modal with grouped lists (failed upload, offline with job, awaiting confirmation) and batch Set Ready.
+
+### Changes
+- `client/src/pages/Fleet.jsx`: attention chip + modal; banners removed.
+- `docs/web-app.md`: Fleet attention UX note.
+
 ## 2026-09-16: Settings spacing + wider sidebar alerts
 
 Polling sits in the General left column with the same 16px gap as the other cards. The shell sidebar is 280px so the bottom alert panel can show full messages without clipping.
