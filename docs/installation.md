@@ -139,7 +139,7 @@ Docker with the Compose plugin is required for the simulator. Start the full env
 ./start.sh --with-simulator
 ```
 
-The simulator exposes Moonraker at `http://localhost:7125` and its dummy webcam at `http://localhost:8110`. Seed data already includes a **Virtual Klipper** printer at `127.0.0.1` (group Sim Lab). Reset and start with:
+The simulator exposes Moonraker at `http://localhost:7125` and its dummy webcam at `http://localhost:8110`. Seed data points **every** printer IP at `127.0.0.1` (the local simulator) and includes a **Virtual Klipper** row (group Sim Lab) for live Moonraker status and camera. Reset and start with:
 
 ```bash
 npm run seed:data

@@ -96,35 +96,35 @@ const insertPrinter = db.prepare(`
   VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?,?)
 `);
 
+const SIM_IP = '127.0.0.1';
+
 const PRINTERS = [
-  // Prusa MK4S farm: mix of states to demonstrate all card types
-  ['MK4S_01', '192.168.1.101', 'aK3jR7xQ2pLm', 'MK4S Farm', 'prusa', 'mk4s',
+  // All IPs point at the local Virtual Klipper Printer so camera/proxy and
+  // Moonraker share one host. DEMO_MODE only live-polls type=klipper so the
+  // seeded Prusa/Elegoo/Bambu statuses stay put for UI testing.
+  ['MK4S_01', SIM_IP, 'aK3jR7xQ2pLm', 'MK4S Farm', 'prusa', 'mk4s',
     'PRINTING', 0, now - 30*day, 'benchy_4up_mk4s.bgcode',     0.35, 7200,  ''],
-  ['MK4S_02', '192.168.1.102', 'bN8wT4yV6cDk', 'MK4S Farm', 'prusa', 'mk4s',
+  ['MK4S_02', SIM_IP, 'bN8wT4yV6cDk', 'MK4S Farm', 'prusa', 'mk4s',
     'PRINTING', 0, now - 30*day, 'benchy_4up_mk4s.bgcode',     0.72, 2700,  ''],
-  ['MK4S_03', '192.168.1.103', 'cP5uR9zX1mFj', 'MK4S Farm', 'prusa', 'mk4s',
+  ['MK4S_03', SIM_IP, 'cP5uR9zX1mFj', 'MK4S Farm', 'prusa', 'mk4s',
     'PRINTING', 0, now - 30*day, 'gridfinity_2x4_mk4s.bgcode', 0.91,  540,  ''],
-  ['MK4S_04', '192.168.1.104', 'dQ2sL6wY3nGh', 'MK4S Farm', 'prusa', 'mk4s',
-    'FINISHED', 1, now - 30*day, null, null, null, ''],   // waiting for operator confirmation
-  ['MK4S_05', '192.168.1.105', 'eR7tM4vA8pJi', 'MK4S Farm', 'prusa', 'mk4s',
+  ['MK4S_04', SIM_IP, 'dQ2sL6wY3nGh', 'MK4S Farm', 'prusa', 'mk4s',
+    'FINISHED', 1, now - 30*day, null, null, null, ''],
+  ['MK4S_05', SIM_IP, 'eR7tM4vA8pJi', 'MK4S Farm', 'prusa', 'mk4s',
     'IDLE',    0, now - 30*day, null, null, null, ''],
-  ['MK4S_06', '192.168.1.106', 'fS9nK2bC5qLe', 'MK4S Farm', 'prusa', 'mk4s',
+  ['MK4S_06', SIM_IP, 'fS9nK2bC5qLe', 'MK4S Farm', 'prusa', 'mk4s',
     'IDLE',    0, now - 30*day, null, null, null, ''],
-  ['MK4S_07', '192.168.1.107', 'gT3oJ7dD1rMf', 'MK4S Farm', 'prusa', 'mk4s',
-    'ERROR',   1, now - 30*day, null, null, null, ''],    // filament runout, held
-  ['MK4S_08', '192.168.1.108', 'hU6pI5eE4sNg', 'MK4S Farm', 'prusa', 'mk4s',
-    'OFFLINE', 1, now - 30*day, null, null, null, ''],   // network unreachable
-  // Elegoo Centauri Carbon
-  ['Centauri_01', '192.168.1.150', '', 'Elegoo Farm', 'elegoo-centauri', 'centauri-carbon',
+  ['MK4S_07', SIM_IP, 'gT3oJ7dD1rMf', 'MK4S Farm', 'prusa', 'mk4s',
+    'ERROR',   1, now - 30*day, null, null, null, ''],
+  ['MK4S_08', SIM_IP, 'hU6pI5eE4sNg', 'MK4S Farm', 'prusa', 'mk4s',
+    'OFFLINE', 1, now - 30*day, null, null, null, ''],
+  ['Centauri_01', SIM_IP, '', 'Elegoo Farm', 'elegoo-centauri', 'centauri-carbon',
     'PRINTING', 0, now - 14*day, 'benchy_4up_centauri.cws', 0.55, 3600, ''],
-  ['Centauri_02', '192.168.1.151', '', 'Elegoo Farm', 'elegoo-centauri', 'centauri-carbon',
+  ['Centauri_02', SIM_IP, '', 'Elegoo Farm', 'elegoo-centauri', 'centauri-carbon',
     'IDLE',    0, now - 14*day, null, null, null, ''],
-  // Bambu X1 Carbon
-  ['X1C_01', '192.168.1.200', 'BBLP-DEMO01', 'Bambu Farm', 'bambu', 'x1c',
+  ['X1C_01', SIM_IP, 'BBLP-DEMO01', 'Bambu Farm', 'bambu', 'x1c',
     'PRINTING', 0, now - 7*day, 'gridfinity_2x4_x1c.3mf', 0.88, 1200, 'DEMO00000001'],
-  // Klipper / Virtual Klipper Printer (Moonraker :7125, webcam :8110)
-  // DEMO_MODE still polls loopback hosts so this row stays live for camera testing.
-  ['Virtual Klipper', '127.0.0.1', '', 'Sim Lab', 'klipper', 'voron-24',
+  ['Virtual Klipper', SIM_IP, '', 'Sim Lab', 'klipper', 'voron-24',
     'IDLE',    0, now - 1*day, null, null, null, ''],
 ];
 
@@ -300,14 +300,14 @@ console.log(`
   Seed data written to ${databasePath}
 
   Printers : ${PRINTERS.length} (${PRINTERS.filter(p => p[6] === 'PRINTING').length} printing, 1 finished, idle mix, 1 error, 1 offline)
-  Live sim : Virtual Klipper at 127.0.0.1 (Moonraker :7125 / webcam :8110)
+  Live sim : every printer IP is 127.0.0.1 (Virtual Klipper / Moonraker :7125 / webcam :8110)
   Projects : 3 (2 active, 1 draft)
   Parts    : ${[benchyPartId, miniBenchyPartId, grid2x4PartId, grid4x4PartId, grid1x2PartId, clipPartId].length}
   G-codes  : ${GCODES.length}
   Jobs     : ${totalJobs} (${DONE_JOBS.length} done, ${PRINTING_JOBS.length + 2} active/failed)
   Settings : farm_name=CoMa Lab, camera_mode=snapshot
 
-  Start with seed data + simulator (DEMO_MODE keeps fictional statuses, still polls 127.0.0.1):
+  Start with seed data + simulator (DEMO_MODE freezes non-Klipper statuses, live-polls Klipper):
     ./start.sh --seed-data --with-simulator
 
   Open http://localhost:5173 and open Virtual Klipper for the camera.

@@ -11,7 +11,7 @@ describe('DEMO_MODE local simulator host filter', () => {
     expect(isLocalSimulatorHost('')).toBe(false);
   });
 
-  test('DEMO_MODE tick polls only loopback printers', async () => {
+  test('DEMO_MODE tick polls only klipper printers', async () => {
     const db = new Database(':memory:');
     db.exec(`
       CREATE TABLE printers (
@@ -30,8 +30,10 @@ describe('DEMO_MODE local simulator host filter', () => {
         started_at INTEGER
       );
     `);
+    // Both on loopback (seed points every printer at the simulator), but only
+    // the Klipper row should be polled while DEMO_MODE freezes the rest.
     db.prepare(
-      "INSERT INTO printers (id, name, ip, type, status, is_active) VALUES (1, 'Fake', '192.168.1.10', 'prusa', 'PRINTING', 1)"
+      "INSERT INTO printers (id, name, ip, type, status, is_active) VALUES (1, 'Fake', '127.0.0.1', 'prusa', 'PRINTING', 1)"
     ).run();
     db.prepare(
       "INSERT INTO printers (id, name, ip, type, status, is_active) VALUES (2, 'Sim', '127.0.0.1', 'klipper', 'IDLE', 1)"
@@ -42,7 +44,7 @@ describe('DEMO_MODE local simulator host filter', () => {
     jest.doMock('../drivers', () => ({
       getDriver: () => ({
         getStatus: jest.fn(async (printer) => {
-          if (printer.ip !== '127.0.0.1') throw new Error('should not poll fictional printers');
+          if (printer.type !== 'klipper') throw new Error('should not poll non-klipper printers in DEMO_MODE');
           return { status: 'IDLE', progress: null, timeRemaining: null };
         }),
       }),

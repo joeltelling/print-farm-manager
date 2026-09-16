@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-09-16: Dashboard fills the viewport and shares space
+
+The dashboard is a CSS grid that fills the main pane height. Charts, fleet, and projects each keep a proportional slot and stretch with the window. Fleet status is one equal-cell auto-fill grid (no crushed model groups). Below ~1100px it stacks and scrolls normally.
+
+### Changes
+- `client/src/App.jsx`: `#main` is a flex column so the dashboard can take remaining height.
+- `client/src/pages/Dashboard.jsx`: viewport-filling row grid; flat equal fleet cells.
+- `client/src/components/BarChart.jsx`: bars spaced across full card width; empty hours show stubs.
+- `client/src/components/Card.jsx`: `fill` mode for height inheritance.
+- `docs/web-app.md`: dashboard layout notes.
+
+## 2026-09-16: Simulator seed IPs + vivid CoMa chrome
+
+Seed data now aims every printer at `127.0.0.1` so a `--with-simulator` run talks to one Virtual Klipper host. `DEMO_MODE` only live-polls `klipper` connectors so the mixed-brand seeded statuses stay useful. The UI chrome shifts to the near-black / lime / violet reference look (Outfit type, softer cards, sparkline KPIs, pill bars).
+
+### Changes
+- `server/seed-demo.js`: all printer IPs are `127.0.0.1`.
+- `server/poller.js`, `server/tests/poller-demo-mode.test.js`: DEMO_MODE polls only `type=klipper`.
+- `client/src/theme.js`, `index.css`, `App.jsx`, `KpiCard.jsx`, `BarChart.jsx`, `Card.jsx`, `Dashboard.jsx`: visual refresh.
+- `docs/poller.md`, `docs/installation.md`: seed + DEMO_MODE behavior.
+
+## 2026-09-16: Dashboard layout: less duplication, larger fleet cells
+
+The dashboard header no longer repeats the site name (already in the sidebar) or the utilization percentage inside the donut. Fleet status uses a full-width auto-fill grid of larger cells with readable names and status labels, and drops the per-row count chips that duplicated the legend.
+
+### Changes
+- `client/src/pages/Dashboard.jsx`: slim header, donut center shows printer count, larger fleet grid cells.
+- `docs/web-app.md`: dashboard section table updated.
+
 ## 2026-09-16: Seed data wired to Virtual Klipper Printer
 
 The demo seed now includes a live Sim Lab printer at `127.0.0.1` plus site settings, filament library, and richer incident events so CoMa can be tested against the local simulator without hand-adding printers. `DEMO_MODE` still freezes fictional LAN statuses, but continues to poll loopback hosts so Virtual Klipper stays live.

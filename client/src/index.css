@@ -1,22 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: #0b1220;
-  color: #e2e8f0;
+  font-family: 'Outfit', system-ui, sans-serif;
+  background: #07070a;
+  color: #f4f4f5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code, .mono {
-  font-family: 'Fira Code', 'Fira Mono', monospace;
+  font-family: 'IBM Plex Mono', 'Fira Mono', monospace;
 }
 
 /* ── Global button interaction ───────────────────────────────── */
 button {
-  transition: filter 0.15s ease;
+  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 button:not(:disabled):hover {
   filter: brightness(1.12);
@@ -29,21 +29,19 @@ button:disabled {
 }
 
 /* ── Keyboard focus visibility ───────────────────────────────── */
-/* !important so it wins over inline `outline: none` (which only
-   exists to suppress the ring on mouse clicks) */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid #3b82f6 !important;
+  outline: 2px solid #a3e635 !important;
   outline-offset: 2px;
 }
 
 /* ── Table row hover ─────────────────────────────────────────── */
 tbody tr:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(163, 230, 53, 0.04);
 }
 
 /* ── Skeleton shimmer ────────────────────────────────────────── */
@@ -52,10 +50,10 @@ tbody tr:hover {
   100% { background-position:  200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #1e2433 25%, #263044 50%, #1e2433 75%);
+  background: linear-gradient(90deg, #121218 25%, #1c1c24 50%, #121218 75%);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
-  border-radius: 8px;
+  border-radius: 12px;
 }
 
 /* ── Confirm modal entrance ──────────────────────────────────── */

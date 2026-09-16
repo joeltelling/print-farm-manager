@@ -125,7 +125,7 @@ poller.stop();    // clears the interval (for clean shutdown / tests)
 
 ## DEMO_MODE
 
-When `DEMO_MODE=true` (default for `./start.sh --seed-data`), the poller does **not** query fictional LAN IPs, so seeded PRINTING / FINISHED / ERROR statuses stay put for UI work. Loopback hosts (`127.0.0.1`, `localhost`, `::1`) are still polled so a Virtual Klipper Printer row at `127.0.0.1` stays live for status and camera testing. Set `DEMO_MODE=false` to poll the entire active fleet.
+When `DEMO_MODE=true` (default for `./start.sh --seed-data`), the poller only queries printers whose connector type is `klipper`. Seeded Prusa/Elegoo/Bambu rows keep their fictional statuses even when their IP is `127.0.0.1` (the seed points every printer at the local Virtual Klipper Printer). Set `DEMO_MODE=false` to poll the entire active fleet.
 
 ## Dependencies
 

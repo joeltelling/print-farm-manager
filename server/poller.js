@@ -38,10 +38,11 @@ class PrinterPoller extends EventEmitter {
       .prepare('SELECT * FROM printers WHERE is_active = 1')
       .all();
 
-    // DEMO_MODE freezes fictional farm statuses, but still polls loopback hosts so a
-    // Virtual Klipper Printer at 127.0.0.1 stays live for camera and status testing.
+    // DEMO_MODE freezes seeded non-Klipper statuses. Only Klipper rows are polled
+    // live (typically Virtual Klipper at 127.0.0.1) so the simulator stays connected
+    // without overwriting the rest of the demo fleet.
     const toPoll = process.env.DEMO_MODE === 'true'
-      ? printers.filter((p) => isLocalSimulatorHost(p.ip))
+      ? printers.filter((p) => p.type === 'klipper')
       : printers;
 
     if (toPoll.length === 0) {

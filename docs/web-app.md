@@ -63,7 +63,7 @@ The sidebar shows the operator-configured site name (`farm_name`, default CoMa) 
 
 `client/src/pages/Dashboard.jsx`
 
-TV-optimized command center. Polls `GET /api/dashboard` every 15 seconds. A live clock ticks every second client-side. Failed polls keep the last successful payload (same pattern as Fleet). The header uses the configured site name, not a hardcoded brand.
+TV-optimized command center. Polls `GET /api/dashboard` every 15 seconds. A live clock ticks every second client-side. Failed polls keep the last successful payload (same pattern as Fleet). The site name stays in the sidebar only; the dashboard header is utilization + clock to avoid repeating the brand. On desktop the page is a viewport-height CSS grid so charts, fleet, and projects share remaining space instead of stacking into a long scroll; below ~1100px it stacks normally.
 
 **TV Mode button:** calls `element.requestFullscreen()` on the dashboard container.
 
@@ -71,12 +71,12 @@ TV-optimized command center. Polls `GET /api/dashboard` every 15 seconds. A live
 
 | Section | Description |
 |---|---|
-| Header | Site name, CoreManufacturing subtitle, utilization %, live clock |
+| Header | Utilization %, printing count, live clock (site name is in the sidebar) |
 | KPI cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) |
-| Parts last 24h | Handmade SVG bar chart from `parts_by_hour` |
-| Fleet mix | Handmade SVG donut of live status counts |
+| Parts last 24h | Handmade SVG bar chart from `parts_by_hour`; fills its grid cell |
+| Fleet mix | Handmade SVG donut of live status counts; center shows printer count |
 | Needs Attention | Printers requiring a human, sorted AWAITING, ERROR, STOPPED, PAUSED, OFFLINE, then longest-waiting first. Click opens `/printers/:id`. Empty state: All clear. |
-| Fleet grid | Color-coded cells; click opens the incident view |
+| Fleet status | Equal-size responsive cells in one auto-fill grid that stretches to fill the card; model label on each cell |
 | Active Projects | All active projects with per-part 3-segment progress bars |
 
 `recent_activity` remains in the API payload for compatibility and is not rendered.

@@ -10,30 +10,30 @@ import { theme } from '../theme';
 const POLL_INTERVAL_MS = 15000;
 
 const CELL_COLORS = {
-  PRINTING:  { bg: '#1e3a5f', text: '#60a5fa', border: '#1e40af' },
-  IDLE:      { bg: '#1a2030', text: '#374151', border: '#232b3a' },
-  FINISHED:  { bg: '#14532d', text: '#22c55e', border: '#15803d' },
+  PRINTING:  { bg: '#2e1065', text: '#c4b5fd', border: '#6d28d9' },
+  IDLE:      { bg: '#18181f', text: '#71717a', border: '#27272a' },
+  FINISHED:  { bg: '#14532d', text: '#a3e635', border: '#3f6212' },
   STOPPED:   { bg: '#431407', text: '#fb923c', border: '#7c2d12' },
-  PAUSED:    { bg: '#451a03', text: '#f59e0b', border: '#78350f' },
-  ATTENTION: { bg: '#451a03', text: '#f59e0b', border: '#78350f' },
-  ERROR:     { bg: '#450a0a', text: '#ef4444', border: '#7f1d1d' },
-  OFFLINE:   { bg: '#0d1117', text: '#1f2937', border: '#161b22' },
+  PAUSED:    { bg: '#422006', text: '#fbbf24', border: '#854d0e' },
+  ATTENTION: { bg: '#422006', text: '#fbbf24', border: '#854d0e' },
+  ERROR:     { bg: '#450a0a', text: '#f87171', border: '#7f1d1d' },
+  OFFLINE:   { bg: '#09090b', text: '#3f3f46', border: '#18181b' },
 };
 
 const STAT_CARDS = [
-  { key: 'printing',    label: 'Printing',    color: '#3b82f6', help: null },
-  { key: 'idle',        label: 'Idle',        color: '#6b7280', help: null },
-  { key: 'awaiting',    label: 'Awaiting Sign-off', color: '#22c55e', help: 'Finished prints waiting for an operator to confirm good/bad before the next job dispatches' },
-  { key: 'parts_today', label: 'Parts Today', color: '#a78bfa', help: null },
+  { key: 'printing',    label: 'Printing',    color: '#a78bfa', help: null },
+  { key: 'idle',        label: 'Idle',        color: '#71717a', help: null },
+  { key: 'awaiting',    label: 'Awaiting Sign-off', color: '#a3e635', help: 'Finished prints waiting for an operator to confirm good/bad before the next job dispatches' },
+  { key: 'parts_today', label: 'Parts Today', color: '#2dd4bf', help: null },
 ];
 
 const LEGEND_ITEMS = [
-  { label: 'Printing', color: '#3b82f6' },
-  { label: 'Awaiting Sign-off', color: '#22c55e' },
-  { label: 'Idle',     color: '#4b5563' },
+  { label: 'Printing', color: '#8b5cf6' },
+  { label: 'Awaiting Sign-off', color: '#a3e635' },
+  { label: 'Idle',     color: '#52525b' },
   { label: 'Stopped',  color: '#fb923c' },
-  { label: 'Error',    color: '#ef4444' },
-  { label: 'Offline',  color: '#374151' },
+  { label: 'Error',    color: '#f87171' },
+  { label: 'Offline',  color: '#3f3f46' },
 ];
 
 const ATTENTION_ORDER = { AWAITING: 0, ERROR: 1, STOPPED: 2, PAUSED: 3, OFFLINE: 4 };
@@ -99,51 +99,16 @@ function formatWait(ms, now) {
   return formatDuration(Math.max(0, Math.round((now - ms) / 1000))) || '< 1m';
 }
 
-const ROW_STATUSES = ['PRINTING', 'FINISHED', 'IDLE', 'ERROR', 'STOPPED', 'OFFLINE'];
-
-function RowSummary({ group }) {
-  return (
-    <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-      {ROW_STATUSES.map(s => {
-        const count = group.filter(p => {
-          if (s === 'FINISHED') return isAwaiting(p);
-          return p.status === s && !isAwaiting(p);
-        }).length;
-        if (count === 0) return null;
-        const c = CELL_COLORS[s] || CELL_COLORS.IDLE;
-        const label = s === 'FINISHED' ? 'AWAITING' : s;
-        return (
-          <span key={s} style={{
-            fontSize: 10, color: c.text, background: c.bg,
-            border: `1px solid ${c.border}`, borderRadius: 3,
-            padding: '1px 6px', fontWeight: 700,
-          }}>
-            {count} {label}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const [data,  setData]  = useState(null);
   const [clock, setClock] = useState(new Date());
   const [allModels, setAllModels] = useState([]);
   const [lastPolled, setLastPolled] = useState(null);
-  const [farmName, setFarmName] = useState('CoMa');
   const dashRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(setAllModels).catch(() => {});
-    fetch('/api/settings')
-      .then(r => r.json())
-      .then(s => { if (s.farm_name) setFarmName(s.farm_name); })
-      .catch(() => {});
-    const onName = (e) => setFarmName(e.detail);
-    window.addEventListener('farmNameChanged', onName);
-    return () => window.removeEventListener('farmNameChanged', onName);
   }, []);
 
   useEffect(() => {
@@ -203,11 +168,11 @@ export default function Dashboard() {
   const errorCount = printers.filter(p => p.status === 'ERROR').length;
   const offlineCount = printers.filter(p => p.status === 'OFFLINE').length;
   const donutSegments = [
-    { label: 'Printing', value: stats.printing || 0, color: '#3b82f6' },
-    { label: 'Idle', value: stats.idle || 0, color: '#64748b' },
-    { label: 'Awaiting', value: stats.awaiting || 0, color: '#22c55e' },
-    { label: 'Error', value: errorCount, color: '#ef4444' },
-    { label: 'Offline', value: offlineCount, color: '#374151' },
+    { label: 'Printing', value: stats.printing || 0, color: theme.violetDeep },
+    { label: 'Idle', value: stats.idle || 0, color: '#3f3f46' },
+    { label: 'Awaiting', value: stats.awaiting || 0, color: theme.limeDeep },
+    { label: 'Error', value: errorCount, color: theme.red },
+    { label: 'Offline', value: offlineCount, color: '#27272a' },
   ];
 
   const barItems = parts_by_hour.map(h => ({
@@ -228,59 +193,138 @@ export default function Dashboard() {
   return (
     <div
       ref={dashRef}
+      className="coma-dash"
       style={{
         background: theme.page,
-        minHeight: '100%',
         color: theme.text,
         userSelect: 'none',
       }}
     >
       <style>{`
-        .coma-kpi { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-        .coma-charts { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 12px; }
+        .coma-dash {
+          display: grid;
+          grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1.55fr);
+          gap: 12px;
+          flex: 1;
+          min-height: 0;
+          height: 100%;
+          box-sizing: border-box;
+        }
+        .coma-dash:fullscreen,
+        .coma-dash:-webkit-full-screen {
+          height: 100vh;
+          width: 100vw;
+          padding: 16px 20px;
+          background: ${theme.page};
+        }
+        .coma-kpi {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 12px;
+          min-width: 0;
+        }
+        .coma-charts {
+          display: grid;
+          grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+          gap: 12px;
+          min-height: 0;
+          min-width: 0;
+        }
+        .coma-charts > * { min-height: 0; min-width: 0; height: 100%; }
+        .coma-bottom {
+          display: grid;
+          grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+          gap: 12px;
+          min-height: 0;
+          min-width: 0;
+        }
+        .coma-bottom > * { min-height: 0; min-width: 0; height: 100%; }
+        .coma-fleet-body {
+          flex: 1;
+          min-height: 0;
+          display: grid;
+          grid-template-rows: minmax(0, 1fr) auto;
+          gap: 10px;
+        }
+        .coma-fleet-cells {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          grid-auto-rows: minmax(0, 1fr);
+          gap: 8px;
+          min-height: 0;
+          height: 100%;
+          align-content: stretch;
+        }
+        .coma-fleet-cell {
+          min-height: 0;
+          border-radius: 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          justify-content: center;
+          gap: 4px;
+          cursor: pointer;
+          padding: 10px 12px;
+          text-align: left;
+          overflow: hidden;
+        }
+        .coma-projects-body {
+          flex: 1;
+          min-height: 0;
+          overflow: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        @media (max-width: 1200px) {
+          .coma-charts { grid-template-columns: 1fr 1fr; }
+          .coma-charts > :first-child { grid-column: 1 / -1; }
+        }
         @media (max-width: 1100px) {
-          .coma-kpi { grid-template-columns: repeat(2, 1fr); }
+          .coma-dash {
+            height: auto;
+            flex: none;
+            min-height: 0;
+            grid-template-rows: auto;
+          }
+          .coma-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .coma-charts { grid-template-columns: 1fr; }
+          .coma-charts > :first-child { grid-column: auto; }
+          .coma-bottom { grid-template-columns: 1fr; }
+          .coma-fleet-cells {
+            height: auto;
+            grid-auto-rows: minmax(88px, auto);
+          }
         }
         @media (max-width: 600px) {
           .coma-kpi { grid-template-columns: 1fr; }
+          .coma-fleet-cells { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
         }
       `}</style>
 
+      {/* Slim top bar: util + clock only. Site name lives in the sidebar. */}
       <div style={{
         background: theme.sidebar, border: `1px solid ${theme.border}`,
         borderRadius: theme.radius,
-        padding: '12px 20px',
+        padding: '10px 18px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 16, flexWrap: 'wrap', marginBottom: 16,
+        gap: 16, flexWrap: 'wrap',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 4, height: 36, background: theme.accent, borderRadius: 2, flexShrink: 0 }} />
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: '0.04em', color: '#f1f5f9' }}>
-              {farmName}
-            </div>
-            <div style={{ fontSize: 11, color: theme.textFaint, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 1 }}>
-              CoreManufacturing
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontSize: 13, color: theme.textFaint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontSize: 12, color: theme.textFaint, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 700 }}>
             Utilization
           </span>
-          <span style={{ fontSize: 32, fontWeight: 800, color: '#3b82f6', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 36, fontWeight: 800, color: theme.lime, fontVariantNumeric: 'tabular-nums', lineHeight: 1, textShadow: `0 0 24px ${theme.limeGlow}` }}>
             {utilPct}%
           </span>
-          <span style={{ fontSize: 13, color: theme.textFaint }}>
-            ({stats.printing} / {printers.length})
+          <span style={{ fontSize: 13, color: theme.textMuted }}>
+            {stats.printing} of {printers.length} printing
           </span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'monospace', fontSize: 28, fontWeight: 700, color: '#60a5fa', lineHeight: 1 }}>
+            <div style={{ fontFamily: 'monospace', fontSize: 28, fontWeight: 700, color: theme.violetSoft, lineHeight: 1 }}>
               {formatTime(clock)}
             </div>
             <div style={{ fontSize: 12, color: theme.textFaint, marginTop: 3 }}>
@@ -302,146 +346,155 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div className="coma-kpi">
-          {STAT_CARDS.map(({ key, label, color, help }) => (
-            <KpiCard
-              key={key}
-              label={label}
-              color={color}
-              help={help}
-              value={(stats[key] ?? 0).toLocaleString()}
-            />
-          ))}
-        </div>
+      <div className="coma-kpi">
+        {STAT_CARDS.map(({ key, label, color, help }) => (
+          <KpiCard
+            key={key}
+            label={label}
+            color={color}
+            help={help}
+            value={(stats[key] ?? 0).toLocaleString()}
+          />
+        ))}
+      </div>
 
-        <div className="coma-charts">
-          <Card title="Parts last 24h">
-            {barItems.every(i => i.value === 0) ? (
-              <p style={{ color: theme.textDim, fontSize: 13, margin: 0 }}>No finished parts in the last 24 hours.</p>
-            ) : (
-              <BarChart items={barItems} height={150} />
-            )}
-          </Card>
+      <div className="coma-charts">
+        <Card title="Parts last 24h" fill>
+          {barItems.every(i => i.value === 0) ? (
+            <p style={{ color: theme.textDim, fontSize: 13, margin: 'auto 0' }}>No finished parts in the last 24 hours.</p>
+          ) : (
+            <BarChart items={barItems} height="100%" />
+          )}
+        </Card>
 
-          <Card title="Fleet mix">
+        <Card title="Fleet mix" fill>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <DonutChart
               segments={donutSegments}
               size={150}
               thickness={18}
-              centerValue={`${utilPct}%`}
-              centerLabel="util"
+              centerValue={printers.length}
+              centerLabel="printers"
             />
-          </Card>
-
-          <Card title="Needs attention">
-            {attention.length === 0 ? (
-              <div style={{
-                background: '#14532d', color: '#86efac',
-                borderRadius: 8, padding: '10px 12px', fontSize: 13, fontWeight: 700,
-              }}>
-                All clear
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
-                {attention.map(({ printer, reason }) => {
-                  const c = CELL_COLORS[reason === 'AWAITING' ? 'FINISHED' : reason] || CELL_COLORS.IDLE;
-                  return (
-                    <button
-                      key={printer.id}
-                      onClick={() => navigate(`/printers/${printer.id}`)}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        background: theme.cardAlt, border: `1px solid ${theme.border}`,
-                        borderRadius: 8, padding: '7px 10px', cursor: 'pointer', textAlign: 'left',
-                      }}
-                    >
-                      <span style={{
-                        fontSize: 10, fontWeight: 800, color: c.text, background: c.bg,
-                        borderRadius: 4, padding: '1px 6px',
-                      }}>
-                        {reason}
-                      </span>
-                      <span style={{ flex: 1, fontSize: 13, color: theme.text, fontWeight: 600 }}>
-                        {printer.name}
-                      </span>
-                      <span style={{ fontSize: 11, color: theme.textDim }}>
-                        {formatWait(printer.last_event_at, now)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-        </div>
-
-        <Card title="Fleet status">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Object.entries(grouped).map(([model, group]) => (
-              <div key={model} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 76, flexShrink: 0, textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, color: theme.textMuted, fontWeight: 600 }}>
-                    {MODEL_LABELS[model] || model}
-                  </div>
-                  <div style={{ fontSize: 11, color: theme.textFaint }}>x{group.length}</div>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
-                  {group.map(printer => {
-                    const c = cellColors(printer);
-                    return (
-                      <button
-                        key={printer.id}
-                        title={`${printer.name}: ${printer.status}`}
-                        onClick={() => navigate(`/printers/${printer.id}`)}
-                        style={{
-                          width: 54, height: 44, borderRadius: 8,
-                          background: c.bg, border: `1px solid ${c.border}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          cursor: 'pointer', padding: 0,
-                        }}
-                      >
-                        <span style={{
-                          fontFamily: 'monospace', fontSize: 8, color: c.text,
-                          textAlign: 'center', padding: '0 3px',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          width: '100%',
-                        }}>
-                          {printer.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <RowSummary group={group} />
-              </div>
-            ))}
-          </div>
-          <div style={{
-            display: 'flex', gap: 18, marginTop: 14,
-            paddingTop: 12, borderTop: `1px solid ${theme.border}`, flexWrap: 'wrap',
-          }}>
-            {LEGEND_ITEMS.map(({ label, color }) => (
-              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: theme.textFaint }}>{label}</span>
-              </div>
-            ))}
           </div>
         </Card>
 
-        <Card title="Active projects">
+        <Card title="Needs attention" fill>
+          {attention.length === 0 ? (
+            <div style={{
+              background: '#14532d', color: '#86efac',
+              borderRadius: 8, padding: '10px 12px', fontSize: 13, fontWeight: 700,
+              margin: 'auto 0',
+            }}>
+              All clear
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
+              {attention.map(({ printer, reason }) => {
+                const c = CELL_COLORS[reason === 'AWAITING' ? 'FINISHED' : reason] || CELL_COLORS.IDLE;
+                return (
+                  <button
+                    key={printer.id}
+                    onClick={() => navigate(`/printers/${printer.id}`)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      background: theme.cardAlt, border: `1px solid ${theme.border}`,
+                      borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 10, fontWeight: 800, color: c.text, background: c.bg,
+                      borderRadius: 4, padding: '1px 6px',
+                    }}>
+                      {reason}
+                    </span>
+                    <span style={{ flex: 1, fontSize: 13, color: theme.text, fontWeight: 600 }}>
+                      {printer.name}
+                    </span>
+                    <span style={{ fontSize: 11, color: theme.textDim }}>
+                      {formatWait(printer.last_event_at, now)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="coma-bottom">
+        <Card title="Fleet status" fill>
+          <div className="coma-fleet-body">
+            <div className="coma-fleet-cells">
+              {Object.entries(grouped).flatMap(([model, group]) =>
+                group.map(printer => {
+                  const c = cellColors(printer);
+                  const awaiting = isAwaiting(printer);
+                  const statusLabel = awaiting ? 'Awaiting' : (printer.status || 'Unknown');
+                  const modelLabel = MODEL_LABELS[model] || model;
+                  return (
+                    <button
+                      key={printer.id}
+                      type="button"
+                      title={`${printer.name}: ${statusLabel}`}
+                      onClick={() => navigate(`/printers/${printer.id}`)}
+                      className="coma-fleet-cell"
+                      style={{
+                        background: c.bg,
+                        border: `1px solid ${c.border}`,
+                        color: c.text,
+                      }}
+                    >
+                      <span style={{
+                        fontSize: 11, fontWeight: 600, color: theme.textFaint,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {modelLabel}
+                      </span>
+                      <span style={{
+                        fontSize: 15, fontWeight: 700, color: theme.text,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {printer.name}
+                      </span>
+                      <span style={{
+                        fontSize: 12, fontWeight: 700, color: c.text,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}>
+                        {statusLabel}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div style={{
+              display: 'flex', gap: 16, paddingTop: 8,
+              borderTop: `1px solid ${theme.border}`, flexWrap: 'wrap', flexShrink: 0,
+            }}>
+              {LEGEND_ITEMS.map(({ label, color }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, color: theme.textFaint }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Active projects" fill>
           {active_projects.length === 0 ? (
-            <p style={{ color: theme.textMuted, fontSize: 13, margin: 0 }}>
+            <p style={{ color: theme.textMuted, fontSize: 13, margin: 'auto 0' }}>
               No active projects. Create one on the Projects page and set it Active to track production here.
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div className="coma-projects-body">
               {active_projects.map(proj => {
                 const hasStats = (proj.elapsed_secs > 0) || (proj.material_used_grams > 0);
                 return (
                   <div key={proj.id} style={{
-                    background: theme.cardAlt, borderRadius: 10, padding: '12px 14px',
+                    background: theme.cardAlt, borderRadius: 10, padding: '12px 14px', flexShrink: 0,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{proj.name}</span>
@@ -475,11 +528,11 @@ export default function Dashboard() {
                                 <span style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
                                   <span style={{ color: theme.text }}>{part.completed_qty.toLocaleString()}</span>
                                   {activeQty > 0 && (
-                                    <span style={{ color: '#60a5fa' }}> +{activeQty.toLocaleString()}</span>
+                                    <span style={{ color: theme.violetSoft }}> +{activeQty.toLocaleString()}</span>
                                   )}
                                   <span style={{ color: theme.textFaint }}>{' / '}{part.target_qty.toLocaleString()}</span>
                                 </span>
-                                <span style={{ fontSize: 12, fontWeight: 700, color: part.status === 'closed' ? '#4ade80' : '#60a5fa', minWidth: 34, textAlign: 'right' }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: part.status === 'closed' ? theme.lime : theme.violetSoft, minWidth: 34, textAlign: 'right' }}>
                                   {pct}%
                                 </span>
                                 {part.status === 'closed' && (
@@ -497,7 +550,7 @@ export default function Dashboard() {
                               <div style={{
                                 position: 'absolute', left: 0, top: 0, height: '100%',
                                 width: `${completedPct}%`,
-                                background: '#22c55e',
+                                background: theme.limeDeep,
                                 borderRadius: activePct > 0 ? '4px 0 0 4px' : 4,
                                 transition: 'width 0.5s',
                               }} />
@@ -505,7 +558,7 @@ export default function Dashboard() {
                                 <div style={{
                                   position: 'absolute', left: `${completedPct}%`, top: 0, height: '100%',
                                   width: `${activePct}%`,
-                                  background: '#3b82f6',
+                                  background: theme.violetDeep,
                                   borderRadius: '0 4px 4px 0',
                                   transition: 'width 0.5s',
                                 }} />
@@ -533,7 +586,7 @@ export default function Dashboard() {
                           <span style={{ color: theme.textMuted }}>{formatDuration(proj.elapsed_secs)}</span>
                         )}
                         {proj.material_used_grams > 0 && (
-                          <span style={{ color: '#a78bfa' }}>{formatMaterial(proj.material_used_grams)}</span>
+                          <span style={{ color: theme.violet }}>{formatMaterial(proj.material_used_grams)}</span>
                         )}
                         {proj.model_breakdown && proj.model_breakdown.length > 1 && (
                           <span style={{ color: theme.textDim }}>

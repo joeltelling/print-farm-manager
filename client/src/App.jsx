@@ -23,14 +23,15 @@ const NAV_ITEMS = [
 const navLinkStyle = ({ isActive }) => ({
   display: 'block',
   padding: '9px 14px',
-  borderRadius: 10,
-  color: isActive ? '#fff' : theme.textMuted,
-  background: isActive ? theme.accentDeep : 'transparent',
+  borderRadius: 999,
+  color: isActive ? '#0a0a0a' : theme.textMuted,
+  background: isActive ? theme.lime : 'transparent',
   textDecoration: 'none',
   fontWeight: isActive ? 700 : 500,
   fontSize: 14,
-  transition: 'background 0.15s',
+  transition: 'background 0.15s, color 0.15s',
   whiteSpace: 'nowrap',
+  boxShadow: isActive ? `0 0 20px ${theme.limeGlow}` : 'none',
 });
 
 export default function App() {
@@ -49,15 +50,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <style>{`
-        #layout { display: flex; min-height: 100vh; background: ${theme.page}; }
-        #sidebar { width: 220px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.border}; display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; position: sticky; top: 0; height: 100vh; box-sizing: border-box; }
+        #layout { display: flex; min-height: 100vh; height: 100vh; background: ${theme.page}; overflow: hidden; }
+        #sidebar { width: 220px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.border}; display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; height: 100%; box-sizing: border-box; }
         #topbar { display: none; background: ${theme.sidebar}; border-bottom: 1px solid ${theme.border}; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
-        #main { flex: 1; padding: 24px 28px; overflow-y: auto; min-width: 0; background: ${theme.page}; }
+        #main { flex: 1; padding: 16px 20px; overflow-y: auto; min-width: 0; min-height: 0; background: ${theme.page}; display: flex; flex-direction: column; }
         @media (max-width: 600px) {
-          #layout { flex-direction: column; }
+          #layout { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
           #sidebar { display: none; }
           #topbar { display: flex; }
-          #main { padding: 16px 14px; }
+          #main { padding: 12px; }
         }
       `}</style>
 
@@ -66,11 +67,12 @@ export default function App() {
           <div style={{ padding: '4px 8px 16px', borderBottom: `1px solid ${theme.border}`, marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
-                width: 32, height: 32, borderRadius: 10,
-                background: theme.accentDeep,
-                color: '#fff', fontWeight: 800, fontSize: 11,
+                width: 34, height: 34, borderRadius: 12,
+                background: `linear-gradient(135deg, ${theme.lime} 0%, ${theme.violetDeep} 100%)`,
+                color: '#0a0a0a', fontWeight: 800, fontSize: 11,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 letterSpacing: '-0.04em',
+                boxShadow: `0 0 18px ${theme.limeGlow}`,
               }}>
                 CoMa
               </div>
@@ -100,8 +102,8 @@ export default function App() {
               style={({ isActive }) => ({
                 padding: '5px 10px',
                 borderRadius: 8,
-                color: isActive ? '#fff' : theme.textMuted,
-                background: isActive ? theme.accentDeep : theme.cardAlt,
+                background: isActive ? theme.lime : theme.cardAlt,
+                color: isActive ? '#0a0a0a' : theme.textMuted,
                 textDecoration: 'none',
                 fontSize: 13,
                 fontWeight: isActive ? 700 : 400,
