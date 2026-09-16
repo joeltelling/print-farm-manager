@@ -80,7 +80,9 @@ Manage the environment with:
 tail -f .run/dev.log
 ```
 
-The scripts store only local runtime files in `.run/`, which is excluded from Git. `stop.sh` targets the isolated process group created by `start.sh`; it does not search for and terminate unrelated Node.js processes.
+The scripts ask whether to include the local Virtual Klipper Printer when run from an interactive terminal. Pass `--with-simulator` or `--without-simulator` to make the choice explicit. `WITH_KLIPPER_SIMULATOR=true` and `WITH_KLIPPER_SIMULATOR=false` provide the same control for automated workflows. A simulator started by `start.sh` is remembered in `.run/`, so a non-interactive `stop.sh` or `restart.sh` manages it too.
+
+The scripts store only local runtime files in `.run/`, which is excluded from Git. `stop.sh` targets the isolated process group created by `start.sh`; it does not search for and terminate unrelated Node.js processes. Stopping the simulator preserves its local printer data.
 
 Environment variables can be set for a single start. For example, development without real printer polling is available with:
 
@@ -95,6 +97,33 @@ Use alternate ports when the defaults are already assigned to another local serv
 ```bash
 PORT=3100 VITE_PORT=5174 ./start.sh
 ```
+
+## Virtual Klipper Printer
+
+For development without physical hardware, clone the simulator once into its ignored local directory:
+
+```bash
+mkdir -p tools
+git clone https://github.com/mainsail-crew/virtual-klipper-printer.git tools/virtual-klipper-printer
+```
+
+Docker with the Compose plugin is required for the simulator. Start the full environment interactively with `./start.sh`, or choose it explicitly:
+
+```bash
+./start.sh --with-simulator
+```
+
+The simulator exposes Moonraker at `http://localhost:7125` and its dummy webcam at `http://localhost:8110`. In Print Farm Manager, create a printer model that uses the Klipper connector, then add a printer with `127.0.0.1` as its address. The Klipper driver uses Moonraker's port 7125 automatically and does not require an API key for this local simulator.
+
+The simulator directory and its printer data stay local and are excluded through `.git/info/exclude`. They are not part of commits from this fork. These commands control whether the lifecycle scripts include it:
+
+```bash
+./stop.sh --with-simulator
+./restart.sh --with-simulator
+./restart.sh --without-simulator
+```
+
+`--without-simulator` restarts only Print Farm Manager and leaves an already running simulator unchanged.
 
 ## Manual Development Commands
 

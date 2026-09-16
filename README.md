@@ -83,6 +83,8 @@ cd core-manufacturing
 
 `start.sh` validates Node.js, installs the locked server and client dependencies when needed, builds the initial client bundle, and starts both development services in the background. Use `./stop.sh` and `./restart.sh` to manage them. Logs are written to `.run/dev.log`.
 
+The scripts can also manage a local [Virtual Klipper Printer](https://github.com/mainsail-crew/virtual-klipper-printer) for development without physical hardware. In a terminal they ask whether to include it. Use `--with-simulator` or `--without-simulator` to choose explicitly, including in automated workflows. See the [Linux installation guide](docs/installation.md#virtual-klipper-printer) for the one-time local clone and application setup.
+
 ### Prefer Docker instead of a local Node.js install?
 
 ```bash

@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-09-16: Optional Virtual Klipper lifecycle
+
+Linux developers can now test the Klipper integration without a physical printer by running the locally cloned Virtual Klipper Printer alongside Print Farm Manager. The development lifecycle scripts offer an interactive choice and explicit flags, while automated runs can use the same behavior without prompts. Simulator data stays local and stopping the container preserves it for the next session.
+
+This validates development against a software simulator only. It has not been validated on physical Klipper hardware.
+
+### Changes
+- `start.sh`: optionally starts Virtual Klipper Printer with Docker Compose, waits for Moonraker readiness, and records that the simulator is managed by the development lifecycle.
+- `stop.sh`: optionally stops the simulator without removing its container data and handles simulator shutdown even when the application is already stopped.
+- `restart.sh`: asks once and forwards the selected simulator behavior to both lifecycle operations.
+- `README.md`, `docs/installation.md`: document the interactive prompt, non-interactive flags, local simulator clone, endpoints, and Print Farm Manager connection settings.
+
 ## 2026-09-16: Linux development setup and lifecycle scripts
 
 This fork is now ready for a reproducible Linux development workflow. A fresh checkout can be started with one command without manually installing the root and client packages or remembering the initial client build. The managed process group keeps the API and Vite server together, so stopping or restarting the environment does not rely on killing every Node.js process or whichever process happens to own a port.

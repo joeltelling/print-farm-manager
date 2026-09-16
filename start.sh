@@ -7,11 +7,54 @@ RUNTIME_DIR="$PROJECT_DIR/.run"
 PID_FILE="$RUNTIME_DIR/dev.pid"
 LOG_FILE="$RUNTIME_DIR/dev.log"
 DEPENDENCY_STAMP="$RUNTIME_DIR/dependencies.sha256"
+SIMULATOR_DIR="$PROJECT_DIR/tools/virtual-klipper-printer"
+SIMULATOR_MARKER="$RUNTIME_DIR/klipper-simulator.enabled"
 
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
   exit 1
 }
+
+usage() {
+  cat <<'EOF'
+Usage: ./start.sh [--with-simulator|--without-simulator]
+
+  --with-simulator     Start the local Virtual Klipper Printer too.
+  --without-simulator  Start only Print Farm Manager.
+
+Without an option, an interactive terminal asks whether to start the simulator.
+Non-interactive runs default to Print Farm Manager only. The environment variable
+WITH_KLIPPER_SIMULATOR=true|false provides the same non-interactive control.
+EOF
+}
+
+simulator_choice="auto"
+case "${WITH_KLIPPER_SIMULATOR:-}" in
+  true|1|yes) simulator_choice="yes" ;;
+  false|0|no) simulator_choice="no" ;;
+  "") ;;
+  *) fail "WITH_KLIPPER_SIMULATOR must be true or false." ;;
+esac
+
+while (( $# > 0 )); do
+  case "$1" in
+    --with-simulator) simulator_choice="yes" ;;
+    --without-simulator) simulator_choice="no" ;;
+    -h|--help) usage; exit 0 ;;
+    *) fail "Unknown option: $1. Run ./start.sh --help for usage." ;;
+  esac
+  shift
+done
+
+if [[ "$simulator_choice" == "auto" ]]; then
+  simulator_choice="no"
+  if [[ -t 0 && -t 1 ]]; then
+    read -r -p "Start the Virtual Klipper Printer simulator too? [y/N] " reply
+    case "$reply" in
+      y|Y|yes|YES|Yes) simulator_choice="yes" ;;
+    esac
+  fi
+fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then
   fail "start.sh is intended for Linux. Use the npm commands documented for your platform."
@@ -27,6 +70,37 @@ if (( node_major < 22 || node_major >= 24 )); then
 fi
 
 mkdir -p "$RUNTIME_DIR"
+
+start_simulator() {
+  command -v docker >/dev/null 2>&1 || fail "Docker is required to start the Virtual Klipper Printer."
+  docker compose version >/dev/null 2>&1 || fail "Docker Compose is required to start the Virtual Klipper Printer."
+  if [[ ! -f "$SIMULATOR_DIR/docker-compose.yml" ]]; then
+    fail "Virtual Klipper Printer is missing. Clone https://github.com/mainsail-crew/virtual-klipper-printer.git into $SIMULATOR_DIR"
+  fi
+
+  printf 'Starting Virtual Klipper Printer...\n'
+  (cd "$SIMULATOR_DIR" && docker compose up -d)
+
+  local ready=false
+  for _ in {1..60}; do
+    if node -e "fetch('http://127.0.0.1:7125/server/info', { signal: AbortSignal.timeout(2000) }).then(async r => { const body = await r.json(); if (!r.ok || body.result?.klippy_state !== 'ready') process.exit(1) }).catch(() => process.exit(1))"; then
+      ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "$ready" != true ]]; then
+    (cd "$SIMULATOR_DIR" && docker compose logs --tail=40) >&2 || true
+    fail "Virtual Klipper Printer did not become ready on port 7125."
+  fi
+
+  : > "$SIMULATOR_MARKER"
+  printf 'Virtual Klipper Printer is ready at http://localhost:7125\n'
+}
+
+if [[ "$simulator_choice" == "yes" ]]; then
+  start_simulator
+fi
 
 api_port="${PORT:-3000}"
 vite_port="${VITE_PORT:-5173}"
@@ -45,6 +119,7 @@ if [[ -f "$PID_FILE" ]]; then
   if [[ "$existing_pid" =~ ^[0-9]+$ ]] && kill -0 -- "-$existing_pid" 2>/dev/null; then
     printf 'Print Farm Manager is already running (process group %s).\n' "$existing_pid"
     printf 'Log: %s\n' "$LOG_FILE"
+    [[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\n'
     exit 0
   fi
   rm -f "$PID_FILE"
@@ -130,4 +205,5 @@ trap - INT TERM
 
 printf 'Print Farm Manager development services are running.\n'
 printf 'UI:  http://localhost:%s\nAPI: http://localhost:%s\nLog: %s\n' "$vite_port" "$api_port" "$LOG_FILE"
+[[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\nVirtual webcam: http://localhost:8110\n'
 printf 'Stop them with: %s/stop.sh\n' "$PROJECT_DIR"
