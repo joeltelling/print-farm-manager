@@ -187,6 +187,7 @@ export function ManufacturingDashboard() {
           <Table
             columns={[
               { key: 'machine', label: 'Machine' },
+              { key: 'rate_mode', label: 'Mode', render: r => r.rate_mode || 'manual' },
               {
                 key: 'hourly_rate',
                 label: 'USD/h',
@@ -798,9 +799,17 @@ export function InventoryPage() {
 }
 
 export function MachinesPage() {
+  const emptyForm = {
+    machine: '',
+    rate_mode: 'manual',
+    hourly_rate: '',
+    maintenance_rate: '',
+    power_kw: '',
+  };
   const [rows, setRows] = useState([]);
   const [candidates, setCandidates] = useState([]);
-  const [form, setForm] = useState({ machine: '', hourly_rate: '' });
+  const [form, setForm] = useState(emptyForm);
+  const [elecPrice, setElecPrice] = useState('0');
   const [msg, setMsg] = useState('');
   const [q, setQ] = useState('');
   const { showToast, feedbackEl } = useErpFeedback();
@@ -810,7 +819,12 @@ export function MachinesPage() {
     return list || [];
   });
 
+  const loadEnergy = () => fetch('/api/erp/mfg/energy').then(r => r.json()).then(cfg => {
+    setElecPrice(String(cfg?.electricity_price_per_kwh ?? 0));
+  }).catch(() => {});
+
   useEffect(() => {
+    loadEnergy();
     load().then(async (machines) => {
       const names = new Set((machines || []).map(m => m.machine).filter(Boolean));
       try {
@@ -821,14 +835,46 @@ export function MachinesPage() {
     });
   }, []);
 
+  const elecNum = Number(elecPrice) || 0;
+  const previewRate = form.rate_mode === 'calculated'
+    ? (Number(form.maintenance_rate) || 0) + (Number(form.power_kw) || 0) * elecNum
+    : Number(form.hourly_rate) || 0;
+
+  const saveEnergy = async (e) => {
+    e.preventDefault();
+    try {
+      const out = await apiJson('/api/erp/mfg/energy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ electricity_price_per_kwh: Number(elecPrice) }),
+      });
+      setElecPrice(String(out.electricity_price_per_kwh));
+      await load();
+      showToast(
+        out.recalculated_machines
+          ? `Electricity saved; recalculated ${out.recalculated_machines} machine(s)`
+          : 'Electricity price saved'
+      );
+    } catch (ex) {
+      showToast(`Energy save failed: ${ex.message}`, 'error');
+    }
+  };
+
   const save = async (e) => {
     e.preventDefault();
     try {
+      const body = {
+        machine: form.machine,
+        rate_mode: form.rate_mode,
+        hourly_rate: Number(form.hourly_rate) || 0,
+        maintenance_rate: Number(form.maintenance_rate) || 0,
+        power_kw: Number(form.power_kw) || 0,
+      };
       await apiJson('/api/erp/mfg/machines', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ machine: form.machine, hourly_rate: Number(form.hourly_rate) }),
+        body: JSON.stringify(body),
       });
-      setForm({ machine: '', hourly_rate: '' });
+      setForm(emptyForm);
       const list = await load();
       const names = new Set((list || []).map(m => m.machine).filter(Boolean));
       for (const c of candidates) names.add(c);
@@ -849,6 +895,16 @@ export function MachinesPage() {
     }
   };
 
+  const editRow = (r) => {
+    setForm({
+      machine: r.machine || '',
+      rate_mode: r.rate_mode === 'calculated' ? 'calculated' : 'manual',
+      hourly_rate: String(r.hourly_rate ?? ''),
+      maintenance_rate: String(r.maintenance_rate ?? ''),
+      power_kw: String(r.power_kw ?? ''),
+    });
+  };
+
   const filtered = rows.filter(r => {
     if (!q) return true;
     const needle = q.toLowerCase();
@@ -862,13 +918,35 @@ export function MachinesPage() {
   return (
     <ErpShell
       title="Machine Rates"
-      subtitle="Same as Acres: name + USD/h. CoMa also links shopfloor printers (model, status). LABOR is the default labor rate for BOM hours."
+      subtitle="Per machine: manual USD/h, or calculated from maintenance USD/h + kW x electricity USD/kWh. LABOR is the BOM labor rate."
     >
       <div style={{ marginBottom: 12 }}>
         <button type="button" onClick={sync} style={btnSecondary}>Sync printers from shopfloor</button>
         {msg && <span style={{ marginLeft: 10, color: theme.lime, fontSize: 13 }}>{msg}</span>}
       </div>
-      <Card title="New / Update rate">
+
+      <Card title="Electricity price (site-wide)">
+        <form onSubmit={saveEnergy} style={formRow}>
+          <div>
+            <label style={labelStyle}>USD / kWh</label>
+            <input
+              required
+              type="number"
+              step="0.0001"
+              min="0"
+              value={elecPrice}
+              onChange={e => setElecPrice(e.target.value)}
+              style={INPUT_STYLE}
+            />
+          </div>
+          <button type="submit" style={BTN_PRIMARY}>Save electricity</button>
+        </form>
+        <div style={{ marginTop: 8, fontSize: 12, color: theme.textDim }}>
+          Changing this recalculates every machine in calculated mode.
+        </div>
+      </Card>
+
+      <Card title="New / Update rate" style={{ marginTop: 12 }}>
         <form onSubmit={save} style={formRow}>
           <div>
             <label style={labelStyle}>Machine</label>
@@ -885,21 +963,81 @@ export function MachinesPage() {
             </datalist>
           </div>
           <div>
-            <label style={labelStyle}>Hourly rate (USD/h)</label>
-            <input
-              required
-              type="number"
-              step="0.0001"
-              min="0"
-              value={form.hourly_rate}
-              onChange={e => setForm({ ...form, hourly_rate: e.target.value })}
-              placeholder="0.0000"
+            <label style={labelStyle}>Rate mode</label>
+            <select
+              value={form.rate_mode}
+              onChange={e => setForm({ ...form, rate_mode: e.target.value })}
               style={INPUT_STYLE}
-            />
+            >
+              <option value="manual">Manual (enter USD/h)</option>
+              <option value="calculated">Calculated (maintenance + power)</option>
+            </select>
+          </div>
+          {form.rate_mode === 'manual' ? (
+            <div>
+              <label style={labelStyle}>Hourly rate (USD/h)</label>
+              <input
+                required
+                type="number"
+                step="0.0001"
+                min="0"
+                value={form.hourly_rate}
+                onChange={e => setForm({ ...form, hourly_rate: e.target.value })}
+                placeholder="0.0000"
+                style={INPUT_STYLE}
+              />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label style={labelStyle}>Maintenance (USD/h)</label>
+                <input
+                  required
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={form.maintenance_rate}
+                  onChange={e => setForm({ ...form, maintenance_rate: e.target.value })}
+                  placeholder="0.0000"
+                  style={INPUT_STYLE}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Power draw (kW)</label>
+                <input
+                  required
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={form.power_kw}
+                  onChange={e => setForm({ ...form, power_kw: e.target.value })}
+                  placeholder="e.g. 0.35"
+                  style={INPUT_STYLE}
+                />
+              </div>
+            </>
+          )}
+          <div>
+            <label style={labelStyle}>Effective USD/h</label>
+            <div style={{
+              ...INPUT_STYLE,
+              display: 'flex',
+              alignItems: 'center',
+              fontWeight: 700,
+              color: previewRate > 0 ? theme.lime : theme.orange,
+            }}>
+              {wac4(previewRate)}
+            </div>
           </div>
           <button type="submit" style={BTN_PRIMARY}>Save</button>
         </form>
+        {form.rate_mode === 'calculated' && (
+          <div style={{ marginTop: 8, fontSize: 12, color: theme.textDim }}>
+            Formula: maintenance + (kW x {wac4(elecNum)} USD/kWh) = {wac4(previewRate)} USD/h
+          </div>
+        )}
       </Card>
+
       <Card title="Rates" style={{ marginTop: 12 }}>
         <input
           value={q}
@@ -910,6 +1048,7 @@ export function MachinesPage() {
         <Table
           columns={[
             { key: 'machine', label: 'Machine' },
+            { key: 'rate_mode', label: 'Mode' },
             {
               key: 'hourly_rate',
               label: 'USD/h',
@@ -920,26 +1059,39 @@ export function MachinesPage() {
               ),
             },
             {
+              key: 'maintenance_rate',
+              label: 'Maint $/h',
+              render: r => (r.rate_mode === 'calculated' ? wac4(r.maintenance_rate) : '-'),
+            },
+            {
+              key: 'power_kw',
+              label: 'kW',
+              render: r => (r.rate_mode === 'calculated' ? wac4(r.power_kw) : '-'),
+            },
+            {
+              key: 'energy_rate',
+              label: 'Energy $/h',
+              render: r => (r.rate_mode === 'calculated' ? wac4(r.energy_rate) : '-'),
+            },
+            {
               key: 'printer',
               label: 'Linked printer',
               render: r => (r.printer_name
                 ? `${r.printer_name}${r.printer_model ? ` (${r.printer_model})` : ''}`
                 : (r.printer_id != null ? `#${r.printer_id}` : '-')),
             },
-            { key: 'printer_status', label: 'Status', render: r => r.printer_status || '-' },
             {
               key: 'needs_erp_data',
               label: 'Needs rate',
               render: r => (r.needs_erp_data || Number(r.hourly_rate) <= 0 ? 'yes' : ''),
             },
-            { key: 'is_active', label: 'Active', render: r => (r.is_active ? 'yes' : 'no') },
             {
               key: 'edit',
               label: '',
               render: r => (
                 <button
                   type="button"
-                  onClick={() => setForm({ machine: r.machine, hourly_rate: String(r.hourly_rate ?? '') })}
+                  onClick={() => editRow(r)}
                   style={{ ...btnSecondary, padding: '4px 10px' }}
                 >
                   Edit
@@ -950,7 +1102,7 @@ export function MachinesPage() {
           rows={filtered}
         />
         <div style={{ marginTop: 8, fontSize: 12, color: theme.textDim }}>
-          Tip: click Edit on a row to load it into the form. Costing uses USD/h × (std minutes / 60).
+          Costing uses effective USD/h x (std minutes / 60).
         </div>
       </Card>
       {feedbackEl}

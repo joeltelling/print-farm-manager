@@ -665,7 +665,8 @@ Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/RE
 | `POST` | `/api/erp/postings/:id/dismiss` | Discard pending posting without stock moves |
 | `GET`/`POST` | `/api/erp/items`, `PUT /api/erp/items/:id` | SKU master (`item_role`: product/component/raw, `sourcing`: manufactured/outsource) |
 | `GET`/`POST` | `/api/erp/warehouses`, `/api/erp/locations` | WH + bins |
-| `GET`/`POST` | `/api/erp/mfg/machines` | Rate centers: `machine` + `hourly_rate` (USD/h). GET joins linked printer name/model/status when `printer_id` is set. Seeded `LABOR` row is the BOM labor rate. |
+| `GET`/`POST` | `/api/erp/mfg/machines` | Rate centers. Per machine: `rate_mode` `manual` (set `hourly_rate` USD/h) or `calculated` (`maintenance_rate` USD/h + `power_kw` × site electricity). GET joins linked printer name/model/status. Seeded `LABOR` is the BOM labor rate. |
+| `GET`/`PUT` | `/api/erp/mfg/energy` | Site electricity price (`electricity_price_per_kwh`, stored as `pricing_config.ELEC_KWH`). PUT recalculates all calculated-mode machines. |
 | `GET`/`POST` | `/api/erp/mfg/components` | Manufacturing components |
 | `POST` | `/api/erp/mfg/calculate-component-cost` | Material + time estimate (includes scrap %) |
 | `GET` | `/api/erp/inventory/stock`, `/api/erp/inventory/dashboard` | On-hand + KPIs |

@@ -257,7 +257,7 @@ All ERP pages use the CoMa shell, `theme.js`, inline styles, `useToast`, and `us
 | `/erp/locations` | Create warehouses and validated `##A##` locations |
 | `/erp/inventory` | Receive by SKU; value-by-warehouse charts; per-warehouse qty/value charts; on-hand total footer |
 | `/erp/manufacturing` | Utilization vs machine rates, open WOs, machines missing rates |
-| `/erp/machines` | Sync printers, filter/edit machine rates, and clear missing-rate reminders |
+| `/erp/machines` | Sync printers; set electricity USD/kWh; per-machine manual USD/h or calculated (maintenance + kW); clear missing-rate reminders |
 | `/erp/components` | Upsert/edit manufacturing components; Mat $/unit and Time $/unit columns |
 | `/erp/bom` | Product+BOM, inline qty edit, three-line cost footer, estimate* marker, deletes |
 | `/erp/wo` | Create from BOM products, warehouse/name columns, complete qty, pick list with local QR |

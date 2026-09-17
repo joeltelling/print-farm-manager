@@ -23,7 +23,7 @@ Production: one process (`node server/index.js` serving `client/dist`).
 | Warehouses + locations | `/warehouses`, `/locations` | `/erp/locations` |
 | Inventory receive + stock + charts | `/inventory/*` | `/erp/inventory` |
 | Manufacturing dashboard | dashboard + shared machines + open WOs | `/erp/manufacturing` |
-| Machine rates (printer-linked) | `/mfg/machines` | `/erp/machines` (USD/h + linked printer name/model/status) |
+| Machine rates (printer-linked) | `/mfg/machines` | `/erp/machines` (manual USD/h or calculated: maintenance + kW × USD/kWh; linked printer fields) |
 | Manufacturing components + cost estimate | `/mfg/components`, `/mfg/calculate-component-cost` | `/erp/components` |
 | BOM (lines, cost with WAC/MFG fallback, delete) | `/bom/*` | `/erp/bom` |
 | Work orders + complete (UOM-aware issues) | `/wo/*` | `/erp/wo`, `/erp/qr` |

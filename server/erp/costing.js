@@ -42,17 +42,54 @@ function looksLikeRaw(code) {
   return /^(raw(_?mat)?|rm|raw[-\s]?materials?|materia\s*prima|mp)/.test(c);
 }
 
+function electricityPricePerKwh(db) {
+  const r = db.prepare("SELECT value FROM pricing_config WHERE code = 'ELEC_KWH'").get();
+  return num(r?.value);
+}
+
+/**
+ * Effective machine USD/h.
+ * manual: stored hourly_rate
+ * calculated: maintenance_rate + power_kw * electricity USD/kWh
+ */
+function effectiveHourlyRate(row, elecPrice = null) {
+  if (!row) return 0;
+  const mode = String(row.rate_mode || 'manual').toLowerCase();
+  if (mode === 'calculated') {
+    const elec = elecPrice == null ? 0 : num(elecPrice);
+    return round4(num(row.maintenance_rate) + num(row.power_kw) * elec);
+  }
+  return round4(num(row.hourly_rate));
+}
+
 function laborRate(db) {
-  const r = db.prepare("SELECT hourly_rate FROM machine WHERE machine = 'LABOR'").get();
-  return num(r?.hourly_rate);
+  const r = db.prepare("SELECT * FROM machine WHERE machine = 'LABOR'").get();
+  return effectiveHourlyRate(r, electricityPricePerKwh(db));
 }
 
 function machineRate(db, name) {
   if (!name) return 0;
   const r = db.prepare(
-    'SELECT hourly_rate FROM machine WHERE lower(machine) = lower(?)'
+    'SELECT * FROM machine WHERE lower(machine) = lower(?)'
   ).get(name);
-  return num(r?.hourly_rate);
+  return effectiveHourlyRate(r, electricityPricePerKwh(db));
+}
+
+/** Persist computed hourly_rate for all calculated-mode machines (after ELEC_KWH change). */
+function recomputeCalculatedMachineRates(db) {
+  const elec = electricityPricePerKwh(db);
+  const now = new Date().toISOString();
+  const rows = db.prepare(
+    "SELECT id, maintenance_rate, power_kw FROM machine WHERE lower(COALESCE(rate_mode, 'manual')) = 'calculated'"
+  ).all();
+  const upd = db.prepare(
+    'UPDATE machine SET hourly_rate = ?, needs_erp_data = ?, updated_at = ? WHERE id = ?'
+  );
+  for (const r of rows) {
+    const rate = round4(num(r.maintenance_rate) + num(r.power_kw) * elec);
+    upd.run(rate, rate > 0 ? 0 : 1, now, r.id);
+  }
+  return { updated: rows.length, electricity_price_per_kwh: elec };
 }
 
 function avgWacForRaw(db, itemId) {
@@ -257,8 +294,11 @@ module.exports = {
   uomFactors,
   convertUnitCost,
   convertQty,
+  electricityPricePerKwh,
+  effectiveHourlyRate,
   laborRate,
   machineRate,
+  recomputeCalculatedMachineRates,
   avgWacForRaw,
   bomCostForItem,
   calculateBomCostDetail,

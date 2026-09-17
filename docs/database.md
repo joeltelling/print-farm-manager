@@ -217,6 +217,8 @@ CREATE TABLE IF NOT EXISTS erp_posting (
 
 Other ERP tables (`uom`, `warehouse`, `location`, `item`, `machine`, `bom`, `bom_line`, `stock_move`, `item_cost`, `mfg_component`, `work_order`, `wo_issue`, `wo_labor`, `pricing_config`, `sales_order`) are created by `server/erp/schema.js`. See [docs/erp/README.md](erp/README.md).
 
+`machine` stores `rate_mode` (`manual` or `calculated`), `hourly_rate` (effective USD/h used by costing), `maintenance_rate`, and `power_kw`. Site electricity USD/kWh is `pricing_config` code `ELEC_KWH`.
+
 ## Conventions
 
 - All IDs: `INTEGER PRIMARY KEY AUTOINCREMENT`

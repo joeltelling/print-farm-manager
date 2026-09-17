@@ -6,6 +6,9 @@ const {
   convertQty,
   laborRate,
   machineRate,
+  electricityPricePerKwh,
+  effectiveHourlyRate,
+  recomputeCalculatedMachineRates,
   bomCostForItem,
   calculateBomCostDetail,
   calculateComponentCost,
@@ -427,10 +430,25 @@ function mountErp(db) {
   // Acres machine row is only name + hourly_rate (+ is_active). CoMa adds printer_id /
   // needs_erp_data and joins shopfloor printers so the rates UI shows linked fleet data.
   function mapMachineRow(r) {
+    const elec = electricityPricePerKwh(db);
+    const mode = String(r.rate_mode || 'manual').toLowerCase() === 'calculated'
+      ? 'calculated'
+      : 'manual';
+    const maintenance_rate = num(r.maintenance_rate);
+    const power_kw = num(r.power_kw);
+    const energy_rate = mode === 'calculated' ? round4(power_kw * elec) : 0;
+    const hourly_rate = mode === 'calculated'
+      ? round4(maintenance_rate + energy_rate)
+      : num(r.hourly_rate);
     return {
       id: r.id,
       machine: r.machine,
-      hourly_rate: num(r.hourly_rate),
+      rate_mode: mode,
+      hourly_rate,
+      maintenance_rate,
+      power_kw,
+      energy_rate,
+      electricity_price_per_kwh: elec,
       is_active: !!r.is_active,
       created_at: r.created_at ?? null,
       updated_at: r.updated_at ?? null,
@@ -495,6 +513,33 @@ function mountErp(db) {
     return db.prepare('SELECT * FROM machine WHERE id = ?').get(id);
   }
 
+  router.get('/mfg/energy', (_req, res) => {
+    res.json({ electricity_price_per_kwh: electricityPricePerKwh(db) });
+  });
+
+  router.put('/mfg/energy', (req, res) => {
+    const price = num((req.body || {}).electricity_price_per_kwh);
+    if (price < 0) {
+      return res.status(400).json({ error: 'electricity_price_per_kwh must be >= 0' });
+    }
+    const now = new Date().toISOString();
+    const row = db.prepare("SELECT id FROM pricing_config WHERE code = 'ELEC_KWH'").get();
+    if (row) {
+      db.prepare(
+        'UPDATE pricing_config SET value = ?, last_update_date = ? WHERE code = ?'
+      ).run(price, now, 'ELEC_KWH');
+    } else {
+      db.prepare(
+        'INSERT INTO pricing_config (name, code, value, last_update_date) VALUES (?, ?, ?, ?)'
+      ).run('Electricity USD/kWh', 'ELEC_KWH', price, now);
+    }
+    const recomputed = recomputeCalculatedMachineRates(db);
+    res.json({
+      electricity_price_per_kwh: price,
+      recalculated_machines: recomputed.updated,
+    });
+  });
+
   router.get('/mfg/machines', (req, res) => {
     const q = (req.query.q || '').toString().trim();
     const limit = Math.min(Math.max(parseInt(req.query.limit || '200', 10), 1), 1000);
@@ -503,23 +548,48 @@ function mountErp(db) {
   });
 
   router.post('/mfg/machines', (req, res) => {
-    const name = String((req.body || {}).machine || '').trim();
-    const hourly_rate = num((req.body || {}).hourly_rate, 0);
+    const b = req.body || {};
+    const name = String(b.machine || '').trim();
     if (!name) return res.status(400).json({ error: 'machine is required' });
-    if (hourly_rate < 0) return res.status(400).json({ error: 'hourly_rate must be >= 0' });
+
+    const mode = String(b.rate_mode || 'manual').toLowerCase() === 'calculated'
+      ? 'calculated'
+      : 'manual';
+    const maintenance_rate = num(b.maintenance_rate, 0);
+    const power_kw = num(b.power_kw, 0);
+    if (maintenance_rate < 0) return res.status(400).json({ error: 'maintenance_rate must be >= 0' });
+    if (power_kw < 0) return res.status(400).json({ error: 'power_kw must be >= 0' });
+
+    let hourly_rate;
+    if (mode === 'calculated') {
+      hourly_rate = effectiveHourlyRate(
+        { rate_mode: 'calculated', maintenance_rate, power_kw },
+        electricityPricePerKwh(db)
+      );
+    } else {
+      hourly_rate = num(b.hourly_rate, 0);
+      if (hourly_rate < 0) return res.status(400).json({ error: 'hourly_rate must be >= 0' });
+    }
+
     const ex = db.prepare('SELECT * FROM machine WHERE machine = ?').get(name);
     const now = new Date().toISOString();
     const needs = hourly_rate > 0 ? 0 : 1;
     let id;
     if (ex) {
-      db.prepare(
-        'UPDATE machine SET hourly_rate = ?, is_active = 1, updated_at = ?, needs_erp_data = ? WHERE id = ?'
-      ).run(hourly_rate, now, needs, ex.id);
+      db.prepare(`
+        UPDATE machine SET
+          hourly_rate = ?, rate_mode = ?, maintenance_rate = ?, power_kw = ?,
+          is_active = 1, updated_at = ?, needs_erp_data = ?
+        WHERE id = ?
+      `).run(hourly_rate, mode, maintenance_rate, power_kw, now, needs, ex.id);
       id = ex.id;
     } else {
-      const r = db.prepare(
-        'INSERT INTO machine (machine, hourly_rate, is_active, created_at, needs_erp_data) VALUES (?, ?, 1, ?, ?)'
-      ).run(name, hourly_rate, now, needs);
+      const r = db.prepare(`
+        INSERT INTO machine
+          (machine, hourly_rate, rate_mode, maintenance_rate, power_kw,
+           is_active, created_at, needs_erp_data)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+      `).run(name, hourly_rate, mode, maintenance_rate, power_kw, now, needs);
       id = r.lastInsertRowid;
     }
     res.status(ex ? 200 : 201).json(mapMachineRow(loadMachineById(id)));

@@ -206,6 +206,15 @@ function ensureErpSchema(db) {
     ins.run('Margin Default %', 'MARGIN_DEF', 0, now);
     ins.run('Adds %', 'ADDS_PCT', 0, now);
     ins.run('Ebay %', 'EBAY_FEE', 0, now);
+    ins.run('Electricity USD/kWh', 'ELEC_KWH', 0, now);
+  } else {
+    // Additive seed for installs that already have other pricing rows
+    const elec = db.prepare("SELECT id FROM pricing_config WHERE code = 'ELEC_KWH'").get();
+    if (!elec) {
+      db.prepare(
+        'INSERT INTO pricing_config (name, code, value, last_update_date) VALUES (?, ?, ?, ?)'
+      ).run('Electricity USD/kWh', 'ELEC_KWH', 0, new Date().toISOString());
+    }
   }
 
   const labor = db.prepare("SELECT id FROM machine WHERE machine = 'LABOR'").get();

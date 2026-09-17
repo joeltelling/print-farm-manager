@@ -334,10 +334,44 @@ describe('embedded ERP API (Acres parity)', () => {
     expect(rateSave.body).toEqual(expect.objectContaining({
       machine: 'P1',
       hourly_rate: 18.5,
+      rate_mode: 'manual',
       printer_name: 'P1',
       printer_model: 'MK4',
       needs_erp_data: false,
     }));
+
+    const energy = await request(app).put('/api/erp/mfg/energy').send({
+      electricity_price_per_kwh: 0.20,
+    });
+    expect(energy.status).toBe(200);
+    expect(energy.body.electricity_price_per_kwh).toBe(0.2);
+
+    const calc = await request(app).post('/api/erp/mfg/machines').send({
+      machine: 'P1',
+      rate_mode: 'calculated',
+      maintenance_rate: 10,
+      power_kw: 0.5,
+    });
+    expect(calc.status).toBe(200);
+    // 10 + 0.5 * 0.20 = 10.1
+    expect(calc.body).toEqual(expect.objectContaining({
+      rate_mode: 'calculated',
+      maintenance_rate: 10,
+      power_kw: 0.5,
+      energy_rate: 0.1,
+      hourly_rate: 10.1,
+      needs_erp_data: false,
+    }));
+
+    const energyBump = await request(app).put('/api/erp/mfg/energy').send({
+      electricity_price_per_kwh: 0.40,
+    });
+    expect(energyBump.status).toBe(200);
+    expect(energyBump.body.recalculated_machines).toBeGreaterThanOrEqual(1);
+    const afterBump = await request(app).get('/api/erp/mfg/machines');
+    const p1After = afterBump.body.find(m => m.machine === 'P1');
+    // 10 + 0.5 * 0.40 = 10.2
+    expect(p1After.hourly_rate).toBe(10.2);
 
     const syncedRaw = db.prepare("SELECT * FROM item WHERE item_role = 'raw' AND sku LIKE 'FIL-%'").get();
     const rawWarehouse = db.prepare("SELECT id FROM warehouse WHERE code = 'raw'").get();

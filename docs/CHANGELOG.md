@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-09-17: Dual machine rate modes (manual or calculated energy)
+
+Acres only stored a single blended USD/h. Operators asked for a clearer split: either type the rate by hand, or derive it from maintenance USD/h plus approximate power draw (kW) times a site electricity price (USD/kWh). Each machine chooses its mode. Changing the electricity price recalculates every calculated-mode machine and updates the stored effective `hourly_rate` used by BOM/component costing.
+
+### Changes
+- `server/erp/schema.js`, `server/erp/sync.js`: additive `rate_mode`, `maintenance_rate`, `power_kw`; seed `pricing_config.ELEC_KWH`.
+- `server/erp/costing.js`: effective rate helper; recalculate calculated machines when electricity changes.
+- `server/erp/index.js`: `GET`/`PUT /mfg/energy`, machine upsert accepts both modes.
+- `client/src/pages/erp/modules.jsx`: Machine Rates UI for electricity, mode selector, and breakdown columns.
+- `docs/api.md`, `docs/erp/README.md`, `docs/web-app.md`, `docs/database.md`, `server/tests/erp-embedded.test.js`.
+
 ## 2026-09-17: Machine rates show USD/h plus linked printer fields
 
 Acres machine masters only store a name and an hourly rate (USD/h), plus active flag. CoMa already had that and the seeded LABOR rate. The rates UI looked thin because linked printers only showed a numeric `printer_id`. GET `/api/erp/mfg/machines` (and shared machines) now join the shopfloor printer so the Machine Rates page and Manufacturing dashboard show USD/h prominently along with printer name, model, and status. Form labels match Acres (`Hourly rate (USD/h)`), with a datalist of known machine names.

@@ -32,6 +32,9 @@ function ensureErpLinkColumns(db) {
   ensureColumn(db, 'item', 'needs_erp_data', 'needs_erp_data INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'machine', 'printer_id', 'printer_id INTEGER');
   ensureColumn(db, 'machine', 'needs_erp_data', 'needs_erp_data INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'machine', 'rate_mode', "rate_mode TEXT NOT NULL DEFAULT 'manual'");
+  ensureColumn(db, 'machine', 'maintenance_rate', 'maintenance_rate REAL NOT NULL DEFAULT 0');
+  ensureColumn(db, 'machine', 'power_kw', 'power_kw REAL NOT NULL DEFAULT 0');
 }
 
 function ensureWarehouses(db) {
