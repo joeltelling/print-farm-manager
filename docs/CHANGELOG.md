@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-09-17: README gallery refresh (Calendar, Jobs, login, and more)
+
+The public README still stopped at eight screenshots from earlier today, before login and the Calendar module shipped. Fresh 1400x900 captures were taken against `./start.sh --seed-data`, including the pages that were missing from the gallery, and the README was rewritten so a stranger cloning the repo sees the product as it actually runs: why CoMa exists, the closure gate in plain language, operator map, and a documented way to re-capture the gallery.
+
+### Changes
+- `docs/images/`: refreshed existing shots; added `login.png`, `jobs.png`, `calendar.png`, `timelapses.png`, `printers.png`, `erp-postings.png`
+- `scripts/capture-readme-screenshots.js`: headless Chromium CDP helper to regenerate the gallery
+- `README.md`: expanded gallery, feature tables, Calendar/login callouts, structure and docs index
+- `docs/CHANGELOG.md`: this entry
+
 ## 2026-09-17: Calendar module with production-closure dispatch gate
 
 Operators needed a place for planned dates that do not live anywhere else in CoMa yet: expected stock arrivals, outbound shipments, deadlines, and multi-day plant shutdowns. ERP and shopfloor tables mostly record what already happened (`sales_order.sale_date`, `jobs.started_at`, etc.), so this adds an owned `calendar_events` table plus a Shopfloor Calendar page.
