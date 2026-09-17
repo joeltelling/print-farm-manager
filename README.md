@@ -2,7 +2,7 @@
 
 **Self-hosted shopfloor + manufacturing ERP for a multi-brand 3D print farm.**
 
-One Node process. One SQLite file. Live fleet dispatch for Prusa, Bambu, Elegoo, Klipper, and OctoPrint, plus inventory, costing, work orders, sales documents (Presupuesto / Albaran / Factura), eBay Sell sync, timelapses, a planning calendar with production closures that actually stop new job dispatch, and a Workspace board + technical notebook for operator tasks.
+One Node process. One SQLite file. Live fleet dispatch for Prusa, Bambu, Elegoo, Klipper, and OctoPrint, plus inventory, costing, work orders, sales documents (quote / delivery note / invoice), eBay Sell sync, timelapses, a planning calendar with production closures that actually stop new job dispatch, and a Workspace board + technical notebook for operator tasks.
 
 Fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager), tuned for Linux ops. Product name: **CoMa** (short) / **CoreManufacturing** (long).
 
@@ -96,23 +96,23 @@ Revenue / margin snapshot and finished-goods pricing matrix. The older Sales Ord
 
 ### Customers
 
-Customer master for the Presupuesto / Albaran / Factura chain (tax ID, address, contact).
+Customer master for the quote / delivery note / invoice chain (tax ID, address, contact).
 
 ![ERP customers list](docs/images/erp-customers.png)
 
-### Presupuestos
+### Quotes
 
-Quotes with sequential `PRE-` numbers, per-line IVA, confirm, convert to delivery note, PDF download.
+Quotes with sequential `PRE-` numbers, per-line tax, confirm, convert to delivery note, PDF download.
 
 ![ERP quotes list](docs/images/erp-quotes.png)
 
-### Albaranes
+### Delivery notes
 
-Delivery notes (`ALB-`). Can be created from a confirmed quote or from a posted shopfloor posting ("Crear albaran" on Postings) without touching `completed_qty`.
+Delivery notes (`ALB-`). Can be created from a confirmed quote or from a posted shopfloor posting ("Create delivery note" on Postings) without touching `completed_qty`.
 
 ![ERP delivery notes list](docs/images/erp-delivery-notes.png)
 
-### Facturas
+### Invoices
 
 Invoices (`FAC-`) converted from a delivery note or created directly. PDF export for customer paperwork.
 
@@ -129,7 +129,7 @@ Operator queue after Set Ready: confirm ERP stock moves without inventing part c
 Sandbox credentials, SKU to offer mapping, pending order lines, inventory push.
 (Not yet validated on a real eBay production account.)
 
-![eBay integration page under ERP Ventas](docs/images/erp-ebay.png)
+![eBay integration page under ERP Sales](docs/images/erp-ebay.png)
 
 ### Settings
 
@@ -187,8 +187,8 @@ Neither surface touches printers or `completed_qty`. See [docs/workspace.md](doc
 | Inventory | Warehouses, locations, receive-by-SKU, WAC |
 | Manufacturing | Machine rates, BOM, work orders, QR pick lists |
 | Sales (legacy) | Pricing (including `EBAY_FEE`), Sales Order, CSV/PDF history |
-| Sales documents | Customers + Presupuesto → Albaran → Factura chain, IVA lines, PDF export |
-| Postings | Queue after Set Ready; never invents `completed_qty`; can attach to an Albaran |
+| Sales documents | Customers + Quote → Delivery note → Invoice chain, tax lines, PDF export |
+| Postings | Queue after Set Ready; never invents `completed_qty`; can attach to a delivery note |
 | Analytics | Profitability, machine OEE, std vs actual variance |
 | eBay Sell | Import paid orders, push price+qty to existing offers, seller analytics |
 
@@ -315,9 +315,9 @@ npm start
 | Receive filament / raw | ERP → Inventory |
 | Machine USD/h or kW | ERP → Machines |
 | Confirm stock after Set Ready | ERP → Postings |
-| Customers / quotes / delivery / invoices | ERP → Ventas → Clientes / Presupuestos / Albaranes / Facturas |
+| Customers / quotes / delivery / invoices | ERP → Sales → Customers / Quotes / Delivery notes / Invoices |
 | OEE / margin / cost variance | ERP → Analytics |
-| eBay orders and inventory push | ERP → Ventas → eBay |
+| eBay orders and inventory push | ERP → Sales → eBay |
 | Backup / account / sales flow default | Settings |
 
 ---

@@ -25,7 +25,7 @@ Al abrir CoMa por primera vez pide crear una cuenta de operador (usuario y contr
 
 La barra lateral tiene tres bloques:
 
-1. **ERP** (Resumen, Inventario, Fabricacion, Ventas)
+1. **ERP** (Overview, Inventory, Manufacturing, Sales)
 2. **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs, Calendar, Timelapses)
 3. **Workspace** (Tablero, Bloc)
 
@@ -176,14 +176,14 @@ Hay dos flujos (ambos siempre visibles en la barra; Settings > General elige el 
 - Sales order: vende FG y baja stock
 - Reports: historial CSV/PDF
 
-**Documentos (Presupuesto / Albaran / Factura)**
-- **Clientes** (`/erp/customers`): ficha con NIF/CIF, direccion, contacto
-- **Presupuestos** → confirmar → convertir a **Albaran** → convertir a **Factura**
-- Numeracion secuencial interna (`PRE-`, `ALB-`, `FAC-`), IVA por linea (defecto 21%), PDF descargable
-- Desde Postings, en una fila ya confirmada: **Crear albaran** (copia qty/descripcion; no toca `completed_qty` ni re-ejecuta el movimiento de stock)
+**Documentos (Quote / Delivery note / Invoice)**
+- **Customers** (`/erp/customers`): ficha con tax ID, direccion, contacto
+- **Quotes** → confirmar → convertir a **Delivery note** → convertir a **Invoice**
+- Numeracion secuencial interna (`PRE-`, `ALB-`, `FAC-`), tax por linea (defecto 21%), PDF descargable
+- Desde Postings, en una fila ya confirmada: **Create delivery note** (copia qty/descripcion; no toca `completed_qty` ni re-ejecuta el movimiento de stock)
 - No hay VeriFactu/SII ni garantia legal de correlacion; es papeleo interno/simple
 
-Detalle: [docs/erp/README.md](erp/README.md#sales-documents-presupuesto--albaran--factura).
+Detalle: [docs/erp/README.md](erp/README.md#sales-documents-quote--delivery-note--invoice).
 
 ---
 
@@ -296,8 +296,8 @@ Flujo E2E recomendado con seed (detalle tambien en [erp/README.md](erp/README.md
 | `/erp/analytics` | OEE, margen, desviacion de coste |
 | `/erp/inventory`, `/erp/items`, `/erp/locations` | Inventario y maestros |
 | `/erp/manufacturing`, `/erp/machines`, `/erp/components`, `/erp/bom`, `/erp/wo` | Fabricacion |
-| `/erp/sales`, `/erp/sales/*` | Ventas (legacy Sales Order / pricing) |
-| `/erp/customers`, `/erp/quotes`, `/erp/delivery-notes`, `/erp/invoices` | Clientes y documentos Presupuesto / Albaran / Factura |
+| `/erp/sales`, `/erp/sales/*` | Sales (legacy Sales Order / pricing) |
+| `/erp/customers`, `/erp/quotes`, `/erp/delivery-notes`, `/erp/invoices` | Customers and Quote / Delivery note / Invoice documents |
 
 ---
 

@@ -1360,8 +1360,8 @@ export default function Settings() {
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Sales document flow</h2>
         <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
-          Which sales flow is the default landing point under ERP &gt; Ventas: the simple Sales
-          Order (no customer, no tax) or Presupuesto / Albaran / Factura (customers, per-line
+          Which sales flow is the default landing point under ERP &gt; Sales: the simple Sales
+          Order (no customer, no tax) or Quote / Delivery note / Invoice (customers, per-line
           tax, and a convertible quote to delivery to invoice chain). Both stay available in the
           sidebar regardless of this setting; switching it never deletes existing documents.
         </p>
@@ -1372,7 +1372,7 @@ export default function Settings() {
             style={{ ...inputStyle, width: 320 }}
           >
             <option value="legacy">Simple Sales Order</option>
-            <option value="quotes_flow">Presupuesto / Albaran / Factura</option>
+            <option value="quotes_flow">Quote / Delivery note / Invoice</option>
           </select>
           <button
             onClick={handleSaveSalesDocMode}

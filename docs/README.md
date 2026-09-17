@@ -32,7 +32,7 @@ Prefer Docker? `docker compose up --build print-farm-manager-dev` - see the [REA
 | [docs/filaments.md](filaments.md) | Filament Library - types/colors, API, client usage |
 | [docs/calendar.md](calendar.md) | Planned events, production closures, dispatch gate |
 | [docs/workspace.md](workspace.md) | Workspace tablero (kanban) and technical notebook |
-| [docs/erp/README.md](erp/README.md) | Embedded ERP: sync, postings, actual costing, analytics, sales documents (Presupuesto/Albaran/Factura) |
+| [docs/erp/README.md](erp/README.md) | Embedded ERP: sync, postings, actual costing, analytics, sales documents (Quote/Delivery note/Invoice) |
 | [docs/erp/ebay.md](erp/ebay.md) | eBay Sell APIs: order import, inventory push, credentials |
 | [docs/docker-publish.md](docker-publish.md) | CI workflow that publishes multi-arch images to GHCR |
 

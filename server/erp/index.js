@@ -1557,7 +1557,7 @@ function mountErp(db) {
     try {
       const doc = getSalesDoc(db, req.params.id);
       const customer = doc.customer_id ? getCustomer(db, doc.customer_id) : null;
-      const labels = { quote: 'Presupuesto', delivery: 'Albaran', invoice: 'Factura' };
+      const labels = { quote: 'Quote', delivery: 'Delivery note', invoice: 'Invoice' };
       const buf = buildSalesDocPdf({
         docTypeLabel: labels[doc.doc_type] || doc.doc_type,
         doc,

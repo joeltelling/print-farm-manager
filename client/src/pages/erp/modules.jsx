@@ -550,17 +550,17 @@ export function PostingsPage() {
   // (albaran) line for the chosen customer. See server/erp/salesDocs.js attachPostingToDelivery.
   const attachToDelivery = async (row) => {
     const customerId = deliveryCustomer[row.id];
-    if (!customerId) return showToast('Elige un cliente primero', 'warning');
+    if (!customerId) return showToast('Pick a customer first', 'warning');
     try {
       const doc = await apiJson(`/api/erp/postings/${row.id}/attach-to-delivery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ customer_id: Number(customerId) }),
       });
-      showToast(`Albaran ${doc.doc_number} creado`);
+      showToast(`Delivery note ${doc.doc_number} created`);
       navigate(`/erp/sales-docs/${doc.id}`);
     } catch (ex) {
-      showToast(`Error al crear albaran: ${ex.message}`, 'error');
+      showToast(`Create delivery note failed: ${ex.message}`, 'error');
     }
   };
 
@@ -678,17 +678,17 @@ export function PostingsPage() {
                 <button type="button" onClick={() => dismissOne(r)} style={{ ...btnSecondary, padding: '5px 12px', color: theme.red }}>Dismiss</button>
               </div>
             ) : '-' },
-            { key: 'delivery', label: 'Albaran', render: r => r.status === 'posted' ? (
+            { key: 'delivery', label: 'Delivery', render: r => r.status === 'posted' ? (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <select
                   value={deliveryCustomer[r.id] || ''}
                   onChange={e => setDeliveryCustomer({ ...deliveryCustomer, [r.id]: e.target.value })}
                   style={{ ...INPUT_STYLE, width: 150, padding: '4px 8px' }}
                 >
-                  <option value="">Cliente...</option>
+                  <option value="">Customer...</option>
                   {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-                <button type="button" onClick={() => attachToDelivery(r)} style={{ ...btnSecondary, padding: '5px 12px' }}>Crear albaran</button>
+                <button type="button" onClick={() => attachToDelivery(r)} style={{ ...btnSecondary, padding: '5px 12px' }}>Create delivery note</button>
               </div>
             ) : '-' },
           ]}

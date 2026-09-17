@@ -11,7 +11,7 @@ export const NAV_SECTIONS = [
     groups: [
       {
         id: 'erp-overview',
-        label: 'Resumen',
+        label: 'Overview',
         items: [
           { to: '/erp', label: 'Dashboard', end: true },
           { to: '/erp/postings', label: 'Postings' },
@@ -20,7 +20,7 @@ export const NAV_SECTIONS = [
       },
       {
         id: 'erp-inventory',
-        label: 'Inventario',
+        label: 'Inventory',
         items: [
           { to: '/erp/inventory', label: 'Inventory' },
           { to: '/erp/items', label: 'Products' },
@@ -29,7 +29,7 @@ export const NAV_SECTIONS = [
       },
       {
         id: 'erp-mfg',
-        label: 'Fabricacion',
+        label: 'Manufacturing',
         items: [
           { to: '/erp/manufacturing', label: 'Manufacturing' },
           { to: '/erp/machines', label: 'Machines' },
@@ -40,13 +40,13 @@ export const NAV_SECTIONS = [
       },
       {
         id: 'erp-sales',
-        label: 'Ventas',
+        label: 'Sales',
         items: [
           { to: '/erp/sales', label: 'Sales', end: true },
-          { to: '/erp/customers', label: 'Clientes' },
-          { to: '/erp/quotes', label: 'Presupuestos' },
-          { to: '/erp/delivery-notes', label: 'Albaranes' },
-          { to: '/erp/invoices', label: 'Facturas' },
+          { to: '/erp/customers', label: 'Customers' },
+          { to: '/erp/quotes', label: 'Quotes' },
+          { to: '/erp/delivery-notes', label: 'Delivery notes' },
+          { to: '/erp/invoices', label: 'Invoices' },
           { to: '/erp/sales/order', label: 'Sales Order' },
           { to: '/erp/sales/pricing', label: 'Pricing' },
           { to: '/erp/sales/config', label: 'Sales Config' },

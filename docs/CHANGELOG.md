@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-17: Sales documents UI in English
+
+Sales documents shipped with Spanish chrome (Clientes, Presupuestos, Albaranes, Facturas, and matching form labels). The rest of CoMa is English, so operators hit a language mix on the quote/delivery/invoice screens and in the sidebar. All of that UI (plus PDF type labels, Postings "Create delivery note", Settings/onboarding mode labels, and README gallery headings) is now English. Document number prefixes (`PRE-` / `ALB-` / `FAC-`) are unchanged.
+
+### Changes
+- `client/src/pages/erp/salesDocs.jsx`: Customers / Quotes / Delivery notes / Invoices pages and detail chrome in English
+- `client/src/components/NavTree.jsx`: ERP group labels and sales-doc items in English
+- `client/src/pages/erp/modules.jsx`: Postings attach-to-delivery action and toasts in English
+- `client/src/pages/Settings.jsx`, `client/src/components/AuthGate.jsx`: sales_doc_mode option labels in English
+- `server/erp/index.js`: PDF `docTypeLabel` Quote / Delivery note / Invoice
+- `README.md`, `docs/user-guide.md`, `docs/erp/README.md`, `docs/README.md`: operator-facing names aligned
+- `docs/images/erp-customers.png`, `erp-quotes.png`, `erp-delivery-notes.png`, `erp-invoices.png`: recaptured with English UI
+- `docs/CHANGELOG.md`: this entry
+
 ## 2026-09-17: README gallery covers sales documents (Presupuesto / Albaran / Factura)
 
 The sales-documents module shipped earlier today (customers + quote/delivery/invoice chain with PDF) but the public README still only showed the legacy Sales dashboard and eBay. Gallery captures and feature copy now include Clientes, Presupuestos, Albaranes, and Facturas, and the operator map / ERP capability table name the dual sales flows and the Postings "Crear albaran" path.

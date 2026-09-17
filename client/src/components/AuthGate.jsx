@@ -227,7 +227,7 @@ const ONBOARDING_STEPS = [
     default: 'legacy',
     options: [
       { value: 'legacy', label: 'Simple Sales Order', description: 'Quick sale against stock, no customer or tax fields.' },
-      { value: 'quotes_flow', label: 'Presupuesto / Albaran / Factura', description: 'Customers, per-line tax, and a convertible quote -> delivery -> invoice chain.' },
+      { value: 'quotes_flow', label: 'Quote / Delivery note / Invoice', description: 'Customers, per-line tax, and a convertible quote -> delivery -> invoice chain.' },
     ],
   },
 ];

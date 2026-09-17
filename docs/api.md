@@ -640,7 +640,7 @@ Body: `{ "value": "..." }`. Allowed keys:
 | `timelapse_interval_seconds` | positive integer | Frame interval (independent of the 15 s poll) |
 | `timelapse_fps` | positive integer | ffmpeg output framerate |
 | `timelapse_retention_days` | positive integer | Auto-delete ready/failed captures older than this |
-| `sales_doc_mode` | `legacy` or `quotes_flow` | Default sales-document flow shown after login: `legacy` (Sales Order) or `quotes_flow` (Presupuesto/Albaran/Factura). Both flows stay reachable from the sidebar regardless of this value; see [docs/erp/README.md](erp/README.md). |
+| `sales_doc_mode` | `legacy` or `quotes_flow` | Default sales-document flow shown after login: `legacy` (Sales Order) or `quotes_flow` (Quote/Delivery note/Invoice). Both flows stay reachable from the sidebar regardless of this value; see [docs/erp/README.md](erp/README.md). |
 
 Returns `400` for unknown keys or failed validation.
 
@@ -914,10 +914,10 @@ Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/RE
 | `POST` | `/api/erp/sales-docs/:id/confirm` | Lock a draft document |
 | `POST` | `/api/erp/sales-docs/:id/cancel` | Cancel a draft or confirmed document |
 | `POST` | `/api/erp/sales-docs/:id/convert` | Body `{ "to": "delivery" \| "invoice" }`; only from a confirmed doc, one step of the chain |
-| `GET` | `/api/erp/sales-docs/:id/pdf` | Presupuesto/Albaran/Factura PDF download |
+| `GET` | `/api/erp/sales-docs/:id/pdf` | Quote / Delivery note / Invoice PDF download |
 | `POST` | `/api/erp/postings/:id/attach-to-delivery` | Shopfloor sync: turn a posted `erp_posting` into a delivery-note line; body `{ "doc_id" }` or `{ "customer_id" }` |
 
-### Sales documents example: create a quote (Presupuesto)
+### Sales documents example: create a quote
 
 Full module notes: [docs/erp/README.md](erp/README.md) "Sales documents".
 
