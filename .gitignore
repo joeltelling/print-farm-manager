@@ -6,6 +6,7 @@ dist/
 .env
 .run/
 *.csv
+tools/
 .claude/*
 !.claude/skills/
 *.docx

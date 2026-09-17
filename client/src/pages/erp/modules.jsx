@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Card from '../../components/Card';
+import KpiCard from '../../components/KpiCard';
 import BarChart from '../../components/BarChart';
 import DonutChart from '../../components/DonutChart';
-import { theme as appTheme } from '../../theme';
+import { theme as appTheme, CAPTION_STYLE, CHIP_STYLE, tintStyle, hexAlpha } from '../../theme';
 import { qrSvgDataUrl } from './qr';
 import DualBarChart from './DualBarChart';
 import { usd, qty6, wac4, min3, fmtQty } from './format';
@@ -45,80 +46,374 @@ export function Dashboard() {
   const inv = data?.inventory || {};
   const sf = data?.shopfloor || {};
   const attention = data?.sync?.needs_attention || [];
+  const created = data?.sync?.created || {};
+
+  const kpis = [
+    { label: 'Products', sub: '= projects', value: c.products ?? '-', color: theme.lime },
+    { label: 'Components', sub: '= parts', value: c.components ?? '-', color: theme.indigo },
+    { label: 'Raw materials', sub: 'filaments + buys', value: c.raw ?? '-', color: theme.cyan },
+    { label: 'Manufactured', sub: 'sourcing', value: c.manufactured ?? '-', color: theme.violetSoft },
+    { label: 'Outsource', sub: 'sourcing', value: c.outsource ?? '-', color: theme.orange },
+    { label: 'Machines', sub: `${c.printers_linked || 0} printers linked`, value: c.machines ?? '-', color: theme.emerald },
+    { label: 'Open WOs', sub: 'shopfloor + ERP', value: c.open_wo ?? '-', color: theme.amber },
+    {
+      label: 'Pending postings',
+      sub: 'awaiting confirm',
+      value: c.pending_postings ?? 0,
+      color: theme.amber,
+      to: '/erp/postings',
+      accent: (c.pending_postings ?? 0) > 0,
+    },
+  ];
 
   return (
-    <ErpShell title="ERP Dashboard" subtitle="Live production ERP wired to shopfloor printers, projects, and parts.">
-      <div style={{ marginBottom: 14 }}>
-        <button type="button" onClick={sync} disabled={syncing} style={BTN_PRIMARY}>
+    <ErpShell
+      title="ERP Dashboard"
+      badge="LIVE PRODUCTION"
+      subtitle="Live production ERP wired to shopfloor printers, projects, and parts."
+      actions={
+        <button type="button" onClick={sync} disabled={syncing} style={{ ...BTN_PRIMARY, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            className={syncing ? 'pulse-dot' : undefined}
+            style={{ width: 7, height: 7, borderRadius: 999, background: '#fff', flexShrink: 0 }}
+          />
           {syncing ? 'Syncing...' : 'Sync from shopfloor'}
         </button>
-      </div>
-      {err && <div style={{ color: theme.red, marginBottom: 10, fontSize: 13 }}>{err}</div>}
+      }
+    >
+      <style>{`
+        .erp-kpi-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; }
+        .erp-kpi-strip { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+        .erp-split { display: grid; grid-template-columns: 5fr 7fr; gap: 16px; margin-top: 20px; }
+        .erp-need-row { border: 1px solid transparent; transition: background 0.15s ease, border-color 0.15s ease; }
+        .erp-need-row:hover { background: ${theme.hover}; border-color: ${theme.borderStrong}; }
+        .erp-need-row .erp-need-cta { opacity: 0; transition: opacity 0.15s ease; }
+        .erp-need-row:hover .erp-need-cta { opacity: 1; }
+        @media (max-width: 1400px) {
+          .erp-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+          .erp-kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+        @media (max-width: 1100px) {
+          .erp-split { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+          .erp-kpi-grid, .erp-kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .erp-need-row .erp-need-cta { opacity: 1; }
+        }
+      `}</style>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
-        {[
-          { label: 'Products', sub: '= projects', value: c.products ?? '-', color: theme.lime },
-          { label: 'Components', sub: '= parts', value: c.components ?? '-', color: theme.violetSoft },
-          { label: 'Raw materials', sub: 'filaments + buys', value: c.raw ?? '-', color: theme.teal },
-          { label: 'Manufactured', sub: 'sourcing', value: c.manufactured ?? '-', color: theme.accent },
-          { label: 'Outsource', sub: 'sourcing', value: c.outsource ?? '-', color: theme.orange },
-          { label: 'Machines', sub: `${c.printers_linked || 0} printers linked`, value: c.machines ?? '-', color: theme.lime },
-          { label: 'Open WOs', sub: 'shopfloor + ERP', value: c.open_wo ?? '-', color: theme.orange },
-          { label: 'Pending postings', sub: 'awaiting confirm', value: c.pending_postings ?? 0, color: theme.orange, to: '/erp/postings' },
-          { label: 'Stock value', sub: `${inv.sku_lines || 0} lines`, value: inv.total_value != null ? usd(inv.total_value) : '-', color: theme.teal },
-          { label: 'Sales today', sub: 'orders', value: c.sales_today ?? '-', color: theme.violetSoft },
-        ].map(k => (
-          <Card key={k.label}>
-            {k.to ? (
-              <Link to={k.to} style={{ textDecoration: 'none' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: theme.textFaint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{k.label}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: k.color, marginTop: 6 }}>{k.value}</div>
-                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 4 }}>{k.sub}</div>
-              </Link>
-            ) : (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700, color: theme.textFaint, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{k.label}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: k.color, marginTop: 6 }}>{k.value}</div>
-                <div style={{ fontSize: 11, color: theme.textDim, marginTop: 4 }}>{k.sub}</div>
-              </>
-            )}
-          </Card>
-        ))}
+      {err && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: `1px solid rgba(239, 68, 68, 0.3)`,
+          borderRadius: theme.radiusSm,
+          color: theme.red,
+          padding: '9px 13px',
+          marginBottom: 14,
+          fontSize: 13,
+        }}>
+          {err}
+        </div>
+      )}
+
+      <div className="erp-kpi-grid">
+        {kpis.map(k => <KpiCard key={k.label} {...k} />)}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <Card title="Shopfloor link">
-          <div style={{ color: theme.textMuted, fontSize: 13, lineHeight: 1.7 }}>
-            Projects: <strong style={{ color: theme.text }}>{sf.projects ?? '-'}</strong> (ERP products)<br />
-            Parts: <strong style={{ color: theme.text }}>{sf.parts ?? '-'}</strong> (ERP components)<br />
-            Printers: <strong style={{ color: theme.text }}>{sf.active_printers ?? '-'}</strong> active / {sf.printers ?? '-'} total<br />
-            Last sync created: machines {data?.sync?.created?.machines || 0}, products {data?.sync?.created?.products || 0},
-            components {data?.sync?.created?.components || 0}, raw {data?.sync?.created?.raw_materials || 0}
-          </div>
-        </Card>
-        <Card title="Needs ERP data">
-          {attention.length === 0 ? (
-            <div style={{ color: theme.textDim, fontSize: 13 }}>All linked masters look complete.</div>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: 18, color: theme.textMuted, fontSize: 13, lineHeight: 1.55 }}>
-              {attention.slice(0, 12).map((a, i) => (
-                <li key={`${a.kind}-${a.id || a.sku}-${i}`}>
-                  <strong style={{ color: theme.orange }}>{a.kind}</strong> {a.name || a.sku}: {a.reason}
-                </li>
-              ))}
-            </ul>
-          )}
-          {attention.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <Link to="/erp/items" style={{ color: theme.violetSoft, fontSize: 13 }}>Complete on Products & components</Link>
-              {' · '}
-              <Link to="/erp/machines" style={{ color: theme.violetSoft, fontSize: 13 }}>Machine rates</Link>
-            </div>
-          )}
-        </Card>
+      <div className="erp-kpi-strip">
+        <KpiCard
+          label="Sales today"
+          sub="orders"
+          value={c.sales_today ?? '-'}
+          color={theme.violetSoft}
+          to="/erp/sales"
+        />
+        <div style={{ gridColumn: 'span 2' }}>
+          <StockValueCard value={inv.total_value != null ? usd(inv.total_value) : '-'} lines={inv.sku_lines || 0} />
+        </div>
       </div>
+
+      <div className="erp-split">
+        <ShopfloorLinkCard sf={sf} created={created} />
+        <NeedsErpDataCard attention={attention} />
+      </div>
+
       {feedbackEl}
     </ErpShell>
+  );
+}
+
+// Stock value gets its own tinted card: it is the only money figure on the page.
+function StockValueCard({ value, lines }) {
+  return (
+    <div style={{
+      height: '100%',
+      background: `linear-gradient(135deg, #122223 0%, #141926 55%, ${theme.card} 100%)`,
+      border: `1px solid ${hexAlpha(theme.tealDeep, 0.3)}`,
+      borderRadius: theme.radius,
+      boxShadow: theme.shadow,
+      padding: '14px 15px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <span style={{ ...CAPTION_STYLE, color: '#5eead4' }}>Stock value</span>
+        <span style={{
+          ...tintStyle(theme.tealDeep),
+          fontFamily: theme.mono,
+          fontSize: 10,
+          padding: '2px 7px',
+          borderRadius: 6,
+          color: hexAlpha(theme.teal, 0.85),
+          whiteSpace: 'nowrap',
+        }}>
+          Active valuation
+        </span>
+      </div>
+      <div style={{
+        marginTop: 8,
+        fontSize: 26,
+        fontWeight: 800,
+        color: theme.teal,
+        letterSpacing: '-0.02em',
+        lineHeight: 1.05,
+        fontVariantNumeric: 'tabular-nums',
+      }}>
+        {value}
+      </div>
+      <div style={{ marginTop: 6, fontFamily: theme.mono, fontSize: 11, color: theme.textMuted }}>
+        {lines} lines
+      </div>
+    </div>
+  );
+}
+
+function LinkRowIcon({ color, path }) {
+  return (
+    <span style={{
+      width: 28,
+      height: 28,
+      borderRadius: 9,
+      background: theme.cardAlt,
+      border: `1px solid ${theme.border}`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d={path} />
+      </svg>
+    </span>
+  );
+}
+
+function ShopfloorLinkCard({ sf, created }) {
+  const rows = [
+    {
+      label: 'Projects',
+      color: theme.lime,
+      icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z',
+      value: sf.projects ?? '-',
+      note: '(ERP products)',
+    },
+    {
+      label: 'Parts',
+      color: theme.indigo,
+      icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
+      value: sf.parts ?? '-',
+      note: '(ERP components)',
+    },
+  ];
+
+  return (
+    <Card
+      title="Shopfloor link"
+      dot={theme.emeraldDeep}
+      badge={<span style={CHIP_STYLE}>Wired sync</span>}
+      fill
+      footer={
+        <span style={{ fontFamily: theme.mono }}>
+          Last sync created: machines {created.machines || 0}, products {created.products || 0},
+          components {created.components || 0}, raw {created.raw_materials || 0}
+        </span>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rows.map(r => (
+          <div key={r.label} style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '9px 11px',
+            borderRadius: theme.radiusSm,
+            background: theme.cardSoft,
+            border: `1px solid ${theme.border}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              <LinkRowIcon color={r.color} path={r.icon} />
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: theme.textStrong }}>{r.label}:</span>
+            </div>
+            <div style={{ fontFamily: theme.mono, fontSize: 11.5, color: theme.textDim, whiteSpace: 'nowrap' }}>
+              <span style={{ color: theme.textBright, fontWeight: 700, fontSize: 13.5 }}>{r.value}</span>
+              <span style={{ marginLeft: 6 }}>{r.note}</span>
+            </div>
+          </div>
+        ))}
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          padding: '9px 11px',
+          borderRadius: theme.radiusSm,
+          background: theme.cardSoft,
+          border: `1px solid ${theme.border}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <LinkRowIcon
+              color={theme.emerald}
+              path="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
+            />
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: theme.textStrong }}>Printers:</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: theme.mono, fontSize: 11.5, whiteSpace: 'nowrap' }}>
+            <span style={{ color: theme.emerald, fontWeight: 700, fontSize: 13.5 }}>{sf.active_printers ?? '-'} active</span>
+            <span style={{ color: theme.textDim }}>/ {sf.printers ?? '-'} total</span>
+            <span style={{
+              width: 8, height: 8, borderRadius: 999, flexShrink: 0,
+              background: Number(sf.active_printers) > 0 ? theme.emeraldDeep : theme.textFaint,
+            }} />
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const ATTENTION_TARGETS = {
+  machine: '/erp/machines',
+  product: '/erp/items',
+  component: '/erp/components',
+  raw: '/erp/inventory',
+};
+
+function NeedsErpDataCard({ attention }) {
+  const count = attention.length;
+
+  return (
+    <Card
+      title="Needs ERP data"
+      dot={count ? theme.orange : theme.emeraldDeep}
+      badge={
+        <span style={{
+          ...CHIP_STYLE,
+          ...(count ? tintStyle(theme.orange) : null),
+          fontFamily: theme.mono,
+          fontSize: 10.5,
+          padding: '2px 8px',
+        }}>
+          {count ? `${count} action item${count === 1 ? '' : 's'}` : 'all complete'}
+        </span>
+      }
+      fill
+      footer={count > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ color: theme.textDim }}>Quick resolution:</span>
+          <QuickLink to="/erp/items">Complete on Products & components</QuickLink>
+          <QuickLink to="/erp/machines">Machine rates</QuickLink>
+        </div>
+      )}
+    >
+      {count === 0 ? (
+        <div style={{ color: theme.textDim, fontSize: 13 }}>All linked masters look complete.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
+          {attention.map((a, i) => (
+            <Link
+              key={`${a.kind}-${a.id || a.sku}-${i}`}
+              to={ATTENTION_TARGETS[a.kind] || '/erp/items'}
+              className="erp-need-row"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                padding: '7px 9px',
+                borderRadius: 10,
+                background: theme.cardSoft,
+                textDecoration: 'none',
+              }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{
+                  ...tintStyle(theme.orange),
+                  fontFamily: theme.mono,
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  padding: '1px 6px',
+                  borderRadius: 5,
+                  flexShrink: 0,
+                }}>
+                  {a.kind}
+                </span>
+                <span style={{
+                  fontFamily: theme.mono, fontSize: 11.5, fontWeight: 500,
+                  color: theme.textStrong, flexShrink: 0,
+                }}>
+                  {a.name || a.sku}:
+                </span>
+                <span style={{
+                  fontSize: 11.5, color: theme.textMuted,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {a.reason}
+                </span>
+              </span>
+              <span className="erp-need-cta" style={{
+                ...tintStyle(theme.orange, 0.16),
+                fontSize: 10,
+                fontWeight: 600,
+                padding: '2px 8px',
+                borderRadius: 6,
+                flexShrink: 0,
+              }}>
+                Configure
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function QuickLink({ to, children }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '5px 11px',
+        borderRadius: 9,
+        background: theme.cardAlt,
+        border: `1px solid ${theme.borderStrong}`,
+        color: theme.indigoSoft,
+        fontSize: 11.5,
+        fontWeight: 600,
+        textDecoration: 'none',
+      }}
+    >
+      {children}
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
   );
 }
 

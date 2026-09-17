@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 
 const VARIANTS = {
-  success: { bg: '#166534', border: '#22c55e40', text: '#4ade80', icon: '✓' },
+  success: { bg: '#065f46', border: '#10b98140', text: '#34d399', icon: '✓' },
   error:   { bg: '#7f1d1d', border: '#ef444440', text: '#fca5a5', icon: '✕' },
   warning: { bg: '#78350f', border: '#f59e0b40', text: '#fbbf24', icon: '⚠' },
 };

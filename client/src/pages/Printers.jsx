@@ -3,22 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
 
 const STATUS_COLORS = {
-  IDLE:     { bg: '#1e3a5f', text: '#93c5fd' },
-  PRINTING: { bg: '#1e3a5f', text: '#60a5fa' },
-  FINISHED: { bg: '#14532d', text: '#86efac' },
+  IDLE:     { bg: '#1e1f45', text: '#a5b4fc' },
+  PRINTING: { bg: '#1e1f45', text: '#818cf8' },
+  FINISHED: { bg: '#062b22', text: '#6ee7b7' },
   PAUSED:   { bg: '#78350f', text: '#fcd34d' },
   ERROR:    { bg: '#7f1d1d', text: '#fca5a5' },
-  OFFLINE:  { bg: '#1e2433', text: '#475569' },
-  UNKNOWN:  { bg: '#1e2433', text: '#475569' },
+  OFFLINE:  { bg: '#232639', text: '#52525b' },
+  UNKNOWN:  { bg: '#232639', text: '#52525b' },
 };
 
 const SUMMARY_PILLS = [
-  { key: 'PRINTING', label: 'printing', bg: '#1e3a5f', text: '#60a5fa' },
-  { key: 'IDLE',     label: 'idle',     bg: '#1a2030', text: '#94a3b8' },
-  { key: 'AWAITING', label: 'awaiting', bg: '#14532d', text: '#4ade80' },
+  { key: 'PRINTING', label: 'printing', bg: '#1e1f45', text: '#818cf8' },
+  { key: 'IDLE',     label: 'idle',     bg: '#1a2030', text: '#a1a1aa' },
+  { key: 'AWAITING', label: 'awaiting', bg: '#062b22', text: '#34d399' },
   { key: 'ERROR',    label: 'error',    bg: '#450a0a', text: '#ef4444' },
   { key: 'PAUSED',   label: 'paused',   bg: '#451a03', text: '#f59e0b' },
-  { key: 'OFFLINE',  label: 'offline',  bg: '#0d1117', text: '#475569' },
+  { key: 'OFFLINE',  label: 'offline',  bg: '#0d1117', text: '#52525b' },
 ];
 
 const COLLAPSED_KEY = 'printers.collapsedGroups';
@@ -256,8 +256,8 @@ export default function Printers() {
           onChange={e => setSearch(e.target.value)}
           style={{
             flex: '1 1 300px', maxWidth: 380,
-            background: '#1e2433', border: '1px solid #2d3748',
-            borderRadius: 6, color: '#e2e8f0', fontSize: 13,
+            background: '#232639', border: '1px solid #2d3146',
+            borderRadius: 6, color: '#f4f4f5', fontSize: 13,
             padding: '7px 12px', outline: 'none', boxSizing: 'border-box',
           }}
         />
@@ -267,14 +267,14 @@ export default function Printers() {
         </div>
         <label style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          fontSize: 12, color: '#94a3b8', cursor: 'pointer',
+          fontSize: 12, color: '#a1a1aa', cursor: 'pointer',
           marginLeft: 'auto',
         }}>
           <input
             type="checkbox"
             checked={showDecom}
             onChange={e => toggleShowDecom(e.target.checked)}
-            style={{ accentColor: '#3b82f6' }}
+            style={{ accentColor: '#8b5cf6' }}
           />
           Show decommissioned ({decomGroup.all.length})
         </label>
@@ -284,16 +284,16 @@ export default function Printers() {
       {selectedIds.size > 0 && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          background: '#131c2e', border: '1px solid #1e3a5f',
+          background: '#131c2e', border: '1px solid #1e1f45',
           borderRadius: 7, padding: '8px 14px', marginBottom: 12,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#93c5fd', flexShrink: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#a5b4fc', flexShrink: 0 }}>
             {selectedIds.size} selected
           </span>
           <button onClick={clearSelection} style={{ ...toolbarBtn, fontSize: 11, padding: '4px 8px' }}>
             Clear
           </button>
-          <span style={{ fontSize: 11, color: '#475569', flexShrink: 0 }}>Set:</span>
+          <span style={{ fontSize: 11, color: '#52525b', flexShrink: 0 }}>Set:</span>
           <select
             value={bulkMaterial}
             onChange={e => { setBulkMaterial(e.target.value); setBulkColor(''); }}
@@ -328,8 +328,8 @@ export default function Printers() {
             onClick={applyBulk}
             disabled={!canApply || applying}
             style={{
-              background: canApply && !applying ? '#1d4ed8' : '#1e2433',
-              color: canApply && !applying ? '#fff' : '#475569',
+              background: canApply && !applying ? '#6d28d9' : '#232639',
+              color: canApply && !applying ? '#fff' : '#52525b',
               border: 'none', borderRadius: 5,
               padding: '6px 14px', fontSize: 12, fontWeight: 600,
               cursor: canApply && !applying ? 'pointer' : 'not-allowed',
@@ -338,22 +338,22 @@ export default function Printers() {
           >
             {applying ? 'Applying…' : 'Apply to selected'}
           </button>
-          <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
+          <span style={{ fontSize: 11, color: '#2d3146', fontStyle: 'italic' }}>
             Empty fields are left unchanged
           </span>
         </div>
       )}
 
       {isSearching && (
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: '#71717a', marginBottom: 10 }}>
           {totalMatched} of {totalShown} match "{search}"
         </div>
       )}
 
-      {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
+      {loading && <p style={{ color: '#71717a' }}>Loading…</p>}
 
       {!loading && groups.length === 0 && !showDecom && (
-        <p style={{ color: '#475569', fontSize: 14 }}>No printers found.</p>
+        <p style={{ color: '#52525b', fontSize: 14 }}>No printers found.</p>
       )}
 
       {!loading && (
@@ -393,15 +393,15 @@ export default function Printers() {
 }
 
 const toolbarBtn = {
-  background: '#1e2433', color: '#94a3b8',
-  border: '1px solid #2d3748', borderRadius: 5,
+  background: '#232639', color: '#a1a1aa',
+  border: '1px solid #2d3146', borderRadius: 5,
   padding: '6px 10px', fontSize: 12, fontWeight: 500,
   cursor: 'pointer',
 };
 
 const bulkInputSx = {
-  background: '#1e2433', border: '1px solid #2d3748',
-  borderRadius: 5, color: '#e2e8f0', fontSize: 12,
+  background: '#232639', border: '1px solid #2d3146',
+  borderRadius: 5, color: '#f4f4f5', fontSize: 12,
   padding: '5px 10px', outline: 'none', width: 160,
 };
 
@@ -421,7 +421,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
   return (
     <div style={{
       background: '#0f1218',
-      border: '1px solid #1e2433',
+      border: '1px solid #232639',
       borderRadius: 9,
       overflow: 'hidden',
       opacity: dimmed && !open ? 0.7 : 1,
@@ -429,8 +429,8 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center',
-        background: open ? '#151c28' : '#131720',
-        borderBottom: open ? '1px solid #1e2433' : 'none',
+        background: open ? '#151c28' : '#141620',
+        borderBottom: open ? '1px solid #232639' : 'none',
       }}>
         {/* Group-level select-all checkbox */}
         {!dimmed && (
@@ -443,7 +443,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
               checked={allVisibleSelected}
               ref={el => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }}
               onChange={() => onSelectGroup(visiblePrinters)}
-              style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+              style={{ accentColor: '#8b5cf6', cursor: 'pointer' }}
               title="Select all in this group"
             />
           </div>
@@ -455,7 +455,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
             display: 'flex', alignItems: 'center', gap: 12,
             background: 'transparent',
             border: 'none',
-            color: '#e2e8f0',
+            color: '#f4f4f5',
             padding: dimmed ? '11px 14px' : '11px 14px 11px 10px',
             cursor: 'pointer',
             textAlign: 'left',
@@ -463,17 +463,17 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
           }}
         >
           <span style={{
-            fontSize: 11, color: '#64748b',
+            fontSize: 11, color: '#71717a',
             width: 12, display: 'inline-block',
             transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
             transition: 'transform 0.12s',
           }}>
             ▶
           </span>
-          <span style={{ fontWeight: 700, fontSize: 14, color: dimmed ? '#94a3b8' : '#e2e8f0' }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: dimmed ? '#a1a1aa' : '#f4f4f5' }}>
             {group.label}
           </span>
-          <span style={{ fontSize: 12, color: '#475569' }}>
+          <span style={{ fontSize: 12, color: '#52525b' }}>
             {isFiltered ? `${visible} of ${total}` : `${total}`}
           </span>
 
@@ -506,7 +506,7 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
             display: 'grid',
             gridTemplateColumns: '24px 2fr 1fr 1fr 1fr 1fr',
             padding: '4px 10px',
-            fontSize: 10, fontWeight: 700, color: '#475569',
+            fontSize: 10, fontWeight: 700, color: '#52525b',
             letterSpacing: '0.06em', textTransform: 'uppercase',
           }}>
             <span />
@@ -525,8 +525,8 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
                 display: 'grid',
                 gridTemplateColumns: '24px 2fr 1fr 1fr 1fr 1fr',
                 alignItems: 'center',
-                background: selectedIds.has(printer.id) ? '#131c2e' : '#131720',
-                border: `1px solid ${selectedIds.has(printer.id) ? '#1e3a5f' : '#1e2433'}`,
+                background: selectedIds.has(printer.id) ? '#131c2e' : '#141620',
+                border: `1px solid ${selectedIds.has(printer.id) ? '#1e1f45' : '#232639'}`,
                 borderRadius: 6,
                 padding: '8px 10px',
                 cursor: 'pointer',
@@ -534,10 +534,10 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
                 transition: 'border-color 0.1s, background 0.1s',
               }}
               onMouseEnter={e => {
-                if (!selectedIds.has(printer.id)) e.currentTarget.style.borderColor = '#3b82f6';
+                if (!selectedIds.has(printer.id)) e.currentTarget.style.borderColor = '#8b5cf6';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.borderColor = selectedIds.has(printer.id) ? '#1e3a5f' : '#1e2433';
+                e.currentTarget.style.borderColor = selectedIds.has(printer.id) ? '#1e1f45' : '#232639';
               }}
             >
               {/* Checkbox — stop propagation so row click still navigates */}
@@ -546,24 +546,24 @@ function GroupSection({ group, open, onToggle, onClickPrinter, dimmed, hideEmpty
                   type="checkbox"
                   checked={selectedIds.has(printer.id)}
                   onChange={() => {}}
-                  style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
+                  style={{ accentColor: '#8b5cf6', cursor: 'pointer' }}
                 />
               </div>
-              <span style={{ fontWeight: 600, fontSize: 13, color: '#e2e8f0' }}>
+              <span style={{ fontWeight: 600, fontSize: 13, color: '#f4f4f5' }}>
                 {printer.name}
                 {dimmed && (
-                  <span style={{ marginLeft: 8, fontSize: 11, color: '#475569', fontWeight: 400 }}>
+                  <span style={{ marginLeft: 8, fontSize: 11, color: '#52525b', fontWeight: 400 }}>
                     decommissioned
                   </span>
                 )}
               </span>
-              <span style={{ fontSize: 13, color: '#64748b' }}>{printer.group_name || '—'}</span>
+              <span style={{ fontSize: 13, color: '#71717a' }}>{printer.group_name || '—'}</span>
               <span style={{ fontSize: 12, color: '#7dd3fc' }}>
                 {[printer.loaded_material, printer.loaded_color].filter(Boolean).join(' · ') || '—'}
               </span>
-              <span style={{ fontSize: 12, color: '#475569', fontFamily: 'monospace' }}>{printer.ip}</span>
+              <span style={{ fontSize: 12, color: '#52525b', fontFamily: 'monospace' }}>{printer.ip}</span>
               <span>{dimmed
-                ? <span style={{ fontSize: 11, color: '#475569' }}>offline</span>
+                ? <span style={{ fontSize: 11, color: '#52525b' }}>offline</span>
                 : statusBadge(printer.status)
               }</span>
             </div>

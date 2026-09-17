@@ -47,8 +47,8 @@ export function useConfirm() {
         aria-modal="true"
         aria-label={state.title || 'Confirm'}
         style={{
-          background: '#1e2433',
-          border: '1px solid #334155',
+          background: '#232639',
+          border: '1px solid #2d3146',
           borderRadius: 10,
           padding: '24px 28px',
           maxWidth: 460,
@@ -59,18 +59,18 @@ export function useConfirm() {
         onClick={e => e.stopPropagation()}
       >
         {state.title && (
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 10 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#f4f4f5', marginBottom: 10 }}>
             {state.title}
           </div>
         )}
         {state.message && (
-          <div style={{ fontSize: 14, color: '#94a3b8', lineHeight: 1.65, marginBottom: state.prompt ? 16 : 24, whiteSpace: 'pre-line' }}>
+          <div style={{ fontSize: 14, color: '#a1a1aa', lineHeight: 1.65, marginBottom: state.prompt ? 16 : 24, whiteSpace: 'pre-line' }}>
             {state.message}
           </div>
         )}
         {state.prompt && (
           <div style={{ marginBottom: 20 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#64748b', fontWeight: 500, marginBottom: 6 }}>
+            <label style={{ display: 'block', fontSize: 12, color: '#71717a', fontWeight: 500, marginBottom: 6 }}>
               {state.prompt}
               {state.promptRequired && <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>}
             </label>
@@ -82,10 +82,10 @@ export function useConfirm() {
               rows={3}
               style={{
                 width: '100%',
-                background: '#131720',
-                border: '1px solid #334155',
+                background: '#141620',
+                border: '1px solid #2d3146',
                 borderRadius: 6,
-                color: '#e2e8f0',
+                color: '#f4f4f5',
                 fontSize: 13,
                 padding: '8px 10px',
                 resize: 'vertical',
@@ -94,8 +94,8 @@ export function useConfirm() {
                 lineHeight: 1.5,
                 boxSizing: 'border-box',
               }}
-              onFocus={e => { e.currentTarget.style.borderColor = '#3b82f6'; }}
-              onBlur={e => { e.currentTarget.style.borderColor = '#334155'; }}
+              onFocus={e => { e.currentTarget.style.borderColor = '#8b5cf6'; }}
+              onBlur={e => { e.currentTarget.style.borderColor = '#2d3146'; }}
             />
           </div>
         )}
@@ -103,8 +103,8 @@ export function useConfirm() {
           <button
             onClick={() => handleAction(null)}
             style={{
-              background: '#1f2937', color: '#9ca3af',
-              border: '1px solid #374151', borderRadius: 6,
+              background: '#181a27', color: '#a1a1aa',
+              border: '1px solid #2d3146', borderRadius: 6,
               padding: '8px 18px', fontSize: 13, cursor: 'pointer', fontWeight: 500,
             }}
           >
@@ -118,13 +118,13 @@ export function useConfirm() {
                 onClick={() => !promptEmpty && handleAction(action.value)}
                 disabled={!!promptEmpty}
                 style={{
-                  background: promptEmpty        ? '#374151'
+                  background: promptEmpty        ? '#2d3146'
                              : action.variant === 'danger'  ? '#7f1d1d'
-                             : action.variant === 'success' ? '#166534'
-                             : '#1e40af',
-                  color: promptEmpty             ? '#6b7280'
+                             : action.variant === 'success' ? '#065f46'
+                             : '#5b21b6',
+                  color: promptEmpty             ? '#71717a'
                        : action.variant === 'danger'  ? '#fca5a5'
-                       : action.variant === 'success' ? '#4ade80'
+                       : action.variant === 'success' ? '#34d399'
                        : '#fff',
                   border: 'none', borderRadius: 6,
                   padding: '8px 18px', fontSize: 13, fontWeight: 600,
@@ -141,8 +141,8 @@ export function useConfirm() {
                 onClick={() => !promptEmpty && handleAction(true)}
                 disabled={!!promptEmpty}
                 style={{
-                  background: promptEmpty ? '#374151' : state.danger ? '#7f1d1d' : '#1e40af',
-                  color: promptEmpty ? '#6b7280' : state.danger ? '#fca5a5' : '#fff',
+                  background: promptEmpty ? '#2d3146' : state.danger ? '#7f1d1d' : '#5b21b6',
+                  color: promptEmpty ? '#71717a' : state.danger ? '#fca5a5' : '#fff',
                   border: 'none', borderRadius: 6,
                   padding: '8px 18px', fontSize: 13, fontWeight: 600,
                   cursor: promptEmpty ? 'not-allowed' : 'pointer',

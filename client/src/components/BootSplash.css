@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 
 @property --coma-boot-fill {
   syntax: '<percentage>';
@@ -7,8 +7,8 @@
 }
 
 .coma-boot {
-  --bg: #07070a;
-  --surface: #121218;
+  --bg: #0a0b0f;
+  --surface: #12131c;
   --ink: #f4f4f5;
   --muted: #a1a1aa;
   --line: #23232e;
@@ -21,8 +21,8 @@
   --shadow: rgba(0, 0, 0, 0.55);
   --dur: 2.8s;
   --serif: "Instrument Serif", ui-serif, Georgia, serif;
-  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   position: fixed;
   inset: 0;
   z-index: 9999;

@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-09-17: One design system across the whole app
+
+The UI had drifted into two palettes. The shell and ERP pages used the CoMa tokens in `theme.js` (near-black, lime, violet) while Fleet, Projects, Printers, Jobs, Settings, and the shared components still carried the original slate/blue hexes pasted inline (about 480 occurrences of `#94a3b8`, `#1e2433`, `#2563eb`, and friends). Moving between Fleet and the ERP dashboard looked like moving between two products. This change makes one set of tokens drive every screen and rebuilds the ERP dashboard as the reference for how a CoMa page is composed.
+
+No behavior changed: this is presentation only. Every legacy hex was mapped to its token equivalent (slate text to the zinc ramp, action blue to violet, PRINTING blue to indigo so it stays distinct from the violet action color), so status semantics are preserved.
+
+### Changes
+- `client/src/theme.js`: full token set (surface / border / text ramps, accents, radii, `shadow`, `glowLime`, `glowViolet`, `mono`), plus `PANEL_STYLE`, `BTN_SECONDARY`, `CAPTION_STYLE`, `CHIP_STYLE`, and the `tintStyle()` / `hexAlpha()` helpers.
+- `client/src/index.css`: Plus Jakarta Sans and JetBrains Mono, refined scrollbars, `.grid-lines-bg` dotted backdrop, `.pulse-dot`, selection color.
+- `client/src/App.jsx`: 256 px sidebar, gradient brand mark with live dot, scroll area split from the pinned footer, dotted-grid main viewport with a centered 1720 px container.
+- `client/src/components/NavTree.jsx`: SVG chevrons, borderless module and group rows, lime active capsule with trailing dot, CSS hover states, live dot on the Shopfloor module.
+- `client/src/components/AlertBell.jsx`: sidebar footer variant (System Logs row with the pending count spelled out); the compact top-bar bell is unchanged.
+- `client/src/components/Card.jsx`, `KpiCard.jsx`, `PageHeader.jsx`, `StatusPill.jsx`, `EmptyState.jsx`: card header with optional live dot, badge, and footer; compact metric tile with optional accent frame and router link; page title with status badge and actions.
+- `client/src/pages/erp/modules.jsx`: ERP dashboard rebuilt (eight-tile metric grid, stock-value card, Shopfloor link and Needs ERP data split; each attention row links to the module that resolves it).
+- `client/src/pages/erp/shared.jsx`: `ErpShell` forwards `badge` and `actions`; table headers are uppercase captions; `btnSecondary` now points at the shared token.
+- `client/src/pages/*.jsx`, `client/src/components/*.jsx`, `client/src/useConfirm.jsx`: legacy palette migrated to tokens.
+- `client/index.html`, `client/public/manifest.webmanifest`, `client/src/components/BootSplash.css`: background and theme colors aligned; the splash drops the Geist families for the app fonts.
+- `.gitignore`: ignore `tools/` (local scratch: the cloned Klipper simulator and UI redesign references).
+- `docs/web-app.md`: design system section (token groups, typography, shared components), updated sidebar and layout notes, ERP dashboard layout, Violet for PRINTING.
+- `docs/CHANGELOG.md`: this entry.
+
 ## 2026-09-17: Remove standalone Acres Python trees
 
 Tracked `erp/` and `tools/ERP-BackUp/` were the old Acres FastAPI + HTML sources. They were never the CoMa runtime, but they polluted GitHub language stats (~11% Python) and implied a second server stack. CoMa ERP already lives in Express + React (`server/erp/`, `/erp/*`). Those trees are deleted; runtime stays the original Node process only.

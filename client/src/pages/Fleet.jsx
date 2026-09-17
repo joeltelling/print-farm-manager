@@ -8,17 +8,17 @@ import { useToast } from '../useToast';
 import { theme } from '../theme';
 
 const STATUS_COLORS = {
-  PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
+  PRINTING:   { bg: '#1e1f45', text: '#818cf8', label: 'Printing' },
   UPLOADING:  { bg: '#3b2c69', text: '#a78bfa', label: 'Uploading' },
-  IDLE:       { bg: '#1f2937', text: '#6b7280', label: 'Idle' },
-  READY:      { bg: '#1f2937', text: '#94a3b8', label: 'Ready' },
-  FINISHED:   { bg: '#14532d', text: '#86efac', label: 'Finished' },
-  STOPPED:    { bg: '#431407', text: '#fb923c', label: 'Stopped' },
+  IDLE:       { bg: '#181a27', text: '#71717a', label: 'Idle' },
+  READY:      { bg: '#181a27', text: '#a1a1aa', label: 'Ready' },
+  FINISHED:   { bg: '#062b22', text: '#6ee7b7', label: 'Finished' },
+  STOPPED:    { bg: '#431407', text: '#f59e0b', label: 'Stopped' },
   PAUSED:     { bg: '#78350f', text: '#fbbf24', label: 'Paused' },
   ATTENTION:  { bg: '#78350f', text: '#fbbf24', label: 'Attention' },
   ERROR:      { bg: '#7f1d1d', text: '#f87171', label: 'Error' },
-  OFFLINE:    { bg: '#1f2937', text: '#6b7280', label: 'Offline' },
-  UNKNOWN:    { bg: '#1f2937', text: '#9ca3af', label: 'Unknown' },
+  OFFLINE:    { bg: '#181a27', text: '#71717a', label: 'Offline' },
+  UNKNOWN:    { bg: '#181a27', text: '#a1a1aa', label: 'Unknown' },
 };
 
 const KNOWN_STATUSES = new Set(Object.keys(STATUS_COLORS));
@@ -109,7 +109,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
 
   function cardBorder() {
     if (needsOfflineConfirmation || needsUploadConfirmation) return '#92400e';
-    if (needsConfirmation) return selected ? '#22c55e' : '#15803d';
+    if (needsConfirmation) return selected ? '#10b981' : '#047857';
     return style.bg;
   }
 
@@ -119,7 +119,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
       onClick={(needsConfirmation && !needsUploadConfirmation) ? () => onToggleSelect(printer.id) : () => onOpenDetail(printer.id)}
       title={(needsConfirmation && !needsUploadConfirmation) ? (selected ? 'Click to deselect' : 'Click to select for batch Set Ready') : 'Click to open printer details'}
       style={{
-        background: (needsOfflineConfirmation || needsUploadConfirmation) ? '#2a1f0e' : needsConfirmation ? '#1c2a1c' : '#1e2433',
+        background: (needsOfflineConfirmation || needsUploadConfirmation) ? '#2a1f0e' : needsConfirmation ? '#1c2a1c' : '#232639',
         border: `${selected ? '2px' : '1px'} solid ${cardBorder()}`,
         borderRadius: 8,
         padding: selected ? '11px 13px' : '12px 14px',
@@ -144,10 +144,10 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
 
       {/* Model + group */}
       <div style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ background: '#0f172a', borderRadius: 3, padding: '1px 6px', fontFamily: 'monospace', color: '#64748b' }}>
+        <span style={{ background: '#12131c', borderRadius: 3, padding: '1px 6px', fontFamily: 'monospace', color: '#71717a' }}>
           {printer.model}
         </span>
-        {printer.group_name && <span style={{ color: '#475569' }}>{printer.group_name}</span>}
+        {printer.group_name && <span style={{ color: '#52525b' }}>{printer.group_name}</span>}
         {printer.type === 'klipper' && (
           <span style={{
             background: '#0c4a6e', color: '#7dd3fc', borderRadius: 3,
@@ -166,7 +166,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
       {printer.type === 'klipper' && (
         <div style={{
           marginTop: 2, borderRadius: 6, overflow: 'hidden',
-          background: '#0a0f1a', border: '1px solid #1e2433',
+          background: '#0d0e14', border: '1px solid #232639',
           height: 88,
           width: '100%',
           flexShrink: 0,
@@ -186,7 +186,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div style={{ marginTop: 2 }}>
           {printer.uploading_job_name && (
             <div style={{
-              fontSize: 11, color: '#94a3b8', fontFamily: 'monospace',
+              fontSize: 11, color: '#a1a1aa', fontFamily: 'monospace',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               marginBottom: 5,
             }}>
@@ -204,28 +204,28 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div style={{ marginTop: 2 }}>
           {printer.job_name && (
             <div style={{
-              fontSize: 11, color: '#94a3b8', fontFamily: 'monospace',
+              fontSize: 11, color: '#a1a1aa', fontFamily: 'monospace',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               marginBottom: 5,
             }}>
               {printer.job_name}
             </div>
           )}
-          <div style={{ background: '#0f172a', borderRadius: 3, height: 8, overflow: 'hidden', marginBottom: 4 }}>
+          <div style={{ background: '#12131c', borderRadius: 3, height: 8, overflow: 'hidden', marginBottom: 4 }}>
             <div style={{
-              background: '#3b82f6',
+              background: '#8b5cf6',
               height: '100%',
               width: `${pct ?? 0}%`,
               borderRadius: 3,
               transition: 'width 0.5s',
             }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#475569' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#52525b' }}>
             <span>{pct != null ? `${pct}%` : '—'}</span>
             {timeLeft && (
               <span>
                 {timeLeft}
-                {eta && <span style={{ color: '#64748b' }}> · {eta}</span>}
+                {eta && <span style={{ color: '#71717a' }}> · {eta}</span>}
               </span>
             )}
           </div>
@@ -233,7 +233,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
       )}
 
       {printer.status === 'STOPPED' && (
-        <div style={{ fontSize: 11, color: '#fb923c', marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4 }}>
           {needsConfirmation
             ? 'Print stopped from printer screen — confirm outcome below to resume'
             : 'Print stopped from printer screen — returns to service on next dispatch'}
@@ -246,7 +246,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
           {printer.last_parts_per_plate != null && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: 11, color: '#64748b' }}>Good:</span>
+              <span style={{ fontSize: 11, color: '#71717a' }}>Good:</span>
               <input
                 type="number"
                 min={0}
@@ -254,19 +254,19 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
                 value={confirmedQty}
                 onChange={e => setConfirmedQty(e.target.value)}
                 style={{
-                  width: 46, background: '#0f172a', border: '1px solid #2d3748',
-                  borderRadius: 3, padding: '2px 5px', color: '#e2e8f0', fontSize: 12,
+                  width: 46, background: '#12131c', border: '1px solid #2d3146',
+                  borderRadius: 3, padding: '2px 5px', color: '#f4f4f5', fontSize: 12,
                   textAlign: 'center',
                 }}
               />
-              <span style={{ fontSize: 11, color: '#475569' }}>/ {printer.last_parts_per_plate}</span>
+              <span style={{ fontSize: 11, color: '#52525b' }}>/ {printer.last_parts_per_plate}</span>
             </div>
           )}
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => onSetReady(printer.id, printer.last_parts_per_plate != null ? parseInt(confirmedQty, 10) : null)}
               title="Confirm the print was good — credits the part count and returns this printer to the dispatch queue"
-              style={{ flex: 1, background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ flex: 1, background: '#065f46', color: '#34d399', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               ✓ Set Ready
             </button>
@@ -289,7 +289,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
           <div style={{ display: 'flex', gap: 6 }}>
             <button
               onClick={() => onSetReady(printer.id, null)}
-              style={{ flex: 1, background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ flex: 1, background: '#065f46', color: '#34d399', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               ✓ Job OK
             </button>
@@ -315,7 +315,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
               onClick={() => (printer.status === 'FINISHED' || printer.status === 'IDLE')
                 ? onSetReady(printer.id, null)
                 : onLinkJob(printer.id, true)}
-              style={{ flex: 1, background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              style={{ flex: 1, background: '#065f46', color: '#34d399', border: 'none', borderRadius: 6, padding: '5px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
             >
               {(printer.status === 'FINISHED' || printer.status === 'IDLE') ? '✓ Set Ready' : '✓ Job Running'}
             </button>
@@ -334,7 +334,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
           <button
             onClick={() => onLinkJob(printer.id, false)}
             title="Stalled upload? Tell the system which queued job is actually printing on this machine so tracking stays correct"
-            style={{ background: 'none', color: '#60a5fa', border: '1px solid #1e3a5f', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
+            style={{ background: 'none', color: '#818cf8', border: '1px solid #1e1f45', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}
           >
             Link Job
           </button>
@@ -343,7 +343,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
 
       {!isPrinting && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 2 }}>
-          <button onClick={() => onDecommission(printer.id, (needsConfirmation && printer.last_parts_per_plate != null) ? parseInt(confirmedQty, 10) : null)} style={{ background: 'none', color: '#475569', border: '1px solid #2d3748', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}>
+          <button onClick={() => onDecommission(printer.id, (needsConfirmation && printer.last_parts_per_plate != null) ? parseInt(confirmedQty, 10) : null)} style={{ background: 'none', color: '#52525b', border: '1px solid #2d3146', borderRadius: 6, padding: '3px 8px', fontSize: 11, cursor: 'pointer' }}>
             Decommission
           </button>
         </div>
@@ -665,8 +665,8 @@ export default function Fleet() {
   function renderBand([model, group]) {
     return (
       <div key={model} className="coma-fleet-band">
-        <h2 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
-          {MODEL_LABELS[model] || model} <span style={{ fontWeight: 400, color: '#475569' }}>({group.length})</span>
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+          {MODEL_LABELS[model] || model} <span style={{ fontWeight: 400, color: '#52525b' }}>({group.length})</span>
         </h2>
         <div className="coma-fleet-band-grid">
           {group.map((printer) => (
@@ -747,15 +747,15 @@ export default function Fleet() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 24, width: 480, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto' }}
+            style={{ background: '#232639', border: '1px solid #2d3146', borderRadius: 8, padding: 24, width: 480, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto' }}
           >
             <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Link Job — {linkJobModal.printerName}</div>
-            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: '#71717a', marginBottom: 16 }}>
               Select the job currently running on this machine.
             </div>
 
             {linkJobModal.jobs.length === 0 ? (
-              <div style={{ fontSize: 13, color: '#94a3b8', padding: '12px 0' }}>
+              <div style={{ fontSize: 13, color: '#a1a1aa', padding: '12px 0' }}>
                 No failed or stalled jobs found for this printer's model.
               </div>
             ) : (
@@ -765,16 +765,16 @@ export default function Fleet() {
                     key={job.id}
                     onClick={() => setLinkJobModal(m => ({ ...m, selectedJobId: job.id }))}
                     style={{
-                      background: linkJobModal.selectedJobId === job.id ? '#1e3a5f' : '#0f172a',
-                      border: `1px solid ${linkJobModal.selectedJobId === job.id ? '#3b82f6' : '#2d3748'}`,
+                      background: linkJobModal.selectedJobId === job.id ? '#1e1f45' : '#12131c',
+                      border: `1px solid ${linkJobModal.selectedJobId === job.id ? '#8b5cf6' : '#2d3146'}`,
                       borderRadius: 6,
                       padding: '10px 12px',
                       cursor: 'pointer',
                     }}
                   >
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>{job.part_name}</div>
-                    <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace', marginBottom: 4 }}>{job.gcode_filename}</div>
-                    <div style={{ fontSize: 11, color: '#475569' }}>
+                    <div style={{ fontSize: 11, color: '#71717a', fontFamily: 'monospace', marginBottom: 4 }}>{job.gcode_filename}</div>
+                    <div style={{ fontSize: 11, color: '#52525b' }}>
                       Job #{job.id} · {job.status}
                       {job.original_printer_name ? ` · was on ${job.original_printer_name}` : ''}
                     </div>
@@ -786,14 +786,14 @@ export default function Fleet() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button
                 onClick={() => setLinkJobModal(null)}
-                style={{ background: '#1e2433', color: '#94a3b8', border: '1px solid #2d3748', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
+                style={{ background: '#232639', color: '#a1a1aa', border: '1px solid #2d3146', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
               >
                 Cancel
               </button>
               {linkJobModal.isHeld && !linkJobModal.selectedJobId && (
                 <button
                   onClick={submitLinkJob}
-                  style={{ background: '#166534', color: '#4ade80', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
+                  style={{ background: '#065f46', color: '#34d399', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: 'pointer' }}
                 >
                   Release Hold
                 </button>
@@ -801,7 +801,7 @@ export default function Fleet() {
               {linkJobModal.selectedJobId && (
                 <button
                   onClick={submitLinkJob}
-                  style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                  style={{ background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                 >
                   Link Job
                 </button>
@@ -856,7 +856,7 @@ export default function Fleet() {
             <button
               onClick={sweep}
               title="Manually trigger job dispatch now. This normally happens automatically. Use it to start jobs on idle machines without waiting for the next cycle."
-              style={{ background: '#1a2332', color: '#94a3b8', border: '1px solid #243044', borderRadius: 8, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}
+              style={{ background: '#1a2332', color: '#a1a1aa', border: '1px solid #2d3146', borderRadius: 8, padding: '5px 14px', fontSize: 13, cursor: 'pointer' }}
             >
               Sweep for Jobs
             </button>
@@ -985,7 +985,7 @@ export default function Fleet() {
                       type="button"
                       onClick={selectAll}
                       style={{
-                        background: '#14532d', color: theme.lime, border: 'none',
+                        background: '#062b22', color: theme.lime, border: 'none',
                         borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                       }}
                     >
@@ -1064,7 +1064,7 @@ export default function Fleet() {
                     type="button"
                     onClick={() => { setAttentionOpen(false); setReadyForSelected(); }}
                     style={{
-                      background: '#15803d', color: '#fff', border: 'none', borderRadius: 8,
+                      background: '#047857', color: '#fff', border: 'none', borderRadius: 8,
                       padding: '7px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                     }}
                   >
@@ -1091,7 +1091,7 @@ export default function Fleet() {
       {/* Filter chips */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {[
-          { key: 'ALL',      count: printers.length,        label: `All (${printers.length})`,             color: '#64748b' },
+          { key: 'ALL',      count: printers.length,        label: `All (${printers.length})`,             color: '#71717a' },
           { key: 'PRINTING', count: counts.PRINTING || 0,   label: `Printing (${counts.PRINTING || 0})`,   color: STATUS_COLORS.PRINTING.text },
           { key: 'UPLOADING',count: counts.UPLOADING || 0,  label: `Uploading (${counts.UPLOADING || 0})`, color: STATUS_COLORS.UPLOADING.text },
           { key: 'IDLE',     count: counts.IDLE || 0,       label: `Idle (${counts.IDLE || 0})`,           color: STATUS_COLORS.IDLE.text },
@@ -1108,15 +1108,15 @@ export default function Fleet() {
             key={key}
             onClick={() => setFilter(key)}
             style={{
-              background: filter === key ? '#1d4ed8' : '#1e2433',
+              background: filter === key ? '#6d28d9' : '#232639',
               color: filter === key ? '#fff' : color,
-              border: `1px solid ${filter === key ? '#60a5fa' : '#2d3748'}`,
+              border: `1px solid ${filter === key ? '#818cf8' : '#2d3146'}`,
               borderRadius: 20,
               padding: '4px 12px',
               fontSize: 13,
               cursor: 'pointer',
               fontWeight: filter === key ? 700 : 400,
-              boxShadow: filter === key ? '0 0 0 1px #3b82f630' : 'none',
+              boxShadow: filter === key ? '0 0 0 1px #8b5cf630' : 'none',
             }}
           >
             {label}
@@ -1128,11 +1128,11 @@ export default function Fleet() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{
-            background: '#1e2433',
-            border: '1px solid #2d3748',
+            background: '#232639',
+            border: '1px solid #2d3146',
             borderRadius: 20,
             padding: '4px 14px',
-            color: '#e2e8f0',
+            color: '#f4f4f5',
             fontSize: 13,
             outline: 'none',
             flex: '1 1 180px',

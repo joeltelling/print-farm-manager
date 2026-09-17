@@ -29,10 +29,21 @@ import Erp, {
 } from './pages/Erp';
 import AlertBell from './components/AlertBell';
 import BootSplash, { shouldShowBootSplash } from './components/BootSplash';
-import { NavSections, navLinkStyle } from './components/NavTree';
+import { NavSections, navLinkStyle, navLinkClass } from './components/NavTree';
 import { theme } from './theme';
 
 const SETTINGS_ITEM = { to: '/settings', label: 'Settings' };
+
+const compactLinkStyle = ({ isActive }) => ({
+  padding: '5px 11px',
+  borderRadius: 9,
+  background: isActive ? theme.lime : theme.cardAlt,
+  border: `1px solid ${isActive ? 'transparent' : theme.border}`,
+  color: isActive ? '#0a0a0a' : theme.textMuted,
+  textDecoration: 'none',
+  fontSize: 12.5,
+  fontWeight: isActive ? 700 : 500,
+});
 
 export default function App() {
   const [farmName, setFarmName] = useState('CoMa');
@@ -54,85 +65,80 @@ export default function App() {
     <BrowserRouter>
       {showBoot && <BootSplash siteName={farmName} onDone={dismissBoot} />}
       <style>{`
-        #layout { display: flex; min-height: 100vh; height: 100vh; background: ${theme.page}; overflow: hidden; }
-        #sidebar { width: 280px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.border}; display: flex; flex-direction: column; padding: 18px 14px; gap: 4px; height: 100%; box-sizing: border-box; overflow-y: auto; }
-        #topbar { display: none; background: ${theme.sidebar}; border-bottom: 1px solid ${theme.border}; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
-        #main { flex: 1; padding: 16px 20px; overflow-y: auto; min-width: 0; min-height: 0; background: ${theme.page}; display: flex; flex-direction: column; }
+        #layout { display: flex; min-height: 100vh; height: 100vh; background: ${theme.shell}; overflow: hidden; }
+        #sidebar { width: 256px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.borderSoft}; display: flex; flex-direction: column; height: 100%; box-sizing: border-box; user-select: none; }
+        #sidebar-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 14px; }
+        #topbar { display: none; background: ${theme.sidebar}; border-bottom: 1px solid ${theme.borderSoft}; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
+        #main { flex: 1; overflow-y: auto; min-width: 0; min-height: 0; background: ${theme.page}; }
+        #main-inner { padding: 26px 30px 36px; max-width: 1720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; min-height: 100%; }
+        @media (max-width: 1100px) {
+          #main-inner { padding: 20px 20px 28px; }
+        }
         @media (max-width: 600px) {
           #layout { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
           #sidebar { display: none; }
           #topbar { display: flex; }
-          #main { padding: 12px; }
+          #main-inner { padding: 14px 12px 24px; }
         }
       `}</style>
 
       <div id="layout">
         <nav id="sidebar">
-          <div style={{ padding: '4px 8px 16px', borderBottom: `1px solid ${theme.border}`, marginBottom: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div id="sidebar-scroll">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '4px 6px 18px' }}>
               <div style={{
-                width: 34, height: 34, borderRadius: 12,
-                background: `linear-gradient(135deg, ${theme.lime} 0%, ${theme.violetDeep} 100%)`,
-                color: '#0a0a0a', fontWeight: 800, fontSize: 11,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                letterSpacing: '-0.04em',
-                boxShadow: `0 0 18px ${theme.limeGlow}`,
+                width: 36, height: 36, borderRadius: 12, padding: 1,
+                background: `linear-gradient(45deg, ${theme.lime} 0%, ${theme.emeraldDeep} 100%)`,
+                flexShrink: 0,
+                boxShadow: theme.glowLime,
               }}>
-                CoMa
+                <div style={{
+                  width: '100%', height: '100%', borderRadius: 11,
+                  background: '#11131a',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: theme.mono, fontWeight: 600, fontSize: 10.5,
+                  color: theme.lime, letterSpacing: '-0.04em',
+                }}>
+                  CoMa
+                </div>
               </div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: theme.text, lineHeight: 1.2 }}>{farmName}</div>
-                <div style={{ fontWeight: 500, fontSize: 11, color: theme.textFaint }}>CoreManufacturing</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontWeight: 700, fontSize: 13.5, color: theme.textBright, lineHeight: 1.25,
+                }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{farmName}</span>
+                  <span className="pulse-dot" style={{
+                    width: 6, height: 6, borderRadius: 999, background: theme.lime, flexShrink: 0,
+                  }} />
+                </div>
+                <div style={{ fontWeight: 500, fontSize: 11, color: theme.textMuted }}>CoreManufacturing</div>
               </div>
+            </div>
+
+            <NavSections linkStyle={navLinkStyle} />
+
+            <div style={{ marginTop: 2 }}>
+              <NavLink to={SETTINGS_ITEM.to} className={navLinkClass} style={navLinkStyle}>
+                {SETTINGS_ITEM.label}
+              </NavLink>
             </div>
           </div>
 
-          <NavSections linkStyle={navLinkStyle} />
-
           <div style={{
-            marginTop: 4,
-            marginBottom: 4,
-            background: theme.cardAlt,
-            border: `1px solid ${theme.border}`,
-            borderRadius: theme.radius,
-            padding: 6,
+            padding: 10,
+            borderTop: `1px solid ${theme.borderSoft}`,
+            background: '#0c0d13',
+            flexShrink: 0,
           }}>
-            <NavLink to={SETTINGS_ITEM.to} style={navLinkStyle}>
-              {SETTINGS_ITEM.label}
-            </NavLink>
-          </div>
-
-          <div style={{ marginTop: 'auto', padding: '12px 0 0', width: '100%' }}>
             <AlertBell dropUp />
           </div>
         </nav>
 
         <nav id="topbar">
-          <span style={{ fontWeight: 800, fontSize: 14, color: theme.text, marginRight: 4 }}>{farmName}</span>
-          <NavSections
-            compact
-            linkStyle={({ isActive }) => ({
-              padding: '5px 10px',
-              borderRadius: 8,
-              background: isActive ? theme.lime : theme.cardAlt,
-              color: isActive ? '#0a0a0a' : theme.textMuted,
-              textDecoration: 'none',
-              fontSize: 13,
-              fontWeight: isActive ? 700 : 400,
-            })}
-          />
-          <NavLink
-            to={SETTINGS_ITEM.to}
-            style={({ isActive }) => ({
-              padding: '5px 10px',
-              borderRadius: 8,
-              background: isActive ? theme.lime : theme.cardAlt,
-              color: isActive ? '#0a0a0a' : theme.textMuted,
-              textDecoration: 'none',
-              fontSize: 13,
-              fontWeight: isActive ? 700 : 400,
-            })}
-          >
+          <span style={{ fontWeight: 800, fontSize: 14, color: theme.textBright, marginRight: 4 }}>{farmName}</span>
+          <NavSections compact linkStyle={compactLinkStyle} />
+          <NavLink to={SETTINGS_ITEM.to} style={compactLinkStyle}>
             {SETTINGS_ITEM.label}
           </NavLink>
           <div style={{ marginLeft: 'auto' }}>
@@ -140,7 +146,8 @@ export default function App() {
           </div>
         </nav>
 
-        <main id="main">
+        <main id="main" className="grid-lines-bg">
+          <div id="main-inner">
           <Routes>
             <Route path="/"                element={<Dashboard />} />
             <Route path="/erp"             element={<Erp />} />
@@ -169,6 +176,7 @@ export default function App() {
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
           </Routes>
+          </div>
         </main>
       </div>
     </BrowserRouter>

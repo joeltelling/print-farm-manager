@@ -1,31 +1,60 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Outfit', system-ui, sans-serif;
-  background: #07070a;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: #0a0b0f;
   color: #f4f4f5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code, .mono {
-  font-family: 'IBM Plex Mono', 'Fira Mono', monospace;
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+::selection {
+  background: #a3e635;
+  color: #000;
+}
+
+/* ── Dotted grid backdrop for content viewports ──────────────── */
+.grid-lines-bg {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Refined dark scrollbars ─────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(18, 19, 26, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: #2b2e42;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3e425d;
 }
 
 /* ── Global button interaction ───────────────────────────────── */
 button {
-  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 button:not(:disabled):hover {
   filter: brightness(1.12);
 }
 button:not(:disabled):active {
   filter: brightness(0.92);
+  transform: scale(0.98);
 }
 button:disabled {
   cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /* ── Keyboard focus visibility ───────────────────────────────── */
@@ -50,10 +79,19 @@ tbody tr:hover {
   100% { background-position:  200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #121218 25%, #1c1c24 50%, #121218 75%);
+  background: linear-gradient(90deg, #141620 25%, #1f2130 50%, #141620 75%);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite;
   border-radius: 12px;
+}
+
+/* ── Live status indicators ──────────────────────────────────── */
+@keyframes comaPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.pulse-dot {
+  animation: comaPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* ── Confirm modal entrance ──────────────────────────────────── */

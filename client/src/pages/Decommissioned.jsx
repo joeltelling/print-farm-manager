@@ -98,7 +98,7 @@ export default function Decommissioned() {
     fetchPrinters();
   }
 
-  if (loading) return <p style={{ color: '#64748b' }}>Loading…</p>;
+  if (loading) return <p style={{ color: '#71717a' }}>Loading…</p>;
 
   return (
     <div>
@@ -108,7 +108,7 @@ export default function Decommissioned() {
       />
 
       {printers.length === 0 && (
-        <p style={{ color: '#475569', fontSize: 14 }}>No decommissioned printers.</p>
+        <p style={{ color: '#52525b', fontSize: 14 }}>No decommissioned printers.</p>
       )}
 
       <div style={{
@@ -169,8 +169,8 @@ function DecomCard({
 
   return (
     <div style={{
-      background: '#131720',
-      border: '1px solid #1e2433',
+      background: '#141620',
+      border: '1px solid #232639',
       borderRadius: 8,
       padding: '12px 14px',
       display: 'flex',
@@ -182,7 +182,7 @@ function DecomCard({
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontWeight: 700, fontSize: 14, color: '#e2e8f0',
+            fontWeight: 700, fontSize: 14, color: '#f4f4f5',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {printer.name}
@@ -192,14 +192,14 @@ function DecomCard({
             flexWrap: 'wrap',
           }}>
             <span style={{
-              background: '#0f172a', borderRadius: 3, padding: '1px 6px',
-              fontFamily: 'monospace', fontSize: 11, color: '#64748b',
+              background: '#12131c', borderRadius: 3, padding: '1px 6px',
+              fontFamily: 'monospace', fontSize: 11, color: '#71717a',
             }}>
               {printer.model}
             </span>
-            <span style={{ fontSize: 11, color: '#475569', fontFamily: 'monospace' }}>{printer.ip}</span>
+            <span style={{ fontSize: 11, color: '#52525b', fontFamily: 'monospace' }}>{printer.ip}</span>
             {printer.group_name && (
-              <span style={{ fontSize: 11, color: '#475569' }}>{printer.group_name}</span>
+              <span style={{ fontSize: 11, color: '#52525b' }}>{printer.group_name}</span>
             )}
           </div>
         </div>
@@ -209,14 +209,14 @@ function DecomCard({
           <button
             onClick={onRecommission}
             title="Recommission"
-            style={iconBtn('#60a5fa', '#1e3a5f')}
+            style={iconBtn('#818cf8', '#1e1f45')}
           >
             ↩
           </button>
           <button
             onClick={onViewHistory}
             title="View history"
-            style={iconBtn('#94a3b8', '#2d3748')}
+            style={iconBtn('#a1a1aa', '#2d3146')}
           >
             ⋯
           </button>
@@ -224,7 +224,7 @@ function DecomCard({
       </div>
 
       {/* Decommission timestamp */}
-      <div style={{ fontSize: 11, color: '#475569' }}>
+      <div style={{ fontSize: 11, color: '#52525b' }}>
         Removed {formatTimestamp(printer.decommissioned_at)}
       </div>
 
@@ -240,10 +240,10 @@ function DecomCard({
             placeholder="Describe the issue, what was inspected, and any findings…"
             rows={3}
             style={{
-              background: '#1e2433',
-              border: '1px solid #3b82f6',
+              background: '#232639',
+              border: '1px solid #8b5cf6',
               borderRadius: 5,
-              color: '#e2e8f0',
+              color: '#f4f4f5',
               fontSize: 13,
               padding: '6px 10px',
               resize: 'vertical',
@@ -254,10 +254,10 @@ function DecomCard({
           />
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            fontSize: 10, color: '#475569',
+            fontSize: 10, color: '#52525b',
           }}>
             <span>Enter saves · Shift+Enter newline · Esc cancels</span>
-            {saving && <span style={{ color: '#60a5fa' }}>Saving…</span>}
+            {saving && <span style={{ color: '#818cf8' }}>Saving…</span>}
           </div>
         </div>
       ) : (
@@ -266,10 +266,10 @@ function DecomCard({
           title="Click to edit note"
           style={{
             background: 'transparent',
-            border: '1px dashed #1e2433',
+            border: '1px dashed #232639',
             borderRadius: 5,
             padding: '8px 10px',
-            color: note ? '#cbd5e1' : '#475569',
+            color: note ? '#d4d4d8' : '#52525b',
             fontSize: 13,
             lineHeight: 1.5,
             cursor: 'text',
@@ -279,8 +279,8 @@ function DecomCard({
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
           }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = '#334155'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = '#1e2433'}
+          onMouseEnter={e => e.currentTarget.style.borderColor = '#2d3146'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = '#232639'}
         >
           {note || 'Add investigation note…'}
         </button>

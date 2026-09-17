@@ -12,8 +12,8 @@ const POLL_INTERVAL_MS = 15000;
 const CELL_COLORS = {
   PRINTING:  { bg: '#2e1065', text: '#c4b5fd', border: '#6d28d9' },
   IDLE:      { bg: '#18181f', text: '#71717a', border: '#27272a' },
-  FINISHED:  { bg: '#14532d', text: '#a3e635', border: '#3f6212' },
-  STOPPED:   { bg: '#431407', text: '#fb923c', border: '#7c2d12' },
+  FINISHED:  { bg: '#062b22', text: '#a3e635', border: '#3f6212' },
+  STOPPED:   { bg: '#431407', text: '#f59e0b', border: '#7c2d12' },
   PAUSED:    { bg: '#422006', text: '#fbbf24', border: '#854d0e' },
   ATTENTION: { bg: '#422006', text: '#fbbf24', border: '#854d0e' },
   ERROR:     { bg: '#450a0a', text: '#f87171', border: '#7f1d1d' },
@@ -31,7 +31,7 @@ const LEGEND_ITEMS = [
   { label: 'Printing', color: '#8b5cf6' },
   { label: 'Awaiting Sign-off', color: '#a3e635' },
   { label: 'Idle',     color: '#52525b' },
-  { label: 'Stopped',  color: '#fb923c' },
+  { label: 'Stopped',  color: '#f59e0b' },
   { label: 'Error',    color: '#f87171' },
   { label: 'Offline',  color: '#3f3f46' },
 ];
@@ -382,7 +382,7 @@ export default function Dashboard() {
         <Card title="Needs attention" fill>
           {attention.length === 0 ? (
             <div style={{
-              background: '#14532d', color: '#86efac',
+              background: '#062b22', color: '#6ee7b7',
               borderRadius: 8, padding: '10px 12px', fontSize: 13, fontWeight: 700,
               margin: 'auto 0',
             }}>
@@ -499,7 +499,7 @@ export default function Dashboard() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{proj.name}</span>
                       <span style={{
-                        background: '#166534', color: '#4ade80',
+                        background: '#065f46', color: '#34d399',
                         borderRadius: 999, padding: '1px 8px',
                         fontSize: 10, fontWeight: 700,
                       }}>
@@ -537,7 +537,7 @@ export default function Dashboard() {
                                 </span>
                                 {part.status === 'closed' && (
                                   <span style={{
-                                    background: '#14532d', color: '#22c55e',
+                                    background: '#062b22', color: '#10b981',
                                     borderRadius: 3, padding: '1px 5px',
                                     fontSize: 9, fontWeight: 700,
                                   }}>
@@ -581,7 +581,7 @@ export default function Dashboard() {
                         borderTop: `1px solid ${theme.border}`, marginTop: 10, paddingTop: 8,
                         display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, flexWrap: 'wrap',
                       }}>
-                        <span style={{ fontWeight: 700, color: '#cbd5e1' }}>So far</span>
+                        <span style={{ fontWeight: 700, color: '#d4d4d8' }}>So far</span>
                         {proj.elapsed_secs > 0 && (
                           <span style={{ color: theme.textMuted }}>{formatDuration(proj.elapsed_secs)}</span>
                         )}

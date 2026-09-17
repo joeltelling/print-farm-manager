@@ -29,19 +29,19 @@ function formatHours(ms) {
 
 const EVENT_META = {
   decommission:     { label: 'Decommissioned', bg: '#7f1d1d', color: '#fca5a5' },
-  recommission:     { label: 'Recommissioned', bg: '#14532d', color: '#86efac' },
-  job_finished:     { label: 'Job Finished',   bg: '#1e3a5f', color: '#93c5fd' },
+  recommission:     { label: 'Recommissioned', bg: '#062b22', color: '#6ee7b7' },
+  job_finished:     { label: 'Job Finished',   bg: '#1e1f45', color: '#a5b4fc' },
   job_failed:       { label: 'Job Failed',      bg: '#78350f', color: '#fcd34d' },
-  job_cancelled:    { label: 'Job Cancelled',   bg: '#431407', color: '#fb923c' },
-  offline_with_job: { label: 'Went Offline',    bg: '#1e2433', color: '#94a3b8' },
-  recovered:        { label: 'Recovered',       bg: '#14532d', color: '#86efac' },
+  job_cancelled:    { label: 'Job Cancelled',   bg: '#431407', color: '#f59e0b' },
+  offline_with_job: { label: 'Went Offline',    bg: '#232639', color: '#a1a1aa' },
+  recovered:        { label: 'Recovered',       bg: '#062b22', color: '#6ee7b7' },
   error:            { label: 'Error',           bg: '#7f1d1d', color: '#fca5a5' },
-  note:             { label: 'Note',            bg: '#1e2433', color: '#94a3b8' },
+  note:             { label: 'Note',            bg: '#232639', color: '#a1a1aa' },
   info_changed:     { label: 'Info Updated',   bg: '#1e2a3a', color: '#7dd3fc' },
 };
 
 function EventBadge({ type }) {
-  const m = EVENT_META[type] || { label: type, bg: '#1e2433', color: '#64748b' };
+  const m = EVENT_META[type] || { label: type, bg: '#232639', color: '#71717a' };
   return (
     <span style={{
       background: m.bg, color: m.color,
@@ -55,25 +55,25 @@ function EventBadge({ type }) {
 }
 
 const STATUS_COLORS = {
-  IDLE:     { bg: '#1e3a5f', text: '#93c5fd' },
-  PRINTING: { bg: '#14532d', text: '#86efac' },
-  FINISHED: { bg: '#14532d', text: '#86efac' },
+  IDLE:     { bg: '#1e1f45', text: '#a5b4fc' },
+  PRINTING: { bg: '#062b22', text: '#6ee7b7' },
+  FINISHED: { bg: '#062b22', text: '#6ee7b7' },
   PAUSED:   { bg: '#78350f', text: '#fcd34d' },
-  STOPPED:  { bg: '#431407', text: '#fb923c' },
+  STOPPED:  { bg: '#431407', text: '#f59e0b' },
   ERROR:    { bg: '#7f1d1d', text: '#fca5a5' },
-  OFFLINE:  { bg: '#1e2433', text: '#475569' },
-  UNKNOWN:  { bg: '#1e2433', text: '#475569' },
+  OFFLINE:  { bg: '#232639', text: '#52525b' },
+  UNKNOWN:  { bg: '#232639', text: '#52525b' },
 };
 
 const detailLabelStyle = {
   display: 'flex', flexDirection: 'column', gap: 3,
-  fontSize: 11, fontWeight: 600, color: '#64748b',
+  fontSize: 11, fontWeight: 600, color: '#71717a',
   letterSpacing: '0.04em', textTransform: 'uppercase',
 };
 
 const detailInputStyle = {
-  background: '#1e2433', border: '1px solid #2d3748',
-  borderRadius: 5, color: '#e2e8f0',
+  background: '#232639', border: '1px solid #2d3146',
+  borderRadius: 5, color: '#f4f4f5',
   fontSize: 13, fontWeight: 400,
   padding: '5px 9px', outline: 'none',
   fontFamily: 'inherit',
@@ -259,7 +259,7 @@ export default function PrinterDetail() {
     }
   }
 
-  if (loading) return <p style={{ color: '#64748b' }}>Loading…</p>;
+  if (loading) return <p style={{ color: '#71717a' }}>Loading…</p>;
   if (!printer) return <p style={{ color: '#fca5a5' }}>Printer not found.</p>;
 
   const sc = STATUS_COLORS[printer.status] || STATUS_COLORS.UNKNOWN;
@@ -274,7 +274,7 @@ export default function PrinterDetail() {
       <button
         onClick={() => navigate('/printers')}
         style={{
-          background: 'none', border: 'none', color: '#3b82f6',
+          background: 'none', border: 'none', color: '#8b5cf6',
           fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 18,
         }}
       >
@@ -283,7 +283,7 @@ export default function PrinterDetail() {
 
       {/* Printer header card */}
       <div style={{
-        background: '#131720', border: '1px solid #1e2433',
+        background: '#141620', border: '1px solid #232639',
         borderRadius: 8, padding: '16px 20px', marginBottom: 24,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -297,8 +297,8 @@ export default function PrinterDetail() {
                 disabled={renaming}
                 style={{
                   flex: 1, minWidth: 180,
-                  background: '#1e2433', border: '1px solid #2d3748',
-                  borderRadius: 5, color: '#e2e8f0',
+                  background: '#232639', border: '1px solid #2d3146',
+                  borderRadius: 5, color: '#f4f4f5',
                   fontSize: 18, fontWeight: 700,
                   padding: '4px 10px', outline: 'none',
                 }}
@@ -307,8 +307,8 @@ export default function PrinterDetail() {
                 type="submit"
                 disabled={renaming || !nameDraft.trim()}
                 style={{
-                  background: renaming || !nameDraft.trim() ? '#1e2433' : '#1e40af',
-                  color: renaming || !nameDraft.trim() ? '#475569' : '#fff',
+                  background: renaming || !nameDraft.trim() ? '#232639' : '#5b21b6',
+                  color: renaming || !nameDraft.trim() ? '#52525b' : '#fff',
                   border: 'none', borderRadius: 5,
                   padding: '6px 14px', fontSize: 13, fontWeight: 600,
                   cursor: renaming || !nameDraft.trim() ? 'not-allowed' : 'pointer',
@@ -321,7 +321,7 @@ export default function PrinterDetail() {
                 onClick={cancelRename}
                 disabled={renaming}
                 style={{
-                  background: '#1e2433', color: '#94a3b8',
+                  background: '#232639', color: '#a1a1aa',
                   border: 'none', borderRadius: 5,
                   padding: '6px 14px', fontSize: 13, fontWeight: 600,
                   cursor: renaming ? 'not-allowed' : 'pointer',
@@ -332,13 +332,13 @@ export default function PrinterDetail() {
             </form>
           ) : (
             <>
-              <span style={{ fontWeight: 800, fontSize: 20, color: '#e2e8f0' }}>{printer.name}</span>
+              <span style={{ fontWeight: 800, fontSize: 20, color: '#f4f4f5' }}>{printer.name}</span>
               <button
                 onClick={startRename}
                 title="Rename printer"
                 style={{
-                  background: 'none', border: '1px solid #2d3748',
-                  color: '#94a3b8', borderRadius: 5,
+                  background: 'none', border: '1px solid #2d3146',
+                  color: '#a1a1aa', borderRadius: 5,
                   padding: '3px 10px', fontSize: 11, fontWeight: 600,
                   cursor: 'pointer', letterSpacing: '0.04em',
                 }}
@@ -354,7 +354,7 @@ export default function PrinterDetail() {
                 </span>
               ) : (
                 <span style={{
-                  background: '#1e2433', color: '#ef4444',
+                  background: '#232639', color: '#ef4444',
                   borderRadius: 4, padding: '2px 9px', fontSize: 12, fontWeight: 700,
                 }}>
                   DECOMMISSIONED
@@ -465,8 +465,8 @@ export default function PrinterDetail() {
                 type="submit"
                 disabled={savingDetails || !detailsDraft.ip?.trim()}
                 style={{
-                  background: savingDetails || !detailsDraft.ip?.trim() ? '#1e2433' : '#1e40af',
-                  color: savingDetails || !detailsDraft.ip?.trim() ? '#475569' : '#fff',
+                  background: savingDetails || !detailsDraft.ip?.trim() ? '#232639' : '#5b21b6',
+                  color: savingDetails || !detailsDraft.ip?.trim() ? '#52525b' : '#fff',
                   border: 'none', borderRadius: 5,
                   padding: '6px 16px', fontSize: 13, fontWeight: 600,
                   cursor: savingDetails || !detailsDraft.ip?.trim() ? 'not-allowed' : 'pointer',
@@ -479,7 +479,7 @@ export default function PrinterDetail() {
                 onClick={cancelEditDetails}
                 disabled={savingDetails}
                 style={{
-                  background: '#1e2433', color: '#94a3b8',
+                  background: '#232639', color: '#a1a1aa',
                   border: 'none', borderRadius: 5,
                   padding: '6px 14px', fontSize: 13, fontWeight: 600,
                   cursor: savingDetails ? 'not-allowed' : 'pointer',
@@ -490,14 +490,14 @@ export default function PrinterDetail() {
             </div>
           </form>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', fontSize: 13, color: '#64748b' }}>
-            <span>Model: <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>{printer.model}</span></span>
-            <span>IP: <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>{printer.ip}</span></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', fontSize: 13, color: '#71717a' }}>
+            <span>Model: <span style={{ color: '#a1a1aa', fontFamily: 'monospace' }}>{printer.model}</span></span>
+            <span>IP: <span style={{ color: '#a1a1aa', fontFamily: 'monospace' }}>{printer.ip}</span></span>
             {printer.group_name && (
-              <span>Group: <span style={{ color: '#94a3b8' }}>{printer.group_name}</span></span>
+              <span>Group: <span style={{ color: '#a1a1aa' }}>{printer.group_name}</span></span>
             )}
             {printer.type && printer.type !== 'prusa' && (
-              <span>Connector: <span style={{ color: '#94a3b8' }}>{printer.type}</span></span>
+              <span>Connector: <span style={{ color: '#a1a1aa' }}>{printer.type}</span></span>
             )}
             {(printer.loaded_material || printer.loaded_color) && (
               <span>
@@ -510,8 +510,8 @@ export default function PrinterDetail() {
             <button
               onClick={startEditDetails}
               style={{
-                background: 'none', border: '1px solid #2d3748',
-                color: '#94a3b8', borderRadius: 5,
+                background: 'none', border: '1px solid #2d3146',
+                color: '#a1a1aa', borderRadius: 5,
                 padding: '3px 10px', fontSize: 11, fontWeight: 600,
                 cursor: 'pointer', letterSpacing: '0.04em', marginLeft: 'auto',
               }}
@@ -526,11 +526,11 @@ export default function PrinterDetail() {
             Decommissioned: {formatTimestamp(printer.decommissioned_at)}
           </div>
         )}
-        <div style={{ marginTop: 10, fontSize: 12, color: '#64748b' }}>
+        <div style={{ marginTop: 10, fontSize: 12, color: '#71717a' }}>
           Operator sign-off (Set Ready / Bad Print) lives on the{' '}
           <button
             onClick={() => navigate('/fleet')}
-            style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, fontSize: 12 }}
+            style={{ background: 'none', border: 'none', color: '#8b5cf6', cursor: 'pointer', padding: 0, fontSize: 12 }}
           >
             Fleet
           </button>
@@ -541,7 +541,7 @@ export default function PrinterDetail() {
       {/* Stats card */}
       {stats && (
         <div style={{
-          background: '#131720', border: '1px solid #1e2433',
+          background: '#141620', border: '1px solid #232639',
           borderRadius: 8, padding: '14px 20px', marginBottom: 24,
           display: 'flex', gap: 0, flexWrap: 'wrap',
         }}>
@@ -554,8 +554,8 @@ export default function PrinterDetail() {
             <div key={label} style={{
               flex: '1 1 120px', padding: '4px 16px 4px 0', minWidth: 100,
             }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#e2e8f0', lineHeight: 1.2 }}>{value}</div>
-              <div style={{ fontSize: 11, color: '#475569', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#f4f4f5', lineHeight: 1.2 }}>{value}</div>
+              <div style={{ fontSize: 11, color: '#52525b', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
             </div>
           ))}
         </div>
@@ -569,14 +569,14 @@ export default function PrinterDetail() {
           printerIp={printer.ip}
         />
         <div style={{
-          background: '#131720', border: '1px solid #1e2433',
+          background: '#141620', border: '1px solid #232639',
           borderRadius: 8, padding: '14px 18px', marginBottom: 16,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Timelapse</div>
-            <Link to="/timelapses" style={{ fontSize: 12, color: '#64748b' }}>Gallery</Link>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#a1a1aa' }}>Timelapse</div>
+            <Link to="/timelapses" style={{ fontSize: 12, color: '#71717a' }}>Gallery</Link>
           </div>
-          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: '#a1a1aa', marginBottom: 10 }}>
             {activeTl
               ? `#${activeTl.id} · ${activeTl.status} · ${activeTl.frame_count} frames${activeTl.job_id ? ` · job ${activeTl.job_id}` : ' · manual'}`
               : 'No capture on this printer yet.'}
@@ -600,8 +600,8 @@ export default function PrinterDetail() {
                 }
               }}
               style={{
-                background: activeTl?.status === 'capturing' ? '#1e2433' : '#2563eb',
-                color: activeTl?.status === 'capturing' ? '#475569' : '#fff',
+                background: activeTl?.status === 'capturing' ? '#232639' : '#7c3aed',
+                color: activeTl?.status === 'capturing' ? '#52525b' : '#fff',
                 border: 'none', borderRadius: 5, padding: '7px 14px',
                 fontSize: 13, fontWeight: 600,
                 cursor: activeTl?.status === 'capturing' ? 'not-allowed' : 'pointer',
@@ -627,8 +627,8 @@ export default function PrinterDetail() {
                 }
               }}
               style={{
-                background: activeTl?.status === 'capturing' ? '#7f1d1d' : '#1e2433',
-                color: activeTl?.status === 'capturing' ? '#fca5a5' : '#475569',
+                background: activeTl?.status === 'capturing' ? '#7f1d1d' : '#232639',
+                color: activeTl?.status === 'capturing' ? '#fca5a5' : '#52525b',
                 border: 'none', borderRadius: 5, padding: '7px 14px',
                 fontSize: 13, fontWeight: 600,
                 cursor: activeTl?.status === 'capturing' ? 'pointer' : 'not-allowed',
@@ -640,10 +640,10 @@ export default function PrinterDetail() {
         </div>
         <div>
       <div style={{
-        background: '#131720', border: '1px solid #1e2433',
+        background: '#141620', border: '1px solid #232639',
         borderRadius: 8, padding: '14px 18px', marginBottom: 16,
       }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 8 }}>Add operator note</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#a1a1aa', marginBottom: 8 }}>Add operator note</div>
         <form onSubmit={submitNote} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <textarea
             value={note}
@@ -652,8 +652,8 @@ export default function PrinterDetail() {
             rows={2}
             style={{
               flex: 1,
-              background: '#1e2433', border: '1px solid #2d3748',
-              borderRadius: 5, color: '#e2e8f0', fontSize: 13,
+              background: '#232639', border: '1px solid #2d3146',
+              borderRadius: 5, color: '#f4f4f5', fontSize: 13,
               padding: '7px 10px', resize: 'vertical', outline: 'none',
               fontFamily: 'inherit',
             }}
@@ -662,8 +662,8 @@ export default function PrinterDetail() {
             type="submit"
             disabled={saving || !note.trim()}
             style={{
-              background: saving || !note.trim() ? '#1e2433' : '#1e40af',
-              color: saving || !note.trim() ? '#475569' : '#fff',
+              background: saving || !note.trim() ? '#232639' : '#5b21b6',
+              color: saving || !note.trim() ? '#52525b' : '#fff',
               border: 'none', borderRadius: 5,
               padding: '7px 16px', fontSize: 13, fontWeight: 600,
               cursor: saving || !note.trim() ? 'not-allowed' : 'pointer',
@@ -676,12 +676,12 @@ export default function PrinterDetail() {
       </div>
 
       {/* Event timeline */}
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#71717a', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Event History ({events.length})
       </div>
 
       {events.length === 0 && (
-        <p style={{ color: '#475569', fontSize: 14 }}>
+        <p style={{ color: '#52525b', fontSize: 14 }}>
           No history yet: events are recorded automatically as this printer receives jobs, finishes prints, or changes status.
         </p>
       )}
@@ -689,7 +689,7 @@ export default function PrinterDetail() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {events.map(ev => (
           <div key={ev.id} style={{
-            background: '#131720', border: '1px solid #1e2433',
+            background: '#141620', border: '1px solid #232639',
             borderRadius: 7, padding: '10px 14px',
             display: 'flex', alignItems: 'flex-start', gap: 12,
           }}>
@@ -698,11 +698,11 @@ export default function PrinterDetail() {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               {ev.note && (
-                <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 4, wordBreak: 'break-word' }}>
+                <div style={{ fontSize: 13, color: '#d4d4d8', marginBottom: 4, wordBreak: 'break-word' }}>
                   {ev.note}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: '#475569' }}>{formatTimestamp(ev.created_at)}</div>
+              <div style={{ fontSize: 11, color: '#52525b' }}>{formatTimestamp(ev.created_at)}</div>
             </div>
           </div>
         ))}
@@ -712,14 +712,14 @@ export default function PrinterDetail() {
       {/* Job history */}
       {jobHistory.total > 0 && (
         <div style={{ marginTop: 32 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#71717a', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Job History ({jobHistory.total.toLocaleString()})
           </div>
 
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ color: '#475569', textAlign: 'left', borderBottom: '1px solid #1e2433' }}>
+                <tr style={{ color: '#52525b', textAlign: 'left', borderBottom: '1px solid #232639' }}>
                   {['Part', 'Project', 'File', 'Started', 'Duration', 'Parts', 'Status'].map(h => (
                     <th key={h} style={{ padding: '6px 10px', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -727,18 +727,18 @@ export default function PrinterDetail() {
               </thead>
               <tbody>
                 {jobHistory.jobs.map(job => {
-                  const statusColor = job.status === 'finished' ? '#86efac'
+                  const statusColor = job.status === 'finished' ? '#6ee7b7'
                     : job.status === 'failed'   ? '#fca5a5'
-                    : job.status === 'cancelled' ? '#475569'
+                    : job.status === 'cancelled' ? '#52525b'
                     : '#fcd34d';
                   return (
-                    <tr key={job.id} style={{ borderBottom: '1px solid #1a1f2e' }}>
-                      <td style={{ padding: '7px 10px', color: '#cbd5e1', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name ?? '—'}</td>
-                      <td style={{ padding: '7px 10px', color: '#94a3b8', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.project_name ?? '—'}</td>
-                      <td style={{ padding: '7px 10px', color: '#64748b', fontFamily: 'monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.gcode_filename ?? '—'}</td>
-                      <td style={{ padding: '7px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>{formatTimestamp(job.started_at)}</td>
-                      <td style={{ padding: '7px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{formatDuration(job.duration_ms)}</td>
-                      <td style={{ padding: '7px 10px', color: '#94a3b8', textAlign: 'center' }}>{job.parts_per_plate}</td>
+                    <tr key={job.id} style={{ borderBottom: '1px solid #181a27' }}>
+                      <td style={{ padding: '7px 10px', color: '#d4d4d8', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#a1a1aa', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.project_name ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#71717a', fontFamily: 'monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.gcode_filename ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#71717a', whiteSpace: 'nowrap' }}>{formatTimestamp(job.started_at)}</td>
+                      <td style={{ padding: '7px 10px', color: '#a1a1aa', whiteSpace: 'nowrap' }}>{formatDuration(job.duration_ms)}</td>
+                      <td style={{ padding: '7px 10px', color: '#a1a1aa', textAlign: 'center' }}>{job.parts_per_plate}</td>
                       <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                         <span style={{ color: statusColor, fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{job.status}</span>
                       </td>
@@ -756,21 +756,21 @@ export default function PrinterDetail() {
                 onClick={() => setJobPage(p => Math.max(1, p - 1))}
                 disabled={jobPage === 1}
                 style={{
-                  background: jobPage === 1 ? '#1e2433' : '#1e3a5f',
-                  color: jobPage === 1 ? '#475569' : '#93c5fd',
+                  background: jobPage === 1 ? '#232639' : '#1e1f45',
+                  color: jobPage === 1 ? '#52525b' : '#a5b4fc',
                   border: 'none', borderRadius: 5, padding: '8px 16px',
                   fontSize: 13, fontWeight: 600, cursor: jobPage === 1 ? 'not-allowed' : 'pointer',
                 }}
               >← Prev</button>
-              <span style={{ fontSize: 13, color: '#64748b' }}>
+              <span style={{ fontSize: 13, color: '#71717a' }}>
                 Page {jobPage} of {jobHistory.total_pages}
               </span>
               <button
                 onClick={() => setJobPage(p => Math.min(jobHistory.total_pages, p + 1))}
                 disabled={jobPage === jobHistory.total_pages}
                 style={{
-                  background: jobPage === jobHistory.total_pages ? '#1e2433' : '#1e3a5f',
-                  color: jobPage === jobHistory.total_pages ? '#475569' : '#93c5fd',
+                  background: jobPage === jobHistory.total_pages ? '#232639' : '#1e1f45',
+                  color: jobPage === jobHistory.total_pages ? '#52525b' : '#a5b4fc',
                   border: 'none', borderRadius: 5, padding: '8px 16px',
                   fontSize: 13, fontWeight: 600, cursor: jobPage === jobHistory.total_pages ? 'not-allowed' : 'pointer',
                 }}

@@ -7,13 +7,13 @@ import PageHeader from '../components/PageHeader';
 // Colors match the Fleet page conventions: blue = printing, green = done.
 // Cancelled gets a line-through as a non-color cue against Queued.
 const JOB_STATUS = {
-  queued:    { bg: '#1f2937', text: '#9ca3af', label: 'Queued' },
+  queued:    { bg: '#181a27', text: '#a1a1aa', label: 'Queued' },
   uploading: { bg: '#3b2c69', text: '#a78bfa', label: 'Uploading' },
-  printing:  { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
-  awaiting:  { bg: '#14532d', text: '#4ade80', label: 'Awaiting Sign-off' },
-  finished:  { bg: '#14532d', text: '#86efac', label: 'Finished' },
+  printing:  { bg: '#1e1f45', text: '#818cf8', label: 'Printing' },
+  awaiting:  { bg: '#062b22', text: '#34d399', label: 'Awaiting Sign-off' },
+  finished:  { bg: '#062b22', text: '#6ee7b7', label: 'Finished' },
   failed:    { bg: '#7f1d1d', text: '#f87171', label: 'Failed' },
-  cancelled: { bg: '#111827', text: '#6b7280', label: 'Cancelled', strike: true },
+  cancelled: { bg: '#111827', text: '#71717a', label: 'Cancelled', strike: true },
 };
 
 // The printer can be held (awaiting operator sign-off) while the job row is still
@@ -46,11 +46,11 @@ function formatDuration(startMs, endMs) {
 }
 
 const selectSx = {
-  background: '#1e2433',
-  border: '1px solid #2d3748',
+  background: '#232639',
+  border: '1px solid #2d3146',
   borderRadius: 4,
   padding: '5px 10px',
-  color: '#e2e8f0',
+  color: '#f4f4f5',
   fontSize: 13,
   outline: 'none',
 };
@@ -140,15 +140,15 @@ export default function Jobs() {
           {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
 
-        <span style={{ color: '#475569', fontSize: 13, marginLeft: 4 }}>
+        <span style={{ color: '#52525b', fontSize: 13, marginLeft: 4 }}>
           {jobs.length} job{jobs.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
+      {loading && <p style={{ color: '#71717a' }}>Loading…</p>}
       {!loading && jobs.length === 0 && (
         statusFilter !== 'all' || projectFilter || printerFilter ? (
-          <p style={{ color: '#64748b' }}>No jobs match the current filters — try clearing them.</p>
+          <p style={{ color: '#71717a' }}>No jobs match the current filters, try clearing them.</p>
         ) : (
           <EmptyState
             title="No jobs yet"
@@ -171,19 +171,19 @@ export default function Jobs() {
       {jobs.length > 0 && (
         <div className="jobs-cards">
           {jobs.map(job => {
-            const st = JOB_STATUS[displayJobStatus(job)] || { bg: '#1f2937', text: '#9ca3af', label: job.status };
+            const st = JOB_STATUS[displayJobStatus(job)] || { bg: '#181a27', text: '#a1a1aa', label: job.status };
             return (
-              <div key={job.id} style={{ background: '#1e2433', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#cbd5e1' }}>
+              <div key={job.id} style={{ background: '#232639', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#d4d4d8' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name}</span>
                   <span style={{ background: st.bg, color: st.text, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0, textDecoration: st.strike ? 'line-through' : 'none' }}>
                     {st.label}
                   </span>
                 </div>
-                <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 2 }}>
-                  {job.project_name} · {job.printer_name} <span style={{ color: '#64748b', fontFamily: 'monospace', fontSize: 11 }}>({job.printer_model})</span>
+                <div style={{ color: '#a1a1aa', fontSize: 12, marginBottom: 2 }}>
+                  {job.project_name} · {job.printer_name} <span style={{ color: '#71717a', fontFamily: 'monospace', fontSize: 11 }}>({job.printer_model})</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#71717a', fontSize: 12 }}>
                   <span>
                     {formatTime(job.started_at)}
                     {job.started_at && <> · {formatDuration(job.started_at, job.finished_at || null)}</>}
@@ -207,7 +207,7 @@ export default function Jobs() {
         <div className="jobs-table-wrap" style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #2d3748' }}>
+              <tr style={{ color: '#71717a', textAlign: 'left', borderBottom: '1px solid #2d3146' }}>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>ID</th>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>Part</th>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>Project</th>
@@ -221,22 +221,22 @@ export default function Jobs() {
             </thead>
             <tbody>
               {jobs.map(job => {
-                const st = JOB_STATUS[displayJobStatus(job)] || { bg: '#1f2937', text: '#9ca3af', label: job.status };
+                const st = JOB_STATUS[displayJobStatus(job)] || { bg: '#181a27', text: '#a1a1aa', label: job.status };
                 return (
                   <tr
                     key={job.id}
-                    style={{ borderBottom: '1px solid #1e2433', color: '#cbd5e1' }}
+                    style={{ borderBottom: '1px solid #232639', color: '#d4d4d8' }}
                   >
-                    <td style={{ padding: '8px 10px', color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>
+                    <td style={{ padding: '8px 10px', color: '#52525b', fontFamily: 'monospace', fontSize: 12 }}>
                       #{job.id}
                     </td>
                     <td style={{ padding: '8px 10px' }}>{job.part_name}</td>
-                    <td style={{ padding: '8px 10px', color: '#94a3b8' }}>{job.project_name}</td>
+                    <td style={{ padding: '8px 10px', color: '#a1a1aa' }}>{job.project_name}</td>
                     <td style={{ padding: '8px 10px' }}>{job.printer_name}</td>
                     <td style={{ padding: '8px 10px' }}>
                       <span style={{
-                        background: '#0f172a', border: '1px solid #2d3748', borderRadius: 3,
-                        padding: '1px 6px', fontSize: 11, fontFamily: 'monospace', color: '#64748b',
+                        background: '#12131c', border: '1px solid #2d3146', borderRadius: 3,
+                        padding: '1px 6px', fontSize: 11, fontFamily: 'monospace', color: '#71717a',
                       }}>
                         {job.printer_model}
                       </span>
@@ -246,10 +246,10 @@ export default function Jobs() {
                         {st.label}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '8px 10px', color: '#71717a', whiteSpace: 'nowrap' }}>
                       {formatTime(job.started_at)}
                     </td>
-                    <td style={{ padding: '8px 10px', color: '#64748b' }}>
+                    <td style={{ padding: '8px 10px', color: '#71717a' }}>
                       {job.started_at
                         ? formatDuration(job.started_at, job.finished_at || null)
                         : '—'}

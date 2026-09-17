@@ -1,16 +1,18 @@
 import PageHeader from '../../components/PageHeader';
-import { theme, INPUT_STYLE, BTN_PRIMARY } from '../../theme';
+import { theme, INPUT_STYLE, BTN_PRIMARY, BTN_SECONDARY, CAPTION_STYLE, CHIP_STYLE } from '../../theme';
 import { useToast } from '../../useToast';
 import { useConfirm } from '../../useConfirm';
 
-export { theme, INPUT_STYLE, BTN_PRIMARY };
+export { theme, INPUT_STYLE, BTN_PRIMARY, CAPTION_STYLE, CHIP_STYLE };
 
 // Module navigation lives in the CoMa sidebar (App.jsx). ErpShell is header + page body only.
-export function ErpShell({ title = 'ERP', subtitle, children }) {
+export function ErpShell({ title = 'ERP', subtitle, badge, actions, children }) {
   return (
     <div>
       <PageHeader
         title={title}
+        badge={badge}
+        actions={actions}
         subtitle={subtitle || 'ERP linked to shopfloor: product=project, component=part. Manufactured and outsource.'}
       />
       {children}
@@ -31,9 +33,13 @@ export function Table({ columns, rows, rowKey }) {
                 style={{
                   textAlign: 'left',
                   padding: '8px 10px',
-                  color: theme.textFaint,
+                  color: theme.textDim,
                   borderBottom: `1px solid ${theme.border}`,
-                  fontWeight: 600,
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: '0.07em',
+                  textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
                   cursor: c.onSort ? 'pointer' : 'default',
                   userSelect: c.onSort ? 'none' : undefined,
                 }}
@@ -50,7 +56,7 @@ export function Table({ columns, rows, rowKey }) {
           {rows.map((row, i) => (
             <tr key={rowKey ? rowKey(row) : (row.id ?? row.sku ?? i)}>
               {columns.map(c => (
-                <td key={c.key} style={{ padding: '8px 10px', borderBottom: `1px solid ${theme.border}`, color: theme.textMuted }}>
+                <td key={c.key} style={{ padding: '9px 10px', borderBottom: `1px solid ${theme.borderSoft}`, color: theme.textStrong }}>
                   {c.render ? c.render(row) : row[c.key]}
                 </td>
               ))}
@@ -62,18 +68,9 @@ export function Table({ columns, rows, rowKey }) {
   );
 }
 
-export const labelStyle = { fontSize: 12, color: theme.textDim, display: 'block', marginBottom: 4 };
+export const labelStyle = { fontSize: 11.5, color: theme.textDim, display: 'block', marginBottom: 5, fontWeight: 500 };
 export const formRow = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, alignItems: 'end' };
-export const btnSecondary = {
-  background: 'transparent',
-  color: theme.textMuted,
-  border: `1px solid ${theme.borderStrong}`,
-  borderRadius: 10,
-  padding: '8px 14px',
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: 'pointer',
-};
+export const btnSecondary = BTN_SECONDARY;
 
 export function useErpFeedback() {
   const [showToast, toastEl] = useToast();

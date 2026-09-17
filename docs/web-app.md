@@ -36,7 +36,7 @@ Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ER
 | `client/src/components/BootSplash.jsx` | Session boot splash (once per tab session; not on in-app navigation) |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
-| `client/src/theme.js` | Shared navy palette and card/input tokens |
+| `client/src/theme.js` | Design tokens: surfaces, borders, text ramp, accents, radii, shadows, and the shared card/input/button style objects |
 | `client/src/pages/PrinterDetail.jsx` | Incident view: camera, event timeline, notes |
 | `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, models, CSV, backup) |
 | `client/src/pages/Dashboard.jsx` | Command center dashboard |
@@ -71,7 +71,7 @@ Use the built client on port 3000 (or HTTPS) to install. Vite hot-reload on 5173
 
 ```
 ┌──────────────────────────────────────────┐
-│ SIDEBAR (280px)   │  MAIN CONTENT         │
+│ SIDEBAR (256px)   │  MAIN CONTENT         │
 │  CoMa / site name │                       │
 │  CoreManufacturing│  <Routes />           │
 │                   │                       │
@@ -86,7 +86,21 @@ Use the built client on port 3000 (or HTTPS) to install. Vite hot-reload on 5173
 
 **Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar (flat links, no accordion). All page content is still fully accessible on mobile. Decommissioned printers stay reachable at `/decommissioned` and via the Printers page toggle.
 
-The sidebar shows the operator-configured site name (`farm_name`, default CoMa) with a CoreManufacturing subtitle. Active links use a rounded lime pill.
+The sidebar shows the operator-configured site name (`farm_name`, default CoMa) with a CoreManufacturing subtitle and a live lime dot. Modules and groups are chevron rows rather than boxed cards, active links use a rounded lime pill with a trailing dot, and the pinned footer is the System Logs row (the alert bell, with the pending count spelled out). Main content scrolls inside a dotted-grid backdrop and is capped at 1720 px, centered.
+
+### Design system
+
+One place defines the look: `client/src/theme.js`. Pages import tokens from it instead of pasting hex values.
+
+| Group | Tokens |
+|---|---|
+| Surfaces | `shell` `#0a0b0f`, `page` `#0d0e14`, `sidebar` `#0f1017`, `panel` `#12131c`, `card` `#141620`, `cardAlt` `#181a27`, `cardSoft` `#171825`, `hover` `#1d1f2c` |
+| Borders | `borderSoft` `#1e202e`, `border` `#232639`, `borderStrong` `#2d3146` |
+| Text | `textBright`, `text`, `textStrong`, `textMuted`, `textDim`, `textFaint` (zinc ramp) |
+| Accents | `lime` (primary metric), `accent` / `violet` (actions and in-progress), `indigo`, `cyan`, `teal` (value), `amber` / `orange` (needs a human), `emerald` (healthy), `red` (failure) |
+| Style objects | `CARD_STYLE`, `PANEL_STYLE`, `INPUT_STYLE`, `BTN_PRIMARY`, `BTN_SECONDARY`, `CAPTION_STYLE`, `CHIP_STYLE`, plus the `tintStyle()` / `hexAlpha()` helpers that derive a tinted fill and border from any accent |
+
+Typography is Plus Jakarta Sans for prose and JetBrains Mono (`theme.mono`) for identifiers, counts, and machine-readable metadata. Shared chrome lives in `client/src/components/`: `Card` (caption header with optional live dot, badge, and footer), `KpiCard` (compact metric tile, optional accent frame and router link), `PageHeader` (title, status badge, actions), `StatusPill`, and `EmptyState`.
 
 ## Dashboard Page
 
@@ -114,7 +128,7 @@ TV-optimized command center. Polls `GET /api/dashboard` every 15 seconds. A live
 
 | Color | Status |
 |---|---|
-| Blue | PRINTING |
+| Violet | PRINTING |
 | Green | FINISHED / awaiting operator sign-off |
 | Dark gray | IDLE |
 | Orange | STOPPED |
@@ -143,7 +157,7 @@ Live printer grid that polls `GET /api/printers` every 15 seconds (matching the 
 
 | Status | Background | Text |
 |---|---|---|
-| PRINTING | dark blue | blue |
+| PRINTING | dark indigo | indigo |
 | IDLE | dark gray | gray |
 | READY/Prepared | dark gray | muted gray |
 | FINISHED | dark green | light green |
@@ -249,11 +263,11 @@ Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Mu
 
 ## ERP Pages
 
-All ERP pages use the CoMa shell, `theme.js`, inline styles, `useToast`, and `useConfirm`. Tables scroll horizontally on narrow screens and forms use auto-fit grids, so every action remains available at 600 px.
+All ERP pages use the CoMa shell, `theme.js`, inline styles, `useToast`, and `useConfirm`. Tables scroll horizontally on narrow screens and forms use auto-fit grids, so every action remains available at 600 px. `ErpShell` forwards `badge` and `actions` to `PageHeader`, so a module can put its status word next to the title and its primary action on the same row.
 
 | Route | Operator workflow |
 |---|---|
-| `/erp` | KPIs, shopfloor sync, linked master counts, pending postings, and Needs ERP data reminders |
+| `/erp` | KPIs, shopfloor sync, linked master counts, pending postings, and Needs ERP data reminders. Layout is an eight-tile metric grid, a stock-value strip, then a split of Shopfloor link (project/part/printer counts plus what the last sync created) and Needs ERP data (scrollable queue; each row links to the module that resolves it) |
 | `/erp/postings` | Confirm or dismiss shopfloor postings (stock moves); shows std vs actual unit cost; acknowledge shortage when plastic already used |
 | `/erp/analytics` | Profitability, machine OEE, and cost variance from shopfloor telemetry |
 | `/erp/items` | Create/filter products, components, and raw materials; warehouse and UOM columns; set sourcing |

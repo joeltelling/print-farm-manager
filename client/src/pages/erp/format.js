@@ -34,6 +34,6 @@ export function fmtQty(n, decimalsDisplay = 2) {
 export function marginBadgeColor(pct) {
   const v = Number(pct) || 0;
   if (v < 20) return '#f87171';
-  if (v <= 40) return '#fb923c';
+  if (v <= 40) return '#f59e0b';
   return '#a3e635';
 }

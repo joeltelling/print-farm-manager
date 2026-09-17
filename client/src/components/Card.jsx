@@ -1,46 +1,73 @@
-import { CARD_STYLE, theme } from '../theme';
+import { CARD_STYLE, CAPTION_STYLE, theme } from '../theme';
 
-export default function Card({ children, style, title, action, padded = true, fill = false }) {
+/**
+ * Standard content surface: flat card, hairline border, soft depth.
+ * `title` renders the uppercase caption header with a divider; `dot` adds a
+ * live indicator next to it and `badge` a chip on the right of the header.
+ */
+export default function Card({
+  children, style, title, dot, badge, action, footer,
+  padded = true, fill = false,
+}) {
+  const hasHeader = !!(title || badge || action);
+  const pad = padded ? '16px 18px' : 0;
+
   return (
     <div style={{
       ...CARD_STYLE,
-      padding: padded ? '14px 16px' : 0,
-      background: `linear-gradient(160deg, ${theme.card} 0%, ${theme.cardAlt} 100%)`,
+      padding: pad,
       display: fill ? 'flex' : undefined,
       flexDirection: fill ? 'column' : undefined,
       minHeight: fill ? 0 : undefined,
       height: fill ? '100%' : undefined,
       ...style,
     }}>
-      {(title || action) && (
+      {hasHeader && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 12,
-          marginBottom: title ? 12 : 0,
-          padding: padded ? 0 : '14px 16px 0',
+          paddingBottom: 12,
+          marginBottom: 14,
+          borderBottom: `1px solid ${theme.borderSoft}`,
+          ...(padded ? null : { padding: '16px 18px 12px', marginBottom: 0 }),
           flexShrink: 0,
         }}>
-          {title && (
-            <div style={{
-              fontSize: 11,
-              color: theme.textDim,
-              textTransform: 'uppercase',
-              letterSpacing: '0.14em',
-              fontWeight: 700,
-            }}>
-              {title}
-            </div>
-          )}
-          {action}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+            {dot && (
+              <span
+                className="pulse-dot"
+                style={{ width: 9, height: 9, borderRadius: 999, background: dot, flexShrink: 0 }}
+              />
+            )}
+            {title && <span style={{ ...CAPTION_STYLE, fontSize: 11, color: theme.textStrong }}>{title}</span>}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {badge}
+            {action}
+          </div>
         </div>
       )}
+
       {fill ? (
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           {children}
         </div>
       ) : children}
+
+      {footer && (
+        <div style={{
+          marginTop: 16,
+          paddingTop: 12,
+          borderTop: `1px solid ${theme.borderSoft}`,
+          fontSize: 11,
+          color: theme.textDim,
+          flexShrink: 0,
+        }}>
+          {footer}
+        </div>
+      )}
     </div>
   );
 }

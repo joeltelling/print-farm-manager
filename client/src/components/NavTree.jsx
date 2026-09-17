@@ -118,44 +118,51 @@ function persistAccordion(next) {
   localStorage.setItem(ACCORDION_KEY, JSON.stringify(next));
 }
 
+// Hover states need real CSS, so links carry a class alongside their inline style.
+export const NAV_STYLES = `
+  .coma-navlink { transition: background 0.15s ease, color 0.15s ease; }
+  .coma-navlink:not(.is-active):hover { background: rgba(255,255,255,0.05); color: ${theme.text}; }
+  .coma-navtoggle { transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
+  .coma-navtoggle:hover { color: ${theme.text}; }
+`;
+
 export const navLinkStyle = ({ isActive }) => ({
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
   width: '100%',
   boxSizing: 'border-box',
-  padding: '10px 12px',
-  borderRadius: theme.radiusSm,
-  color: isActive ? '#0a0a0a' : theme.text,
+  padding: '8px 12px',
+  borderRadius: 10,
+  color: isActive ? '#0a0a0a' : theme.textMuted,
   background: isActive ? theme.lime : 'transparent',
   textDecoration: 'none',
   fontWeight: isActive ? 700 : 500,
-  fontSize: 14,
+  fontSize: 12.5,
   lineHeight: 1.3,
-  transition: 'background 0.15s, color 0.15s',
   whiteSpace: 'nowrap',
-  boxShadow: isActive ? `0 0 18px ${theme.limeGlow}` : 'none',
+  boxShadow: isActive ? theme.glowLime : 'none',
 });
 
-function Chevron({ open, size = 12 }) {
+export const navLinkClass = ({ isActive }) => `coma-navlink${isActive ? ' is-active' : ''}`;
+
+function Chevron({ open, size = 14, color = theme.textDim }) {
   return (
-    <span
+    <svg
       aria-hidden="true"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 18,
-        height: 18,
-        borderRadius: 6,
-        background: theme.cardAlt,
-        border: `1px solid ${theme.border}`,
-        fontSize: size,
-        lineHeight: 1,
-        flexShrink: 0,
-        color: theme.textMuted,
-      }}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0, transition: 'transform 0.18s ease' }}
     >
-      {open ? '▾' : '▸'}
-    </span>
+      <path d={open ? 'M19 9l-7 7-7-7' : 'M9 5l7 7-7 7'} />
+    </svg>
   );
 }
 
@@ -164,58 +171,74 @@ function ScreenLink({ item, nested }) {
     <NavLink
       to={item.to}
       end={item.to === '/' || !!item.end}
+      className={navLinkClass}
       style={(args) => ({
         ...navLinkStyle(args),
-        ...(nested ? { paddingLeft: 14, fontSize: 13.5 } : null),
+        ...(nested ? { fontSize: 12 } : null),
       })}
     >
-      {item.label}
+      {({ isActive }) => (
+        <>
+          <span>{item.label}</span>
+          {isActive && (
+            <span style={{
+              width: 7, height: 7, borderRadius: 999,
+              background: 'rgba(0,0,0,0.8)', flexShrink: 0,
+            }} />
+          )}
+        </>
+      )}
     </NavLink>
   );
 }
 
-function ModuleCard({ open, label, onToggle, children }) {
+function ModuleCard({ open, label, indicator, onToggle, children }) {
   return (
     <div style={{
-      background: open ? theme.card : theme.cardAlt,
-      border: `1px solid ${open ? theme.borderStrong : theme.border}`,
+      background: open ? 'rgba(19, 20, 31, 0.7)' : 'transparent',
+      border: `1px solid ${open ? 'rgba(35, 38, 56, 0.6)' : 'transparent'}`,
       borderRadius: theme.radius,
-      overflow: 'hidden',
-      marginBottom: 10,
+      padding: open ? 6 : 0,
+      marginBottom: 6,
     }}>
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
+        className="coma-navtoggle"
         style={{
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: 10,
           width: '100%',
           margin: 0,
-          padding: '14px 14px',
+          padding: '9px 10px',
           border: 'none',
-          borderBottom: open ? `1px solid ${theme.border}` : 'none',
-          background: open ? theme.card : 'transparent',
+          borderRadius: 10,
+          background: 'transparent',
           cursor: 'pointer',
           fontFamily: 'inherit',
           textAlign: 'left',
-          color: theme.text,
+          color: open ? theme.textStrong : theme.textMuted,
         }}
       >
-        <Chevron open={open} size={13} />
-        <span style={{
-          flex: 1,
-          fontSize: 15,
-          fontWeight: 800,
-          letterSpacing: '0.02em',
-          lineHeight: 1.2,
-        }}>
-          {label}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+          <Chevron open={open} size={14} color={open ? theme.lime : theme.textDim} />
+          <span style={{
+            fontSize: 11.5,
+            fontWeight: 700,
+            letterSpacing: '0.09em',
+            textTransform: 'uppercase',
+            lineHeight: 1.2,
+          }}>
+            {label}
+          </span>
         </span>
+        {indicator}
       </button>
       {open && (
-        <div style={{ padding: '8px 8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4 }}>
           {children}
         </div>
       )}
@@ -225,49 +248,39 @@ function ModuleCard({ open, label, onToggle, children }) {
 
 function GroupCard({ open, label, onToggle, children }) {
   return (
-    <div style={{
-      background: theme.page,
-      border: `1px solid ${open ? theme.borderStrong : theme.border}`,
-      borderRadius: theme.radiusSm,
-      overflow: 'hidden',
-    }}>
+    <div>
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
+        className="coma-navtoggle"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           width: '100%',
           margin: 0,
-          padding: '11px 12px',
+          padding: '6px 10px',
           border: 'none',
-          borderBottom: open ? `1px solid ${theme.border}` : 'none',
-          background: open ? theme.cardAlt : 'transparent',
+          borderRadius: 8,
+          background: 'transparent',
           cursor: 'pointer',
           fontFamily: 'inherit',
           textAlign: 'left',
-          color: open ? theme.text : theme.textMuted,
+          color: open ? theme.textStrong : theme.textMuted,
         }}
       >
-        <Chevron open={open} size={11} />
-        <span style={{
-          flex: 1,
-          fontSize: 13.5,
-          fontWeight: 700,
-          lineHeight: 1.2,
-        }}>
+        <Chevron open={open} size={12} color={theme.textDim} />
+        <span style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.2 }}>
           {label}
         </span>
       </button>
       {open && (
         <div style={{
-          padding: '6px',
+          padding: '2px 0 4px 14px',
           display: 'flex',
           flexDirection: 'column',
           gap: 2,
-          background: theme.page,
         }}>
           {children}
         </div>
@@ -375,6 +388,7 @@ export function NavSections({ compact = false, linkStyle }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <style>{NAV_STYLES}</style>
       {NAV_SECTIONS.map((section) => {
         const moduleOpen = open.module === section.id;
         return (
@@ -382,6 +396,13 @@ export function NavSections({ compact = false, linkStyle }) {
             key={section.id}
             open={moduleOpen}
             label={section.label}
+            indicator={section.id === 'shopfloor' ? (
+              <span
+                className="pulse-dot"
+                title="Shopfloor polling is live"
+                style={{ width: 8, height: 8, borderRadius: 999, background: theme.emeraldDeep, flexShrink: 0 }}
+              />
+            ) : null}
             onToggle={() => toggleModule(section.id)}
           >
             {section.groups && section.groups.map((group) => {
@@ -405,10 +426,7 @@ export function NavSections({ compact = false, linkStyle }) {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 2,
-                background: theme.page,
-                border: `1px solid ${theme.border}`,
-                borderRadius: theme.radiusSm,
-                padding: 6,
+                paddingLeft: 4,
               }}>
                 {section.items.map((item) => (
                   <ScreenLink key={item.to} item={item} />

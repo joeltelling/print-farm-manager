@@ -25,10 +25,10 @@ function formatMaterialForInput(grams) {
 // Model options are loaded from /api/models at runtime — no hardcoded list here.
 
 const PROJECT_STATUS = {
-  draft:     { bg: '#1f2937', text: '#9ca3af', dot: '#6b7280', label: 'Draft' },
-  active:    { bg: '#166534', text: '#4ade80', dot: '#4ade80', label: 'Active' },
+  draft:     { bg: '#181a27', text: '#a1a1aa', dot: '#71717a', label: 'Draft' },
+  active:    { bg: '#065f46', text: '#34d399', dot: '#34d399', label: 'Active' },
   paused:    { bg: '#713f12', text: '#fcd34d', dot: '#fcd34d', label: 'Paused' },
-  completed: { bg: '#14532d', text: '#86efac', dot: '#86efac', label: 'Completed' },
+  completed: { bg: '#062b22', text: '#6ee7b7', dot: '#6ee7b7', label: 'Completed' },
 };
 
 // Only Active projects show by default; Draft, Paused, and Completed are each behind
@@ -94,8 +94,8 @@ function StatusDropdown({ project, onTransition }) {
           position: 'absolute',
           top: 'calc(100% + 4px)',
           left: 0,
-          background: '#1e2433',
-          border: '1px solid #334155',
+          background: '#232639',
+          border: '1px solid #2d3146',
           borderRadius: 6,
           overflow: 'hidden',
           zIndex: 200,
@@ -112,13 +112,13 @@ function StatusDropdown({ project, onTransition }) {
                 textAlign: 'left',
                 background: 'none',
                 border: 'none',
-                color: opt.danger ? '#fca5a5' : '#e2e8f0',
+                color: opt.danger ? '#fca5a5' : '#f4f4f5',
                 padding: '9px 14px',
                 fontSize: 13,
                 cursor: 'pointer',
-                borderTop: opt.danger ? '1px solid #1f2937' : 'none',
+                borderTop: opt.danger ? '1px solid #181a27' : 'none',
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#0f172a'; }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#12131c'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
             >
               {opt.label}
@@ -131,16 +131,16 @@ function StatusDropdown({ project, onTransition }) {
 }
 
 const PART_STATUS = {
-  open:   { bg: '#1e3a5f', text: '#60a5fa', label: 'Open',     help: 'Still needs parts — the scheduler will keep dispatching jobs for it' },
-  closed: { bg: '#14532d', text: '#86efac', label: 'Complete', help: 'Target quantity reached — no more jobs will dispatch for this part' },
+  open:   { bg: '#1e1f45', text: '#818cf8', label: 'Open',     help: 'Still needs parts: the scheduler will keep dispatching jobs for it' },
+  closed: { bg: '#062b22', text: '#6ee7b7', label: 'Complete', help: 'Target quantity reached: no more jobs will dispatch for this part' },
 };
 
 const inputSx = {
-  background: '#0f172a',
-  border: '1px solid #2d3748',
+  background: '#12131c',
+  border: '1px solid #2d3146',
   borderRadius: 6,
   padding: '5px 10px',
-  color: '#e2e8f0',
+  color: '#f4f4f5',
   fontSize: 13,
   outline: 'none',
 };
@@ -148,7 +148,7 @@ const inputSx = {
 const uploadLabelSx = {
   fontSize: 10.5,
   fontWeight: 600,
-  color: '#64748b',
+  color: '#71717a',
   marginBottom: 3,
 };
 
@@ -285,7 +285,7 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
               cursor: 'pointer',
-              color: file ? '#e2e8f0' : '#475569',
+              color: file ? '#f4f4f5' : '#52525b',
             }}>
               {file ? file.name : 'Choose .gcode / .bgcode / .3mf…'}
             </span>
@@ -334,7 +334,7 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
           onClick={handleUpload}
           disabled={uploading || bambuNeedsThreemf}
           style={{
-            background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+            background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 4,
             padding: '6px 14px', fontSize: 12, fontWeight: 600,
             cursor: (uploading || bambuNeedsThreemf) ? 'not-allowed' : 'pointer',
             opacity: (uploading || bambuNeedsThreemf) ? 0.5 : 1,
@@ -345,12 +345,12 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
       </div>
 
       {uploading && uploadPct != null && (
-        <div style={{ background: '#0f172a', borderRadius: 3, height: 5, overflow: 'hidden' }}>
-          <div style={{ background: '#3b82f6', height: '100%', width: `${uploadPct}%`, transition: 'width 0.2s' }} />
+        <div style={{ background: '#12131c', borderRadius: 3, height: 5, overflow: 'hidden' }}>
+          <div style={{ background: '#8b5cf6', height: '100%', width: `${uploadPct}%`, transition: 'width 0.2s' }} />
         </div>
       )}
 
-      <p style={{ margin: 0, fontSize: 11, color: '#475569' }}>
+      <p style={{ margin: 0, fontSize: 11, color: '#52525b' }}>
         Tip: filenames with a model, print time, and weight (e.g. <span className="mono">bracket_MK4S_2h30m_45g.gcode</span>) auto-fill these fields — you can adjust them after upload.
       </p>
 
@@ -364,7 +364,7 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <span
           title="Optional: restrict which printers can run this file. Material/color must match what an operator marked as loaded on the printer; groups restrict dispatch to those printer groups. Leave everything blank to allow any matching printer."
-          style={{ fontSize: 11, color: '#475569', flexShrink: 0, cursor: 'help', borderBottom: '1px dotted #334155' }}
+          style={{ fontSize: 11, color: '#52525b', flexShrink: 0, cursor: 'help', borderBottom: '1px dotted #2d3146' }}
         >Targeting:</span>
         {filamentTypes.length > 0 ? (
           <select
@@ -376,7 +376,7 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
             {filamentTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
           </select>
         ) : (
-          <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>No materials in library</span>
+          <span style={{ fontSize: 11, color: '#2d3146', fontStyle: 'italic' }}>No materials in library</span>
         )}
         {(() => {
           const effectiveMat = requiredMaterial || projectMaterial;
@@ -395,20 +395,20 @@ function GcodeUploadPanel({ part, onUploaded, filamentTypes, filamentColors, pro
         })()}
         {groups.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#475569' }}>Groups:</span>
+            <span style={{ fontSize: 11, color: '#52525b' }}>Groups:</span>
             {groups.map(g => (
-              <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: selectedGroups.includes(g) ? '#7dd3fc' : '#64748b' }}>
+              <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: selectedGroups.includes(g) ? '#7dd3fc' : '#71717a' }}>
                 <input
                   type="checkbox"
                   checked={selectedGroups.includes(g)}
                   onChange={() => toggleGroup(g)}
-                  style={{ accentColor: '#3b82f6' }}
+                  style={{ accentColor: '#8b5cf6' }}
                 />
                 {g}
               </label>
             ))}
             {selectedGroups.length === 0 && (
-              <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
+              <span style={{ fontSize: 11, color: '#2d3146', fontStyle: 'italic' }}>
                 {projectGroups?.length > 0 ? `(inherits project: ${projectGroups.join(', ')})` : 'all groups'}
               </span>
             )}
@@ -490,16 +490,16 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
   }
 
   return (
-    <div style={{ background: '#0f172a', borderRadius: 4, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ background: '#12131c', borderRadius: 4, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
-          fontFamily: 'monospace', fontSize: 12, color: '#e2e8f0',
+          fontFamily: 'monospace', fontSize: 12, color: '#f4f4f5',
           flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {gc.filename}
         </span>
         <span style={{
-          background: '#1e3a5f', color: '#60a5fa', borderRadius: 3,
+          background: '#1e1f45', color: '#818cf8', borderRadius: 3,
           padding: '1px 6px', fontSize: 11, fontWeight: 700, flexShrink: 0,
         }}>
           {gc.printer_model}
@@ -515,8 +515,8 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
         >×</button>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{gc.parts_per_plate}x</span>
-        <span style={{ color: '#475569', fontSize: 11, flexShrink: 0 }}>per plate:</span>
+        <span style={{ color: '#f4f4f5', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{gc.parts_per_plate}x</span>
+        <span style={{ color: '#52525b', fontSize: 11, flexShrink: 0 }}>per plate:</span>
         <input
           type="text"
           placeholder="time e.g. 2h15m"
@@ -538,8 +538,8 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
           disabled={parsing}
           title="Re-read print time and material weight from the filename (e.g. …_2h30m_45g.gcode)"
           style={{
-            background: '#1f2937', color: '#94a3b8',
-            border: '1px solid #2d3748', borderRadius: 4,
+            background: '#181a27', color: '#a1a1aa',
+            border: '1px solid #2d3146', borderRadius: 4,
             padding: '5px 10px', fontSize: 12, cursor: parsing ? 'not-allowed' : 'pointer',
             opacity: parsing ? 0.7 : 1, flexShrink: 0,
           }}
@@ -550,7 +550,7 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
           onClick={save}
           disabled={saving}
           style={{
-            background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+            background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 4,
             padding: '4px 10px', fontSize: 11, fontWeight: 600,
             cursor: saving ? 'not-allowed' : 'pointer',
             opacity: saving ? 0.7 : 1, flexShrink: 0,
@@ -564,7 +564,7 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span
           title="Optional: restrict which printers can run this file. Material/color must match what an operator marked as loaded on the printer; groups restrict dispatch to those printer groups. Leave everything blank to allow any matching printer."
-          style={{ fontSize: 11, color: '#475569', flexShrink: 0, cursor: 'help', borderBottom: '1px dotted #334155' }}
+          style={{ fontSize: 11, color: '#52525b', flexShrink: 0, cursor: 'help', borderBottom: '1px dotted #2d3146' }}
         >Targeting:</span>
         {filamentTypes.length > 0 ? (
           <select
@@ -576,7 +576,7 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
             {filamentTypes.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
           </select>
         ) : (
-          <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>No materials in library</span>
+          <span style={{ fontSize: 11, color: '#2d3146', fontStyle: 'italic' }}>No materials in library</span>
         )}
         {(() => {
           const effectiveMat = reqMaterial || projectMaterial;
@@ -595,20 +595,20 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
         })()}
         {groups.length > 0 && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#475569' }}>Groups:</span>
+            <span style={{ fontSize: 11, color: '#52525b' }}>Groups:</span>
             {groups.map(g => (
-              <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: selectedGroups.includes(g) ? '#7dd3fc' : '#64748b' }}>
+              <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: selectedGroups.includes(g) ? '#7dd3fc' : '#71717a' }}>
                 <input
                   type="checkbox"
                   checked={selectedGroups.includes(g)}
                   onChange={() => toggleGroup(g)}
-                  style={{ accentColor: '#3b82f6' }}
+                  style={{ accentColor: '#8b5cf6' }}
                 />
                 {g}
               </label>
             ))}
             {selectedGroups.length === 0 && (
-              <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
+              <span style={{ fontSize: 11, color: '#2d3146', fontStyle: 'italic' }}>
                 {projectGroups?.length > 0 ? `(inherits project: ${projectGroups.join(', ')})` : 'all groups'}
               </span>
             )}
@@ -721,12 +721,12 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
   }
 
   const sectionLabel = {
-    fontSize: 11, fontWeight: 700, color: '#475569',
+    fontSize: 11, fontWeight: 700, color: '#52525b',
     textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8,
   };
 
   return (
-    <div style={{ background: '#0a0f1a', borderRadius: 6, padding: '14px 16px', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div style={{ background: '#0d0e14', borderRadius: 6, padding: '14px 16px', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 18 }}>
 
       {/* Part name */}
       <div>
@@ -747,11 +747,11 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
             />
           ) : (
             <>
-              <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{part.name}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#f4f4f5' }}>{part.name}</span>
               <button
                 onClick={() => { nameEscapedRef.current = false; setNameDraft(part.name); setEditingName(true); }}
                 title="Rename part"
-                style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}
+                style={{ background: 'none', border: 'none', color: '#52525b', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}
               >✎</button>
             </>
           )}
@@ -763,7 +763,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
         <div style={sectionLabel}>Quantities</div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: '#64748b', fontSize: 12 }}>Have (completed)</label>
+            <label style={{ color: '#71717a', fontSize: 12 }}>Have (completed)</label>
             <input
               type="number" min={0} value={have}
               onChange={e => setHave(e.target.value)}
@@ -772,7 +772,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: '#64748b', fontSize: 12 }}>Need (target)</label>
+            <label style={{ color: '#71717a', fontSize: 12 }}>Need (target)</label>
             <input
               type="number" min={1} value={need}
               onChange={e => setNeed(e.target.value)}
@@ -784,7 +784,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
             onClick={saveQtys}
             disabled={saving}
             style={{
-              background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+              background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 4,
               padding: '5px 14px', fontSize: 12, fontWeight: 600,
               cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1,
             }}
@@ -799,7 +799,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
       <div>
         <div style={sectionLabel}>G-code Files</div>
         {gcodes.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 12, margin: 0 }}>No G-code files uploaded yet.</p>
+          <p style={{ color: '#52525b', fontSize: 12, margin: 0 }}>No G-code files uploaded yet.</p>
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {gcodes.map(gc => (
@@ -840,7 +840,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
           onClick={runDispatchCheck}
           disabled={checking}
           style={{
-            background: '#1f2937', color: '#94a3b8', border: '1px solid #2d3748',
+            background: '#181a27', color: '#a1a1aa', border: '1px solid #2d3146',
             borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: checking ? 'wait' : 'pointer',
           }}
         >
@@ -849,9 +849,9 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
         {dispatchCheck && (
           <div style={{
             marginTop: 8, borderRadius: 6, padding: '8px 12px', fontSize: 12, lineHeight: 1.6,
-            background: dispatchCheck.dispatchable ? '#14532d' : '#1a1f2e',
-            border: `1px solid ${dispatchCheck.dispatchable ? '#166534' : '#7c5806'}`,
-            color: dispatchCheck.dispatchable ? '#86efac' : '#fbbf24',
+            background: dispatchCheck.dispatchable ? '#062b22' : '#181a27',
+            border: `1px solid ${dispatchCheck.dispatchable ? '#065f46' : '#7c5806'}`,
+            color: dispatchCheck.dispatchable ? '#6ee7b7' : '#fbbf24',
           }}>
             {dispatchCheck.dispatchable ? (
               <>
@@ -1301,19 +1301,19 @@ export default function Projects() {
           >
             <div
               style={{
-                background: '#1e2433', border: '1px solid #334155', borderRadius: 10,
+                background: '#232639', border: '1px solid #2d3146', borderRadius: 10,
                 padding: '24px 28px', maxWidth: 420, width: '100%',
                 boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
               }}
               onClick={e => e.stopPropagation()}
             >
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#f4f4f5', marginBottom: 6 }}>
                 Duplicate Project
               </div>
-              <div style={{ color: '#64748b', fontSize: 13, marginBottom: 14 }}>
+              <div style={{ color: '#71717a', fontSize: 13, marginBottom: 14 }}>
                 All parts and G-code files will be copied. The new project starts as a draft with all quantities reset to zero.
               </div>
-              <label style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 6 }}>
+              <label style={{ color: '#a1a1aa', fontSize: 12, display: 'block', marginBottom: 6 }}>
                 New project name
               </label>
               <input
@@ -1329,7 +1329,7 @@ export default function Projects() {
                   onClick={() => { if (!duplicating) setDupModal(null); }}
                   disabled={duplicating}
                   style={{
-                    background: '#1f2937', color: '#9ca3af', border: '1px solid #374151',
+                    background: '#181a27', color: '#a1a1aa', border: '1px solid #2d3146',
                     borderRadius: 6, padding: '8px 18px', fontSize: 13,
                     cursor: duplicating ? 'default' : 'pointer', fontWeight: 500,
                     opacity: duplicating ? 0.4 : 1,
@@ -1341,7 +1341,7 @@ export default function Projects() {
                   onClick={handleDuplicate}
                   disabled={!dupName.trim() || duplicating}
                   style={{
-                    background: '#1d4ed8', color: '#fff', border: 'none',
+                    background: '#6d28d9', color: '#fff', border: 'none',
                     borderRadius: 6, padding: '8px 18px', fontSize: 13, fontWeight: 600,
                     cursor: dupName.trim() && !duplicating ? 'pointer' : 'default',
                     opacity: dupName.trim() && !duplicating ? 1 : 0.5,
@@ -1360,7 +1360,7 @@ export default function Projects() {
           actions={
             <button
               onClick={() => setShowNewForm(v => !v)}
-              style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              style={{ background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
             >
               + New Project
             </button>
@@ -1370,20 +1370,20 @@ export default function Projects() {
         {(draftCount > 0 || pausedCount > 0 || completedCount > 0) && (
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
             {draftCount > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showDraft} onChange={e => toggleShowDraft(e.target.checked)} style={{ accentColor: '#3b82f6' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#a1a1aa', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showDraft} onChange={e => toggleShowDraft(e.target.checked)} style={{ accentColor: '#8b5cf6' }} />
                 Show drafts ({draftCount})
               </label>
             )}
             {pausedCount > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showPaused} onChange={e => toggleShowPaused(e.target.checked)} style={{ accentColor: '#3b82f6' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#a1a1aa', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showPaused} onChange={e => toggleShowPaused(e.target.checked)} style={{ accentColor: '#8b5cf6' }} />
                 Show paused ({pausedCount})
               </label>
             )}
             {completedCount > 0 && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
-                <input type="checkbox" checked={showCompleted} onChange={e => toggleShowCompleted(e.target.checked)} style={{ accentColor: '#3b82f6' }} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#a1a1aa', cursor: 'pointer' }}>
+                <input type="checkbox" checked={showCompleted} onChange={e => toggleShowCompleted(e.target.checked)} style={{ accentColor: '#8b5cf6' }} />
                 Show completed ({completedCount})
               </label>
             )}
@@ -1391,9 +1391,9 @@ export default function Projects() {
         )}
 
         {showNewForm && (
-          <div style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 16, marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ background: '#232639', border: '1px solid #2d3146', borderRadius: 8, padding: 16, marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ color: '#94a3b8', fontSize: 12 }}>Name *</label>
+              <label style={{ color: '#a1a1aa', fontSize: 12 }}>Name *</label>
               <input
                 type="text"
                 value={newName}
@@ -1405,7 +1405,7 @@ export default function Projects() {
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ color: '#94a3b8', fontSize: 12 }}>Description</label>
+              <label style={{ color: '#a1a1aa', fontSize: 12 }}>Description</label>
               <input
                 type="text"
                 value={newDesc}
@@ -1415,7 +1415,7 @@ export default function Projects() {
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ color: '#94a3b8', fontSize: 12 }}>ERP sourcing *</label>
+              <label style={{ color: '#a1a1aa', fontSize: 12 }}>ERP sourcing *</label>
               <select
                 value={newSourcing}
                 onChange={(e) => setNewSourcing(e.target.value)}
@@ -1427,30 +1427,30 @@ export default function Projects() {
             </div>
             <button
               onClick={createProject}
-              style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+              style={{ background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
             >
               Create
             </button>
             <button
               onClick={() => { setShowNewForm(false); setNewName(''); setNewDesc(''); setNewSourcing('manufactured'); }}
-              style={{ background: '#1f2937', color: '#9ca3af', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
+              style={{ background: '#181a27', color: '#a1a1aa', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
             >
               Cancel
             </button>
           </div>
         )}
 
-        {loading && <p style={{ color: '#64748b' }}>Loading…</p>}
+        {loading && <p style={{ color: '#71717a' }}>Loading…</p>}
         {!loading && projects.length === 0 && (
           <EmptyState
             title="Create your first project"
             hint={
               <>
                 Projects are how work flows through the shopfloor:&nbsp;
-                a <strong style={{ color: '#cbd5e1' }}>Project</strong> contains{' '}
-                <strong style={{ color: '#cbd5e1' }}>Parts</strong> (what to print and how many),
-                each part gets <strong style={{ color: '#cbd5e1' }}>G-code</strong> uploaded per printer model,
-                and the scheduler dispatches <strong style={{ color: '#cbd5e1' }}>Jobs</strong> to idle printers
+                a <strong style={{ color: '#d4d4d8' }}>Project</strong> contains{' '}
+                <strong style={{ color: '#d4d4d8' }}>Parts</strong> (what to print and how many),
+                each part gets <strong style={{ color: '#d4d4d8' }}>G-code</strong> uploaded per printer model,
+                and the scheduler dispatches <strong style={{ color: '#d4d4d8' }}>Jobs</strong> to idle printers
                 until every part hits its target quantity. Start with “+ New Project” above.
               </>
             }
@@ -1477,8 +1477,8 @@ export default function Projects() {
                 onDrop={e => { e.preventDefault(); dropProject(p.id); }}
                 onDragEnd={() => { setProjectDragSrc(null); setProjectDragOver(null); }}
                 style={{
-                  background: '#1e2433',
-                  border: `1px solid ${isOver ? '#3b82f6' : '#2d3748'}`,
+                  background: '#232639',
+                  border: `1px solid ${isOver ? '#8b5cf6' : '#2d3146'}`,
                   borderRadius: 8,
                   padding: '12px 16px',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
@@ -1490,7 +1490,7 @@ export default function Projects() {
                 <span
                   title="Drag to reorder"
                   aria-hidden="true"
-                  style={{ color: '#334155', fontSize: 16, cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }}
+                  style={{ color: '#2d3146', fontSize: 16, cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }}
                 >⠿</span>
 
                 {/* Name + description — clicking here navigates */}
@@ -1499,7 +1499,7 @@ export default function Projects() {
                     {p.name}
                   </div>
                   {p.description && (
-                    <div style={{ color: '#64748b', fontSize: 12 }}>{p.description}</div>
+                    <div style={{ color: '#71717a', fontSize: 12 }}>{p.description}</div>
                   )}
                 </div>
 
@@ -1509,11 +1509,11 @@ export default function Projects() {
                     onClick={() => { setDupModal({ id: p.id }); setDupName(`Copy of ${p.name}`); }}
                     title="Duplicate project"
                     style={{
-                      background: 'none', border: '1px solid #334155', borderRadius: 4,
-                      padding: '3px 8px', color: '#64748b', fontSize: 12, cursor: 'pointer', lineHeight: 1.4,
+                      background: 'none', border: '1px solid #2d3146', borderRadius: 4,
+                      padding: '3px 8px', color: '#71717a', fontSize: 12, cursor: 'pointer', lineHeight: 1.4,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.borderColor = '#475569'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = '#334155'; }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#f4f4f5'; e.currentTarget.style.borderColor = '#52525b'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#71717a'; e.currentTarget.style.borderColor = '#2d3146'; }}
                   >
                     Copy
                   </button>
@@ -1523,7 +1523,7 @@ export default function Projects() {
                   <span style={{ background: s.bg, color: s.text, border: `1px solid ${s.text}40`, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
                     {s.label}
                   </span>
-                  <span style={{ color: '#475569', fontSize: 13 }}>→</span>
+                  <span style={{ color: '#52525b', fontSize: 13 }}>→</span>
                 </div>
               </div>
             );
@@ -1534,7 +1534,7 @@ export default function Projects() {
   }
 
   // ─── Detail view ─────────────────────────────────────────────────────────────
-  if (!detailProject) return <p style={{ color: '#64748b' }}>Loading…</p>;
+  if (!detailProject) return <p style={{ color: '#71717a' }}>Loading…</p>;
 
   let projectGroups = [];
   try { projectGroups = detailProject.allowed_groups ? JSON.parse(detailProject.allowed_groups) : []; } catch (_) {}
@@ -1547,7 +1547,7 @@ export default function Projects() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <button
           onClick={goBack}
-          style={{ background: '#1f2937', color: '#94a3b8', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 13, cursor: 'pointer' }}
+          style={{ background: '#181a27', color: '#a1a1aa', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 13, cursor: 'pointer' }}
         >
           ← Projects
         </button>
@@ -1570,7 +1570,7 @@ export default function Projects() {
             <button
               onClick={() => { renameEscapedRef.current = false; setProjectNameDraft(detailProject.name); setEditingProjectName(true); }}
               title="Rename project"
-              style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', color: '#52525b', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}
             >✎</button>
           </>
         )}
@@ -1580,7 +1580,7 @@ export default function Projects() {
       {/* Project-level filament defaults */}
       {filamentTypes.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Filament:</span>
+          <span style={{ fontSize: 12, color: '#71717a', flexShrink: 0 }}>Filament:</span>
           <select
             value={detailProject.required_material || ''}
             onChange={e => {
@@ -1604,7 +1604,7 @@ export default function Projects() {
               .map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
           </select>
           {(detailProject.required_material || detailProject.required_color) && (
-            <span style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>
+            <span style={{ fontSize: 11, color: '#52525b', fontStyle: 'italic' }}>
               applies to all gcodes in this project unless overridden per-gcode
             </span>
           )}
@@ -1614,9 +1614,9 @@ export default function Projects() {
       {/* Project-level group defaults */}
       {allGroups.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>Groups:</span>
+          <span style={{ fontSize: 12, color: '#71717a', flexShrink: 0 }}>Groups:</span>
           {allGroups.map(g => (
-            <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: projectGroups.includes(g) ? '#7dd3fc' : '#64748b' }}>
+            <label key={g} style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', fontSize: 12, color: projectGroups.includes(g) ? '#7dd3fc' : '#71717a' }}>
               <input
                 type="checkbox"
                 checked={projectGroups.includes(g)}
@@ -1626,14 +1626,14 @@ export default function Projects() {
                     : [...projectGroups, g];
                   saveProjectGroups(next);
                 }}
-                style={{ accentColor: '#3b82f6' }}
+                style={{ accentColor: '#8b5cf6' }}
               />
               {g}
             </label>
           ))}
-          {projectGroups.length === 0 && <span style={{ fontSize: 11, color: '#334155', fontStyle: 'italic' }}>all groups</span>}
+          {projectGroups.length === 0 && <span style={{ fontSize: 11, color: '#2d3146', fontStyle: 'italic' }}>all groups</span>}
           {projectGroups.length > 0 && (
-            <span style={{ fontSize: 11, color: '#475569', fontStyle: 'italic' }}>
+            <span style={{ fontSize: 11, color: '#52525b', fontStyle: 'italic' }}>
               applies to all gcodes in this project unless overridden per-gcode
             </span>
           )}
@@ -1641,12 +1641,12 @@ export default function Projects() {
       )}
 
       {/* Parts */}
-      <h2 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+      <h2 style={{ fontSize: 14, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
         Parts
       </h2>
 
       {parts.length === 0 && (
-        <p style={{ color: '#475569', fontSize: 14, marginBottom: 16 }}>No parts yet. Add one below.</p>
+        <p style={{ color: '#52525b', fontSize: 14, marginBottom: 16 }}>No parts yet. Add one below.</p>
       )}
 
       {parts.map(part => {
@@ -1672,8 +1672,8 @@ export default function Projects() {
             onDrop={e => { e.preventDefault(); dropPart(part.id); }}
             onDragEnd={() => { setPartDragSrc(null); setPartDragOver(null); }}
             style={{
-              background: '#1e2433',
-              border: `1px solid ${isPartOver ? '#3b82f6' : '#2d3748'}`,
+              background: '#232639',
+              border: `1px solid ${isPartOver ? '#8b5cf6' : '#2d3146'}`,
               borderRadius: 8, padding: '12px 16px', marginBottom: 8,
               opacity: isPartDragging ? 0.4 : 1,
               transition: 'border-color 0.1s, opacity 0.1s',
@@ -1686,30 +1686,30 @@ export default function Projects() {
                 <span
                   title="Drag to reorder"
                   aria-hidden="true"
-                  style={{ color: '#334155', fontSize: 16, cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }}
+                  style={{ color: '#2d3146', fontSize: 16, cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }}
                 >⠿</span>
                 <span style={{ fontWeight: 600, fontSize: 14 }}>{part.name}</span>
               </div>
 
               {/* Progress */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#a1a1aa', marginBottom: 3 }}>
                   <span>
                     {part.completed_qty}
                     {activeQty > 0 && (
-                      <span style={{ color: '#3b82f6', marginLeft: 4 }}>+{activeQty} printing</span>
+                      <span style={{ color: '#8b5cf6', marginLeft: 4 }}>+{activeQty} printing</span>
                     )}
                     {' / '}
                     {part.target_qty}
                   </span>
                   <span>{pct}%</span>
                 </div>
-                <div style={{ position: 'relative', background: '#0f172a', borderRadius: 4, height: 8 }}>
+                <div style={{ position: 'relative', background: '#12131c', borderRadius: 4, height: 8 }}>
                   {/* Completed segment */}
                   <div style={{
                     position: 'absolute', left: 0, top: 0, height: '100%',
                     width: `${completedPct}%`,
-                    background: '#22c55e',
+                    background: '#10b981',
                     borderRadius: activePct > 0 ? '3px 0 0 3px' : 3,
                     transition: 'width 0.3s',
                   }} />
@@ -1718,7 +1718,7 @@ export default function Projects() {
                     <div style={{
                       position: 'absolute', left: `${completedPct}%`, top: 0, height: '100%',
                       width: `${activePct}%`,
-                      background: '#3b82f6',
+                      background: '#8b5cf6',
                       borderRadius: '0 3px 3px 0',
                       transition: 'width 0.3s',
                     }} />
@@ -1753,9 +1753,9 @@ export default function Projects() {
               <button
                 onClick={() => togglePanel(part.id)}
                 style={{
-                  background: panelOpen ? '#1e3a5f' : '#1f2937',
-                  color: panelOpen ? '#60a5fa' : '#64748b',
-                  border: `1px solid ${panelOpen ? '#1e40af' : '#2d3748'}`,
+                  background: panelOpen ? '#1e1f45' : '#181a27',
+                  color: panelOpen ? '#818cf8' : '#71717a',
+                  border: `1px solid ${panelOpen ? '#5b21b6' : '#2d3146'}`,
                   borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer', flexShrink: 0,
                 }}
               >
@@ -1800,13 +1800,13 @@ export default function Projects() {
       })}
 
       {/* Add Part form */}
-      <div style={{ background: '#1e2433', border: '1px solid #2d3748', borderRadius: 8, padding: 16, marginTop: 8 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+      <div style={{ background: '#232639', border: '1px solid #2d3146', borderRadius: 8, padding: 16, marginTop: 8 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
           Add Part
         </h3>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: '#64748b', fontSize: 12 }}>Part name *</label>
+            <label style={{ color: '#71717a', fontSize: 12 }}>Part name *</label>
             <input
               type="text"
               value={newPartName}
@@ -1817,7 +1817,7 @@ export default function Projects() {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: '#64748b', fontSize: 12 }}>Target qty *</label>
+            <label style={{ color: '#71717a', fontSize: 12 }}>Target qty *</label>
             <input
               type="number"
               min={1}
@@ -1829,7 +1829,7 @@ export default function Projects() {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ color: '#64748b', fontSize: 12 }}>ERP sourcing *</label>
+            <label style={{ color: '#71717a', fontSize: 12 }}>ERP sourcing *</label>
             <select
               value={newPartSourcing}
               onChange={(e) => setNewPartSourcing(e.target.value)}
@@ -1843,7 +1843,7 @@ export default function Projects() {
             onClick={addPart}
             disabled={addingPart}
             style={{
-              background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4,
+              background: '#6d28d9', color: '#fff', border: 'none', borderRadius: 4,
               padding: '6px 14px', fontSize: 13, fontWeight: 600,
               cursor: addingPart ? 'not-allowed' : 'pointer',
               opacity: addingPart ? 0.7 : 1,

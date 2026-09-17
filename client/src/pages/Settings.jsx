@@ -5,19 +5,19 @@ import { useConfirm } from '../useConfirm';
 import PageHeader from '../components/PageHeader';
 
 const inputStyle = {
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: '#12131c',
+  border: '1px solid #2d3146',
   borderRadius: 6,
   padding: '6px 10px',
-  color: '#e2e8f0',
+  color: '#f4f4f5',
   fontSize: 13,
   width: '100%',
   boxSizing: 'border-box',
 };
 
 const sectionStyle = {
-  background: '#1e2433',
-  border: '1px solid #2d3748',
+  background: '#232639',
+  border: '1px solid #2d3146',
   borderRadius: 10,
   padding: 20,
   marginBottom: 0,
@@ -25,11 +25,11 @@ const sectionStyle = {
 };
 
 const filePickStyle = {
-  background: '#0f172a',
-  border: '1px solid #334155',
+  background: '#12131c',
+  border: '1px solid #2d3146',
   borderRadius: 6,
   padding: '8px 12px',
-  color: '#94a3b8',
+  color: '#a1a1aa',
   fontSize: 13,
   cursor: 'pointer',
   display: 'inline-flex',
@@ -564,7 +564,7 @@ export default function Settings() {
           min-width: 0;
         }
         .coma-settings-list {
-          border: 1px solid #2d3748;
+          border: 1px solid #2d3146;
           border-radius: 8px;
           overflow: hidden;
           margin-bottom: 16px;
@@ -575,7 +575,7 @@ export default function Settings() {
           align-items: center;
           gap: 12px;
           padding: 10px 12px;
-          border-bottom: 1px solid #1e2433;
+          border-bottom: 1px solid #232639;
           min-height: 44px;
           box-sizing: border-box;
         }
@@ -609,9 +609,9 @@ export default function Settings() {
             key={t.id}
             onClick={() => setTab(t.id)}
             style={{
-              background: tab === t.id ? '#1e40af' : '#1a2332',
-              color: tab === t.id ? '#fff' : '#94a3b8',
-              border: `1px solid ${tab === t.id ? '#1e40af' : '#243044'}`,
+              background: tab === t.id ? '#5b21b6' : '#1a2332',
+              color: tab === t.id ? '#fff' : '#a1a1aa',
+              border: `1px solid ${tab === t.id ? '#5b21b6' : '#2d3146'}`,
               borderRadius: 999,
               padding: '6px 14px',
               fontSize: 13,
@@ -626,19 +626,19 @@ export default function Settings() {
 
       {/* Server Alerts */}
       {tab === 'alerts' && (
-        <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640, border: '1px solid #7f1d1d' }}>
+        <section style={{ background: '#232639', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640, border: '1px solid #7f1d1d' }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: '#fca5a5' }}>
             Server Alerts ({alerts.length})
           </h2>
           {alerts.length === 0 && (
-            <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>No server alerts right now.</p>
+            <p style={{ color: '#71717a', fontSize: 13, margin: 0 }}>No server alerts right now.</p>
           )}
           {alerts.map(alert => (
             <div key={alert.id} style={{
               display: 'flex',
               gap: 12,
               alignItems: 'flex-start',
-              background: '#1a1f2e',
+              background: '#181a27',
               border: '1px solid #7f1d1d',
               borderRadius: 6,
               padding: '10px 12px',
@@ -647,7 +647,7 @@ export default function Settings() {
             }}>
               <div style={{ flex: 1 }}>
                 <div style={{ color: '#fca5a5', marginBottom: 4 }}>{alert.message}</div>
-                <div style={{ color: '#475569', fontSize: 12 }}>
+                <div style={{ color: '#52525b', fontSize: 12 }}>
                   {new Date(alert.timestamp).toLocaleString()}
                 </div>
               </div>
@@ -656,7 +656,7 @@ export default function Settings() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#64748b',
+                  color: '#71717a',
                   cursor: 'pointer',
                   fontSize: 16,
                   lineHeight: 1,
@@ -678,7 +678,7 @@ export default function Settings() {
       <div className="coma-settings-col">
 <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Printer Models</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           Configure which printer models are available on your shopfloor. Models appear in the G-code upload
           selector and the Add Printer form. Deleting a model is blocked if active printers use it.
         </p>
@@ -688,9 +688,9 @@ export default function Settings() {
             {allModels.map(m => (
               <div key={m.model_id} className="coma-settings-row">
                 <div className="coma-settings-row-main">
-                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{m.label}</span>
-                  <span style={{ color: '#94a3b8', fontFamily: 'monospace', fontSize: 12 }}>{m.model_id}</span>
-                  <span style={{ color: '#64748b', fontSize: 12 }}>{CONNECTOR_LABEL[m.connector] || m.connector}</span>
+                  <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{m.label}</span>
+                  <span style={{ color: '#a1a1aa', fontFamily: 'monospace', fontSize: 12 }}>{m.model_id}</span>
+                  <span style={{ color: '#71717a', fontSize: 12 }}>{CONNECTOR_LABEL[m.connector] || m.connector}</span>
                   {modelDeleteError[m.model_id] && (
                     <span style={{ color: '#fca5a5', fontSize: 12 }}>{modelDeleteError[m.model_id]}</span>
                   )}
@@ -702,12 +702,12 @@ export default function Settings() {
         )}
 
         {allModels.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>No models configured yet. Add your first model below.</p>
+          <p style={{ color: '#52525b', fontSize: 13, marginBottom: 16 }}>No models configured yet. Add your first model below.</p>
         )}
 
         <form onSubmit={handleAddModel} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model ID *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Model ID *</label>
             <input
               value={modelForm.model_id}
               onChange={e => setModelForm(p => ({ ...p, model_id: e.target.value }))}
@@ -717,7 +717,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Label *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Label *</label>
             <input
               value={modelForm.label}
               onChange={e => setModelForm(p => ({ ...p, label: e.target.value }))}
@@ -727,7 +727,7 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Connector *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Connector *</label>
             <select
               value={modelForm.connector}
               onChange={e => setModelForm(p => ({ ...p, connector: e.target.value }))}
@@ -738,7 +738,7 @@ export default function Settings() {
           </div>
           <button
             type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             Add
           </button>
@@ -750,7 +750,7 @@ export default function Settings() {
 {/* Groups */}
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Groups</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           Named groups (e.g. racks or rooms) that projects and G-codes can restrict dispatch to. A group
           stays listed here even when no printer currently carries it (assigning a printer's Group field
           on the Printers page auto-registers a new name here too). Deleting a group is blocked while any
@@ -762,7 +762,7 @@ export default function Settings() {
             {allGroups.map(g => (
               <div key={g.name} className="coma-settings-row">
                 <div className="coma-settings-row-main">
-                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{g.name}</span>
+                  <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{g.name}</span>
                   {groupDeleteError[g.name] && (
                     <span style={{ color: '#fca5a5', fontSize: 12 }}>{groupDeleteError[g.name]}</span>
                   )}
@@ -774,12 +774,12 @@ export default function Settings() {
         )}
 
         {allGroups.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 16 }}>No groups registered yet. Add one below, or it'll be created automatically the first time you type it on a printer.</p>
+          <p style={{ color: '#52525b', fontSize: 13, marginBottom: 16 }}>No groups registered yet. Add one below, or it'll be created automatically the first time you type it on a printer.</p>
         )}
 
         <form onSubmit={handleAddGroup} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Name *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Name *</label>
             <input
               value={groupForm.name}
               onChange={e => setGroupForm({ name: e.target.value })}
@@ -790,7 +790,7 @@ export default function Settings() {
           </div>
           <button
             type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             Add
           </button>
@@ -803,16 +803,16 @@ export default function Settings() {
       <div className="coma-settings-col">
 <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Add Printer</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 12 }}>
           Add a single printer directly without a CSV file.
         </p>
         <div style={{
           background: '#16213a',
-          borderLeft: '3px solid #2563eb',
+          borderLeft: '3px solid #7c3aed',
           borderRadius: 6,
           padding: '8px 12px',
           fontSize: 12.5,
-          color: '#94a3b8',
+          color: '#a1a1aa',
           marginBottom: 16,
           lineHeight: 1.5,
         }}>
@@ -821,7 +821,7 @@ export default function Settings() {
         <form onSubmit={handleAddPrinter}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Brand *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Brand *</label>
               <select
                 value={addForm.type}
                 onChange={e => {
@@ -835,7 +835,7 @@ export default function Settings() {
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Model *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Model *</label>
               <select
                 value={addForm.model}
                 onChange={e => setAddForm(p => ({ ...p, model: e.target.value }))}
@@ -854,7 +854,7 @@ export default function Settings() {
               )}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Name *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Name *</label>
               <input
                 value={addForm.name}
                 onChange={e => setAddForm(p => ({ ...p, name: e.target.value }))}
@@ -864,7 +864,7 @@ export default function Settings() {
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>IP Address *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>IP Address *</label>
               <input
                 value={addForm.ip}
                 onChange={e => setAddForm(p => ({ ...p, ip: e.target.value }))}
@@ -875,7 +875,7 @@ export default function Settings() {
             </div>
             {(addForm.type === 'bambu' || addForm.type === 'elegoo-centauri2') && (
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Serial Number *</label>
+                <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Serial Number *</label>
                 <input
                   value={addForm.serial_number}
                   onChange={e => setAddForm(p => ({ ...p, serial_number: e.target.value }))}
@@ -887,7 +887,7 @@ export default function Settings() {
             )}
             {!NO_API_KEY_TYPES.has(addForm.type) && (
               <div>
-                <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+                <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
                   {addForm.type === 'bambu' || addForm.type === 'elegoo-centauri2' ? 'Access Code *' : 'API Key *'}
                 </label>
                 <input
@@ -900,7 +900,7 @@ export default function Settings() {
               </div>
             )}
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Group (optional)</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Group (optional)</label>
               <input
                 value={addForm.group_name}
                 onChange={e => setAddForm(p => ({ ...p, group_name: e.target.value }))}
@@ -913,7 +913,7 @@ export default function Settings() {
               </datalist>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Loaded Material</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Loaded Material</label>
               <select
                 value={addForm.loaded_material}
                 onChange={e => setAddForm(p => ({ ...p, loaded_material: e.target.value, loaded_color: '' }))}
@@ -924,7 +924,7 @@ export default function Settings() {
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Loaded Color</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Loaded Color</label>
               <select
                 value={addForm.loaded_color}
                 onChange={e => setAddForm(p => ({ ...p, loaded_color: e.target.value }))}
@@ -942,7 +942,7 @@ export default function Settings() {
             type="submit"
             disabled={adding}
             style={{
-              background: adding ? '#1e40af' : '#2563eb',
+              background: adding ? '#5b21b6' : '#7c3aed',
               color: '#fff',
               border: 'none',
               borderRadius: 6,
@@ -962,7 +962,7 @@ export default function Settings() {
           </div>
         )}
         {addResult && (
-          <div style={{ marginTop: 14, background: '#14532d', borderRadius: 6, padding: '10px 14px', color: '#4ade80', fontSize: 13 }}>
+          <div style={{ marginTop: 14, background: '#062b22', borderRadius: 6, padding: '10px 14px', color: '#34d399', fontSize: 13 }}>
             Printer <strong>{addResult.name}</strong> added (ID #{addResult.id}).
           </div>
         )}
@@ -970,8 +970,8 @@ export default function Settings() {
 {/* CSV Import */}
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Import Printer Registry</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Upload a CSV with columns: <code style={{ color: '#94a3b8' }}>model, name, ip, api_key, group, type</code>.<br />
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
+          Upload a CSV with columns: <code style={{ color: '#a1a1aa' }}>model, name, ip, api_key, group, type</code>.<br />
           Model field value is the ID from the Printer Models list above. Missing mandatory fields and duplicate names are skipped.
         </p>
 
@@ -987,11 +987,11 @@ export default function Settings() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            style={{ ...filePickStyle, flex: '1 1 220px', color: csvFileName ? '#e2e8f0' : '#94a3b8' }}
+            style={{ ...filePickStyle, flex: '1 1 220px', color: csvFileName ? '#f4f4f5' : '#a1a1aa' }}
           >
             <span style={{
-              background: '#1e293b', border: '1px solid #334155', borderRadius: 4,
-              padding: '2px 8px', fontSize: 12, color: '#93c5fd', fontWeight: 600, flexShrink: 0,
+              background: '#181a27', border: '1px solid #2d3146', borderRadius: 4,
+              padding: '2px 8px', fontSize: 12, color: '#a5b4fc', fontWeight: 600, flexShrink: 0,
             }}>
               Choose file
             </span>
@@ -1003,7 +1003,7 @@ export default function Settings() {
             type="submit"
             disabled={importing}
             style={{
-              background: importing ? '#1e40af' : '#2563eb',
+              background: importing ? '#5b21b6' : '#7c3aed',
               color: '#fff',
               border: 'none',
               borderRadius: 6,
@@ -1027,7 +1027,7 @@ export default function Settings() {
         {result && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              <Chip color="#4ade80" label={`${result.imported} imported`} />
+              <Chip color="#34d399" label={`${result.imported} imported`} />
               <Chip color="#fbbf24" label={`${result.skipped} skipped (duplicates)`} />
               <Chip color="#f87171" label={`${result.flagged.length} flagged`} />
             </div>
@@ -1039,7 +1039,7 @@ export default function Settings() {
                 </p>
                 {result.flagged.map((f, i) => (
                   <div key={i} style={{
-                    background: '#1a1f2e',
+                    background: '#181a27',
                     border: '1px solid #7f1d1d',
                     borderRadius: 6,
                     padding: '10px 12px',
@@ -1047,18 +1047,18 @@ export default function Settings() {
                     fontSize: 13,
                   }}>
                     <div style={{ fontWeight: 600, color: '#fca5a5', marginBottom: 4 }}>{f.row.name}</div>
-                    <div style={{ color: '#94a3b8', marginBottom: 8 }}>{f.reason}</div>
+                    <div style={{ color: '#a1a1aa', marginBottom: 8 }}>{f.reason}</div>
                     {f.reason.includes('Cannot infer model') && (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <select
                           value={flaggedModels[i] || allModels[0]?.model_id || ''}
                           onChange={(e) => setFlaggedModels((prev) => ({ ...prev, [i]: e.target.value }))}
                           style={{
-                            background: '#0f172a',
-                            border: '1px solid #334155',
+                            background: '#12131c',
+                            border: '1px solid #2d3146',
                             borderRadius: 4,
                             padding: '4px 8px',
-                            color: '#e2e8f0',
+                            color: '#f4f4f5',
                             fontSize: 13,
                           }}
                         >
@@ -1067,7 +1067,7 @@ export default function Settings() {
                         <button
                           onClick={() => handleSaveFlagged(f, flaggedModels[i] || allModels[0]?.model_id || '')}
                           style={{
-                            background: '#15803d',
+                            background: '#047857',
                             color: '#fff',
                             border: 'none',
                             borderRadius: 4,
@@ -1097,7 +1097,7 @@ export default function Settings() {
       <>
       <div style={{ marginBottom: 12 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Filament Library</h2>
-        <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
+        <p style={{ color: '#71717a', fontSize: 13, margin: 0 }}>
           Define the filament types and colors available on your shopfloor. Printers and G-codes select from these lists.
         </p>
       </div>
@@ -1105,13 +1105,13 @@ export default function Settings() {
       <div className="coma-settings-col">
       <section style={sectionStyle}>
 {/* Filament Types */}
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Types</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#a1a1aa', marginBottom: 10 }}>Types</h3>
         {filamentTypes.length > 0 && (
           <div className="coma-settings-list">
             {filamentTypes.map(t => (
               <div key={t.id} className="coma-settings-row">
                 <div className="coma-settings-row-main">
-                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{t.name}</span>
+                  <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{t.name}</span>
                   {typeDeleteError[t.id] && (
                     <span style={{ color: '#fca5a5', fontSize: 12 }}>{typeDeleteError[t.id]}</span>
                   )}
@@ -1122,11 +1122,11 @@ export default function Settings() {
           </div>
         )}
         {filamentTypes.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No types yet. Add your first below.</p>
+          <p style={{ color: '#52525b', fontSize: 13, marginBottom: 12 }}>No types yet. Add your first below.</p>
         )}
         <form onSubmit={handleAddType} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type name *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Type name *</label>
             <input
               value={typeForm.name}
               onChange={e => setTypeForm(p => ({ ...p, name: e.target.value }))}
@@ -1137,7 +1137,7 @@ export default function Settings() {
           </div>
           <button
             type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
           >
             Add Type
           </button>
@@ -1148,7 +1148,7 @@ export default function Settings() {
       <div className="coma-settings-col">
       <section style={sectionStyle}>
 {/* Filament Colors */}
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Colors</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#a1a1aa', marginBottom: 10 }}>Colors</h3>
         {filamentColors.length > 0 && (
           <div className="coma-settings-list">
             {filamentColors.map(c => (
@@ -1156,11 +1156,11 @@ export default function Settings() {
                 <div className="coma-settings-row-main">
                   <span style={{
                     display: 'inline-block', width: 14, height: 14, borderRadius: '50%',
-                    background: c.hex_color || '#334155', border: '1px solid #475569', flexShrink: 0,
+                    background: c.hex_color || '#2d3146', border: '1px solid #52525b', flexShrink: 0,
                   }} title={c.hex_color || 'no color set'} />
-                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{c.name}</span>
-                  <span style={{ color: '#64748b', fontSize: 12 }}>{c.type_name}</span>
-                  {c.hex_color && <span style={{ color: '#475569', fontSize: 11, fontFamily: 'monospace' }}>{c.hex_color}</span>}
+                  <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{c.name}</span>
+                  <span style={{ color: '#71717a', fontSize: 12 }}>{c.type_name}</span>
+                  {c.hex_color && <span style={{ color: '#52525b', fontSize: 11, fontFamily: 'monospace' }}>{c.hex_color}</span>}
                   {colorDeleteError[c.id] && (
                     <span style={{ color: '#fca5a5', fontSize: 12 }}>{colorDeleteError[c.id]}</span>
                   )}
@@ -1171,11 +1171,11 @@ export default function Settings() {
           </div>
         )}
         {filamentColors.length === 0 && (
-          <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No colors yet. Add your first below.</p>
+          <p style={{ color: '#52525b', fontSize: 13, marginBottom: 12 }}>No colors yet. Add your first below.</p>
         )}
         <form onSubmit={handleAddColor} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, alignItems: 'flex-end' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Type *</label>
             <select
               value={colorForm.type_id}
               onChange={e => setColorForm(p => ({ ...p, type_id: e.target.value }))}
@@ -1187,7 +1187,7 @@ export default function Settings() {
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Color name *</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Color name *</label>
             <input
               value={colorForm.name}
               onChange={e => setColorForm(p => ({ ...p, name: e.target.value }))}
@@ -1197,13 +1197,13 @@ export default function Settings() {
             />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Hex (optional)</label>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>Hex (optional)</label>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input
                 type="color"
                 value={colorForm.hex_color || '#000000'}
                 onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
-                style={{ width: 36, height: 34, padding: 2, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer' }}
+                style={{ width: 36, height: 34, padding: 2, background: '#12131c', border: '1px solid #2d3146', borderRadius: 4, cursor: 'pointer' }}
                 title="Pick a color"
               />
               <input
@@ -1216,7 +1216,7 @@ export default function Settings() {
           </div>
           <button
             type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
           >
             Add Color
           </button>
@@ -1237,7 +1237,7 @@ export default function Settings() {
       <div className="coma-settings-col">
 <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Site name</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           Shown in the sidebar. Defaults to CoMa if left empty after a restore with no name.
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1250,7 +1250,7 @@ export default function Settings() {
           />
           <button
             onClick={handleSaveFarmName}
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             Save
           </button>
@@ -1262,7 +1262,7 @@ export default function Settings() {
 
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Camera</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           Default feed on the printer incident screen. Snapshot (low) refreshes a still every 5 seconds. Stream uses MJPEG. Klipper printers only; implemented from Moonraker webcam docs, not yet validated on physical hardware.
         </p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1276,7 +1276,7 @@ export default function Settings() {
           </select>
           <button
             onClick={handleSaveCameraMode}
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             Save
           </button>
@@ -1288,32 +1288,32 @@ export default function Settings() {
 
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Timelapse</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           Capture JPEG frames while a job is PRINTING (or start manually on a printer). Render to MP4 with ffmpeg when available. Interval is independent of the 15 s poll loop. Not yet validated on physical hardware beyond the Klipper simulator.
         </p>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Enabled</label>
+            <label style={{ display: 'block', fontSize: 11, color: '#71717a', marginBottom: 4 }}>Enabled</label>
             <select value={tlEnabled} onChange={e => setTlEnabled(e.target.value)} style={{ ...inputStyle, width: 120 }}>
               <option value="true">On</option>
               <option value="false">Off</option>
             </select>
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Interval (s)</label>
+            <label style={{ display: 'block', fontSize: 11, color: '#71717a', marginBottom: 4 }}>Interval (s)</label>
             <input value={tlInterval} onChange={e => setTlInterval(e.target.value)} style={{ ...inputStyle, width: 90 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>FPS</label>
+            <label style={{ display: 'block', fontSize: 11, color: '#71717a', marginBottom: 4 }}>FPS</label>
             <input value={tlFps} onChange={e => setTlFps(e.target.value)} style={{ ...inputStyle, width: 90 }} />
           </div>
           <div>
-            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Retention (days)</label>
+            <label style={{ display: 'block', fontSize: 11, color: '#71717a', marginBottom: 4 }}>Retention (days)</label>
             <input value={tlRetention} onChange={e => setTlRetention(e.target.value)} style={{ ...inputStyle, width: 110 }} />
           </div>
           <button
             onClick={handleSaveTimelapse}
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
           >
             Save
           </button>
@@ -1325,10 +1325,10 @@ export default function Settings() {
 
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Polling</h2>
-        <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>
-          All printers are polled every <strong style={{ color: '#e2e8f0' }}>15 seconds</strong> via their connector API.
+        <p style={{ color: '#71717a', fontSize: 13, margin: 0 }}>
+          All printers are polled every <strong style={{ color: '#f4f4f5' }}>15 seconds</strong> via their connector API.
           Polling runs concurrently — all printers are queried in parallel each tick.
-          Unreachable printers show as <span style={{ color: '#6b7280' }}>OFFLINE</span> and do not affect other printers.
+          Unreachable printers show as <span style={{ color: '#71717a' }}>OFFLINE</span> and do not affect other printers.
         </p>
       </section>
 
@@ -1337,7 +1337,7 @@ export default function Settings() {
       <div className="coma-settings-col">
 <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Dispatch Settings</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           The scheduler keeps this many printers uploading or printing at once, pulling
           further down the ready queue to fill that target even if some printers have no
           matching work right now. Reduce this number if your network is saturated during
@@ -1345,7 +1345,7 @@ export default function Settings() {
         </p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
               Concurrent printers (1-100)
             </label>
             <input
@@ -1360,7 +1360,7 @@ export default function Settings() {
           <button
             onClick={handleSaveBatchSize}
             style={{
-              background: '#2563eb',
+              background: '#7c3aed',
               color: '#fff',
               border: 'none',
               borderRadius: 6,
@@ -1387,7 +1387,7 @@ export default function Settings() {
       {tab === 'backup' && (
       <section style={sectionStyle}>
         <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>CoMa Backup</h2>
-        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
           Export one complete snapshot containing shopfloor, G-code files, settings, and all
           embedded ERP data. Use this file to restore on another machine or recover from data loss.
         </p>
@@ -1398,8 +1398,8 @@ export default function Settings() {
             onClick={handleExport}
             style={{
               background: '#0f3460',
-              color: '#93c5fd',
-              border: '1px solid #1e40af',
+              color: '#a5b4fc',
+              border: '1px solid #5b21b6',
               borderRadius: 6,
               padding: '8px 18px',
               fontSize: 13,
@@ -1423,11 +1423,11 @@ export default function Settings() {
             <button
               type="button"
               onClick={() => restoreFileRef.current?.click()}
-              style={{ ...filePickStyle, flex: '1 1 200px', color: restoreFileName ? '#e2e8f0' : '#94a3b8' }}
+              style={{ ...filePickStyle, flex: '1 1 200px', color: restoreFileName ? '#f4f4f5' : '#a1a1aa' }}
             >
               <span style={{
-                background: '#1e293b', border: '1px solid #334155', borderRadius: 4,
-                padding: '2px 8px', fontSize: 12, color: '#93c5fd', fontWeight: 600, flexShrink: 0,
+                background: '#181a27', border: '1px solid #2d3146', borderRadius: 4,
+                padding: '2px 8px', fontSize: 12, color: '#a5b4fc', fontWeight: 600, flexShrink: 0,
               }}>
                 Choose file
               </span>
@@ -1463,21 +1463,21 @@ export default function Settings() {
 
         {restoreResult && (
           <div style={{ marginTop: 14 }}>
-            <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+            <div style={{ color: '#34d399', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
               CoMa data restored successfully
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Chip color="#4ade80" label={`${restoreResult.printers} printers`} />
-              <Chip color="#4ade80" label={`${restoreResult.projects} projects`} />
-              <Chip color="#4ade80" label={`${restoreResult.parts} parts`} />
-              <Chip color="#4ade80" label={`${restoreResult.gcodes} G-codes`} />
-              <Chip color="#4ade80" label={`${restoreResult.jobs} jobs`} />
-              <Chip color="#4ade80" label={`${restoreResult.printer_models ?? 0} printer models`} />
-              <Chip color="#4ade80" label={`${restoreResult.printer_groups ?? 0} groups`} />
-              <Chip color="#4ade80" label={`${restoreResult.filament_types ?? 0} filament types`} />
-              <Chip color="#4ade80" label={`${restoreResult.filament_colors ?? 0} filament colors`} />
+              <Chip color="#34d399" label={`${restoreResult.printers} printers`} />
+              <Chip color="#34d399" label={`${restoreResult.projects} projects`} />
+              <Chip color="#34d399" label={`${restoreResult.parts} parts`} />
+              <Chip color="#34d399" label={`${restoreResult.gcodes} G-codes`} />
+              <Chip color="#34d399" label={`${restoreResult.jobs} jobs`} />
+              <Chip color="#34d399" label={`${restoreResult.printer_models ?? 0} printer models`} />
+              <Chip color="#34d399" label={`${restoreResult.printer_groups ?? 0} groups`} />
+              <Chip color="#34d399" label={`${restoreResult.filament_types ?? 0} filament types`} />
+              <Chip color="#34d399" label={`${restoreResult.filament_colors ?? 0} filament colors`} />
               <Chip
-                color="#4ade80"
+                color="#34d399"
                 label={restoreResult.erp
                   ? `${Object.keys(restoreResult.erp).length} ERP tables`
                   : 'existing ERP preserved'}
@@ -1490,9 +1490,9 @@ export default function Settings() {
 
       {/* About */}
       {tab === 'about' && (
-      <section style={{ maxWidth: 640, borderTop: '1px solid #1e2433', paddingTop: 24 }}>
-        <p style={{ color: '#94a3b8', fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>
-          <strong style={{ color: '#e2e8f0' }}>CoMa</strong> (core-manufacturing) is maintained by{' '}
+      <section style={{ maxWidth: 640, borderTop: '1px solid #232639', paddingTop: 24 }}>
+        <p style={{ color: '#a1a1aa', fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>
+          <strong style={{ color: '#f4f4f5' }}>CoMa</strong> (core-manufacturing) is maintained by{' '}
           <a
             href="https://github.com/mdwcoder"
             target="_blank"
@@ -1507,7 +1507,7 @@ export default function Settings() {
           Klipper camera proxying, PWA install, and more, while staying compatible with the
           upstream ideas.
         </p>
-        <p style={{ color: '#64748b', fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+        <p style={{ color: '#71717a', fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
           If CoMa helps your manufacturing run smoother, a sponsorship keeps the lights on for
           continued work on this fork. Thank you, and happy printing.
         </p>
@@ -1531,8 +1531,8 @@ export default function Settings() {
             rel="noopener noreferrer"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
-              background: '#131720', color: '#94a3b8',
-              border: '1px solid #2d3748',
+              background: '#141620', color: '#a1a1aa',
+              border: '1px solid #2d3146',
               padding: '9px 16px', borderRadius: 8,
               fontSize: 13, fontWeight: 600, textDecoration: 'none',
             }}
@@ -1542,27 +1542,27 @@ export default function Settings() {
         </div>
 
         <details style={{
-          borderTop: '1px solid #1e2433',
+          borderTop: '1px solid #232639',
           paddingTop: 12,
-          color: '#475569',
+          color: '#52525b',
         }}>
           <summary style={{
             cursor: 'pointer',
             fontSize: 12,
             fontWeight: 500,
-            color: '#475569',
+            color: '#52525b',
             userSelect: 'none',
           }}>
             Original project
           </summary>
           <div style={{ marginTop: 12, paddingLeft: 2 }}>
-            <p style={{ color: '#475569', fontSize: 12, lineHeight: 1.65, marginBottom: 12 }}>
+            <p style={{ color: '#52525b', fontSize: 12, lineHeight: 1.65, marginBottom: 12 }}>
               Upstream is{' '}
               <a
                 href="https://github.com/joeltelling/print-farm-manager"
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: '#64748b', textDecoration: 'underline' }}
+                style={{ color: '#71717a', textDecoration: 'underline' }}
               >
                 print-farm-manager
               </a>
@@ -1577,8 +1577,8 @@ export default function Settings() {
                 rel="noopener noreferrer"
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
-                  background: 'transparent', color: '#64748b',
-                  border: '1px solid #2d3748',
+                  background: 'transparent', color: '#71717a',
+                  border: '1px solid #2d3146',
                   padding: '5px 12px', borderRadius: 6,
                   fontSize: 12, fontWeight: 600, textDecoration: 'none',
                 }}
@@ -1591,8 +1591,8 @@ export default function Settings() {
                 rel="noopener noreferrer"
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
-                  background: 'transparent', color: '#64748b',
-                  border: '1px solid #2d3748',
+                  background: 'transparent', color: '#71717a',
+                  border: '1px solid #2d3146',
                   padding: '5px 12px', borderRadius: 6,
                   fontSize: 12, fontWeight: 600, textDecoration: 'none',
                 }}
@@ -1611,7 +1611,7 @@ export default function Settings() {
 function Chip({ color, label }) {
   return (
     <span style={{
-      background: '#0f172a',
+      background: '#12131c',
       border: `1px solid ${color}40`,
       borderRadius: 20,
       padding: '3px 12px',

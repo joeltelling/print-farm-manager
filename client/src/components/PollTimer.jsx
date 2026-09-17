@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 // Circular progress ring that fills up between polls, giving the operator
 // a visual countdown to the next refresh.
-export default function PollTimer({ lastPolled, intervalMs = 15000, size = 20, stroke = '#3b82f6', track = '#2d3748' }) {
+export default function PollTimer({ lastPolled, intervalMs = 15000, size = 20, stroke = '#8b5cf6', track = '#2d3146' }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {

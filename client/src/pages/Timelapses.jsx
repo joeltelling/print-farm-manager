@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import { useToast } from '../useToast';
 import { useConfirm } from '../useConfirm';
 
-const page = '#0a0f1a';
-const card = '#131720';
-const border = '#1e2433';
-const text = '#e2e8f0';
-const muted = '#94a3b8';
-const faint = '#64748b';
-const blue = '#2563eb';
+const page = '#0d0e14';
+const card = '#141620';
+const border = '#232639';
+const text = '#f4f4f5';
+const muted = '#a1a1aa';
+const faint = '#71717a';
+const blue = '#7c3aed';
 const red = '#ef4444';
 
 export default function Timelapses() {
@@ -126,7 +126,7 @@ export default function Timelapses() {
         <select
           value={filterPrinter}
           onChange={e => setFilterPrinter(e.target.value)}
-          style={{ background: '#1e2433', color: text, border: `1px solid ${border}`, borderRadius: 5, padding: '6px 10px' }}
+          style={{ background: '#232639', color: text, border: `1px solid ${border}`, borderRadius: 5, padding: '6px 10px' }}
         >
           <option value="">All</option>
           {printers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -167,7 +167,7 @@ export default function Timelapses() {
                     <td style={{ padding: '10px 12px' }}>#{r.id}</td>
                     <td style={{ padding: '10px 12px' }}>{pr?.name || r.printer_id}</td>
                     <td style={{ padding: '10px 12px' }}>{r.job_id ?? 'manual'}</td>
-                    <td style={{ padding: '10px 12px', color: r.status === 'ready' ? '#22c55e' : muted }}>{r.status}</td>
+                    <td style={{ padding: '10px 12px', color: r.status === 'ready' ? '#10b981' : muted }}>{r.status}</td>
                     <td style={{ padding: '10px 12px' }}>{r.frame_count}</td>
                     <td style={{ padding: '10px 12px', color: faint }}>{r.started_at ? new Date(r.started_at).toLocaleString() : ''}</td>
                     <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
@@ -176,9 +176,9 @@ export default function Timelapses() {
                           <button type="button" onClick={() => stopOne(r.id)} style={btn(blue)}>Stop</button>
                         )}
                         {(r.status === 'failed' || r.status === 'ready') && (
-                          <button type="button" onClick={() => reRender(r.id)} style={btn('#1e2433', text)}>Render</button>
+                          <button type="button" onClick={() => reRender(r.id)} style={btn('#232639', text)}>Render</button>
                         )}
-                        <button type="button" onClick={() => removeOne(r.id)} style={btn('#1e2433', red)}>Del</button>
+                        <button type="button" onClick={() => removeOne(r.id)} style={btn('#232639', red)}>Del</button>
                       </div>
                     </td>
                   </tr>
