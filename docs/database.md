@@ -156,17 +156,67 @@ CREATE TABLE IF NOT EXISTS jobs (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   part_id          INTEGER NOT NULL REFERENCES parts(id),
   printer_id       INTEGER NOT NULL REFERENCES printers(id),
-  gcode_id         INTEGER NOT NULL REFERENCES gcodes(id),
+  gcode_id         INTEGER REFERENCES gcodes(id),
   parts_per_plate  INTEGER NOT NULL,  -- snapshot of gcode.parts_per_plate at dispatch time
   status           TEXT DEFAULT 'queued',
                    -- queued | uploading | printing | finished | failed | cancelled
   started_at       INTEGER,
   finished_at      INTEGER,
-  created_at       INTEGER NOT NULL
+  created_at       INTEGER NOT NULL,
+  printing_seconds REAL NOT NULL DEFAULT 0,
+  paused_seconds   REAL NOT NULL DEFAULT 0,
+  sample_count     INTEGER NOT NULL DEFAULT 0,
+  last_sample_at   INTEGER,
+  material_grams_actual REAL,
+  energy_kwh       REAL,
+  telemetry_quality TEXT NOT NULL DEFAULT 'none'  -- none | partial | measured
 );
 ```
 
 `parts_per_plate` is snapshotted at dispatch time so changing the G-code record after dispatch doesn't retroactively affect in-flight jobs.
+
+Telemetry columns are filled by `server/telemetry.js` while the poller sees PRINTING/PAUSED, and sealed when the scheduler closes the job. Gaps between samples are capped (`SAMPLE_GAP_CAP_MS`, 30 s) so a server restart mid-print cannot credit phantom hours. `telemetry_quality` is `measured` when sample coverage of the wall-clock print window is high enough for ERP actual costing.
+
+### printer_status_history
+
+One row per real status transition (not per 15 s poll). Used for utilization and OEE.
+
+```sql
+CREATE TABLE IF NOT EXISTS printer_status_history (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  printer_id  INTEGER NOT NULL,
+  job_id      INTEGER,
+  status      TEXT NOT NULL,
+  started_at  INTEGER NOT NULL,
+  ended_at    INTEGER,
+  duration_ms INTEGER
+);
+```
+
+### timelapses
+
+JPEG frame captures for a job or a manual printer session. Video is rendered with the host `ffmpeg` binary when present.
+
+```sql
+CREATE TABLE IF NOT EXISTS timelapses (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id           INTEGER UNIQUE,
+  printer_id       INTEGER NOT NULL,
+  part_id          INTEGER,
+  status           TEXT NOT NULL DEFAULT 'capturing',
+                   -- capturing | rendering | ready | failed | discarded
+  interval_seconds INTEGER NOT NULL DEFAULT 10,
+  frame_count      INTEGER NOT NULL DEFAULT 0,
+  dir_path         TEXT,
+  video_path       TEXT,
+  bytes            INTEGER,
+  started_at       INTEGER NOT NULL,
+  ended_at         INTEGER,
+  render_error     TEXT
+);
+```
+
+Optional printer camera overrides (any brand / MJPEG URL): `printers.camera_snapshot_url`, `printers.camera_stream_url`.
 
 ### printer_events
 
@@ -211,9 +261,18 @@ CREATE TABLE IF NOT EXISTS erp_posting (
   posted_at INTEGER,
   stock_move_id INTEGER,
   note TEXT,
-  shortage_json TEXT
+  shortage_json TEXT,
+  actual_minutes REAL,
+  actual_grams REAL,
+  actual_energy_kwh REAL,
+  std_unit_cost REAL,
+  actual_unit_cost REAL,
+  cost_basis TEXT NOT NULL DEFAULT 'standard',  -- standard | actual
+  telemetry_quality TEXT NOT NULL DEFAULT 'none'
 );
 ```
+
+When `telemetry_quality` on the linked job is `measured`, confirm values `stock_move.unit_cost` from actual minutes/grams/energy; otherwise the existing `mfg_component` standard cost is used.
 
 Other ERP tables (`uom`, `warehouse`, `location`, `item`, `machine`, `bom`, `bom_line`, `stock_move`, `item_cost`, `mfg_component`, `work_order`, `wo_issue`, `wo_labor`, `pricing_config`, `sales_order`) are created by `server/erp/schema.js`. See [docs/erp/README.md](erp/README.md).
 

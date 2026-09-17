@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { getJobTelemetry } = require('../telemetry');
 
 module.exports = (db) => {
   // GET /api/jobs — list with optional filters, joined with part/project/printer names
@@ -32,6 +33,14 @@ module.exports = (db) => {
     query += ' ORDER BY jobs.created_at DESC';
 
     res.json(db.prepare(query).all(...params));
+  });
+
+  // Static path before /:id
+  // GET /api/jobs/:id/telemetry — real machine time / energy / material for a job
+  router.get('/:id/telemetry', (req, res) => {
+    const data = getJobTelemetry(db, req.params.id);
+    if (!data) return res.status(404).json({ error: 'Job not found' });
+    res.json(data);
   });
 
   // GET /api/jobs/:id

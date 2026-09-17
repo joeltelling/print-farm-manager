@@ -4,6 +4,7 @@ const path = require('path');
 const { getDriver } = require('./drivers');
 const notifications = require('./notifications');
 const events = require('./events');
+const { sealJobTelemetry } = require('./telemetry');
 
 const GCODE_DIR = path.join(__dirname, 'gcode');
 
@@ -268,6 +269,7 @@ class JobScheduler extends EventEmitter {
       if (isStaleEligible && jobAge > STALE_JOB_GRACE_MS) {
         this.db.prepare("UPDATE jobs SET status = 'failed', finished_at = ? WHERE id = ?")
           .run(Date.now(), activeJob.id);
+        try { sealJobTelemetry(this.db, activeJob.id); } catch (_) {}
         this.db.prepare('UPDATE printers SET is_held = 1 WHERE id = ?').run(printer.id);
         notifications.add(
           `${printer.name}: stale job ${activeJob.id} automatically cancelled — printer held. Use Fleet to resume when ready.`
@@ -541,6 +543,9 @@ class JobScheduler extends EventEmitter {
     // Mark job finished
     this.db.prepare(`UPDATE jobs SET status = 'finished', finished_at = ? WHERE id = ?`)
       .run(now, job.id);
+    try { sealJobTelemetry(this.db, job.id); } catch (err) {
+      console.error(`[scheduler] seal telemetry failed for job ${job.id}:`, err.message);
+    }
 
     // Increment completed_qty
     this.db.prepare(`
@@ -646,6 +651,7 @@ class JobScheduler extends EventEmitter {
     if (job) {
       this.db.prepare("UPDATE jobs SET status = 'cancelled', finished_at = ? WHERE id = ?")
         .run(Date.now(), job.id);
+      try { sealJobTelemetry(this.db, job.id); } catch (_) {}
       events.insert(printer.id, 'job_cancelled', `Job ${job.id} — stopped by operator on printer screen`);
       console.log(`[scheduler] ${printer.name} stopped — job ${job.id} cancelled`);
     }
@@ -662,6 +668,7 @@ class JobScheduler extends EventEmitter {
     if (job) {
       this.db.prepare(`UPDATE jobs SET status = 'failed', finished_at = ? WHERE id = ?`)
         .run(Date.now(), job.id);
+      try { sealJobTelemetry(this.db, job.id); } catch (_) {}
       events.insert(printer.id, 'error', `Job ${job.id} failed: printer entered ${printer.status}`);
       console.warn(`[scheduler] Marked job ${job.id} failed — ${printer.name} went ${printer.status}`);
     } else {

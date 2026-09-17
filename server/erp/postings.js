@@ -2,6 +2,9 @@
  * Shopfloor → ERP posting queue.
  * Set Ready (and bridge) create pending rows; operators confirm stock moves in ERP.
  * Never touches parts.completed_qty.
+ *
+ * When job telemetry_quality is 'measured', receive unit_cost uses actual machine
+ * time / material / energy; otherwise falls back to mfg_component standards.
  */
 const {
   num,
@@ -10,6 +13,8 @@ const {
   convertQty,
   convertUnitCost,
   machineRate,
+  electricityPricePerKwh,
+  effectiveHourlyRate,
   avgWacForRaw,
   whIdByCode,
 } = require('./costing');
@@ -31,6 +36,13 @@ function ensurePostingTable(db) {
       shortage_json TEXT
     );
   `);
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_minutes REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_grams REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_energy_kwh REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN std_unit_cost REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_unit_cost REAL'); } catch (_) {}
+  try { db.exec("ALTER TABLE erp_posting ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'standard'"); } catch (_) {}
+  try { db.exec("ALTER TABLE erp_posting ADD COLUMN telemetry_quality TEXT NOT NULL DEFAULT 'none'"); } catch (_) {}
 }
 
 function postingOut(row) {
@@ -52,6 +64,13 @@ function postingOut(row) {
     stock_move_id: row.stock_move_id,
     note: row.note,
     shortage,
+    actual_minutes: row.actual_minutes != null ? num(row.actual_minutes) : null,
+    actual_grams: row.actual_grams != null ? num(row.actual_grams) : null,
+    actual_energy_kwh: row.actual_energy_kwh != null ? num(row.actual_energy_kwh) : null,
+    std_unit_cost: row.std_unit_cost != null ? num(row.std_unit_cost) : null,
+    actual_unit_cost: row.actual_unit_cost != null ? num(row.actual_unit_cost) : null,
+    cost_basis: row.cost_basis || 'standard',
+    telemetry_quality: row.telemetry_quality || 'none',
   };
 }
 
@@ -73,6 +92,120 @@ function resolveErpSku(db, partId, explicitSku) {
   }
 }
 
+function snapshotJobTelemetry(db, jobId) {
+  if (jobId == null) {
+    return {
+      actual_minutes: null,
+      actual_grams: null,
+      actual_energy_kwh: null,
+      telemetry_quality: 'none',
+    };
+  }
+  let job = null;
+  try {
+    job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+  } catch (_) {
+    return {
+      actual_minutes: null,
+      actual_grams: null,
+      actual_energy_kwh: null,
+      telemetry_quality: 'none',
+    };
+  }
+  if (!job) {
+    return {
+      actual_minutes: null,
+      actual_grams: null,
+      actual_energy_kwh: null,
+      telemetry_quality: 'none',
+    };
+  }
+  const printingSec = num(job.printing_seconds);
+  return {
+    actual_minutes: printingSec > 0 ? round4(printingSec / 60) : null,
+    actual_grams: job.material_grams_actual != null ? num(job.material_grams_actual) : null,
+    actual_energy_kwh: job.energy_kwh != null ? num(job.energy_kwh) : null,
+    telemetry_quality: job.telemetry_quality || 'none',
+  };
+}
+
+function resolveMachineRow(db, printerId, mfgMachineName) {
+  if (printerId != null) {
+    const byPrinter = db.prepare('SELECT * FROM machine WHERE printer_id = ? LIMIT 1').get(printerId);
+    if (byPrinter) return byPrinter;
+  }
+  if (mfgMachineName) {
+    return db.prepare('SELECT * FROM machine WHERE lower(machine) = lower(?)').get(mfgMachineName);
+  }
+  return null;
+}
+
+/**
+ * Compute standard and (when measured) actual unit costs for a component posting.
+ * Mutates plan with unit_cost, std_unit_cost, actual_unit_cost, cost_basis.
+ */
+function applyCostingToPlan(db, plan, mfg, raw, factors, opts = {}) {
+  const qty = num(opts.qty) || 1;
+  const elec = electricityPricePerKwh(db);
+  const machineRow = resolveMachineRow(db, opts.printer_id, mfg?.machine);
+  const rate = machineRow
+    ? effectiveHourlyRate(machineRow, elec)
+    : machineRate(db, mfg?.machine);
+
+  let stdMat = 0;
+  let stdTime = 0;
+  if (mfg && raw) {
+    const rawWac = avgWacForRaw(db, raw.id) || (() => {
+      const ic = db.prepare('SELECT wac FROM item_cost WHERE item_id = ? LIMIT 1').get(raw.id);
+      return num(ic?.wac);
+    })();
+    const rawWacDisplay = convertUnitCost(rawWac, raw.purchase_uom_code, raw.display_uom_code, factors);
+    stdMat = rawWacDisplay * num(mfg.raw_qty_per_unit) * (1 + num(mfg.scrap_pct) / 100);
+    stdTime = (num(mfg.std_minutes) / 60) * rate;
+  }
+  const stdUnit = round4(stdMat + stdTime);
+  plan.std_unit_cost = stdUnit;
+
+  const quality = opts.telemetry_quality || 'none';
+  const actualMinutes = opts.actual_minutes;
+  const actualGrams = opts.actual_grams;
+  const actualEnergy = opts.actual_energy_kwh;
+
+  let actualUnit = null;
+  if (quality === 'measured' && mfg && raw && actualMinutes != null && qty > 0) {
+    let matPerUnit = stdMat;
+    if (actualGrams != null && actualGrams > 0) {
+      const rawWac = avgWacForRaw(db, raw.id) || (() => {
+        const ic = db.prepare('SELECT wac FROM item_cost WHERE item_id = ? LIMIT 1').get(raw.id);
+        return num(ic?.wac);
+      })();
+      // actual_grams is in grams; convert unit cost to per-gram then multiply
+      const costPerGram = convertUnitCost(rawWac, raw.purchase_uom_code, 'G', factors);
+      matPerUnit = costPerGram * (actualGrams / qty);
+    }
+    const timePerUnit = (actualMinutes / qty / 60) * rate;
+    const energyPerUnit = actualEnergy != null
+      ? (actualEnergy / qty) * elec
+      : 0;
+    // When rate_mode is calculated, electricity is already in the hourly rate.
+    // Only add energy_kwh * ELEC_KWH for manual rates to avoid double-counting.
+    const mode = String(machineRow?.rate_mode || 'manual').toLowerCase();
+    const energyExtra = mode === 'calculated' ? 0 : energyPerUnit;
+    actualUnit = round4(matPerUnit + timePerUnit + energyExtra);
+  }
+
+  plan.actual_unit_cost = actualUnit;
+  if (actualUnit != null) {
+    plan.unit_cost = actualUnit;
+    plan.cost_basis = 'actual';
+  } else {
+    plan.unit_cost = stdUnit;
+    plan.cost_basis = 'standard';
+  }
+  if (plan.receive) plan.receive.unit_cost = plan.unit_cost;
+  plan.telemetry_quality = quality;
+}
+
 /**
  * Idempotent insert: one pending/posted row per job_id.
  * Returns { posting, created }.
@@ -91,14 +224,24 @@ function recordShopfloorPosting(db, opts = {}) {
   const erp_sku = resolveErpSku(db, part_id, opts.sku || opts.erp_sku);
   const now = Date.now();
   const note = opts.note || null;
+  const snap = snapshotJobTelemetry(db, job_id);
 
   if (job_id != null) {
     const existing = db.prepare('SELECT * FROM erp_posting WHERE job_id = ?').get(job_id);
     if (existing) {
       // Allow qty refresh while still pending (operator adjusted confirmed_qty)
       if (existing.status === 'pending' && num(existing.qty) !== qty) {
-        db.prepare('UPDATE erp_posting SET qty = ?, erp_sku = COALESCE(?, erp_sku), note = COALESCE(?, note) WHERE id = ?')
-          .run(qty, erp_sku, note, existing.id);
+        db.prepare(`
+          UPDATE erp_posting
+          SET qty = ?, erp_sku = COALESCE(?, erp_sku), note = COALESCE(?, note),
+              actual_minutes = ?, actual_grams = ?, actual_energy_kwh = ?,
+              telemetry_quality = ?
+          WHERE id = ?
+        `).run(
+          qty, erp_sku, note,
+          snap.actual_minutes, snap.actual_grams, snap.actual_energy_kwh,
+          snap.telemetry_quality, existing.id
+        );
         return { posting: postingOut(db.prepare('SELECT * FROM erp_posting WHERE id = ?').get(existing.id)), created: false };
       }
       return { posting: postingOut(existing), created: false };
@@ -106,9 +249,15 @@ function recordShopfloorPosting(db, opts = {}) {
   }
 
   const r = db.prepare(`
-    INSERT INTO erp_posting (job_id, part_id, printer_id, erp_sku, qty, status, created_at, note)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
-  `).run(job_id, part_id, printer_id, erp_sku, qty, now, note);
+    INSERT INTO erp_posting (
+      job_id, part_id, printer_id, erp_sku, qty, status, created_at, note,
+      actual_minutes, actual_grams, actual_energy_kwh, telemetry_quality
+    )
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+  `).run(
+    job_id, part_id, printer_id, erp_sku, qty, now, note,
+    snap.actual_minutes, snap.actual_grams, snap.actual_energy_kwh, snap.telemetry_quality
+  );
 
   return {
     posting: postingOut(db.prepare('SELECT * FROM erp_posting WHERE id = ?').get(r.lastInsertRowid)),
@@ -126,7 +275,7 @@ function stockAvailable(db, item_id, warehouse_id) {
 /**
  * Build issue plan for confirming a component posting (mirrors WO complete for one SKU).
  */
-function buildIssuePlan(db, erp_sku, qty) {
+function buildIssuePlan(db, erp_sku, qty, costOpts = {}) {
   if (!erp_sku) {
     return { error: 'No ERP SKU linked to this posting', missing: [], plan: null, item: null };
   }
@@ -143,14 +292,23 @@ function buildIssuePlan(db, erp_sku, qty) {
   const missing = [];
   const plan = { issues: [], receive: null, unit_cost: 0 };
 
+  let raw = null;
   if (mfg) {
-    const raw = db.prepare('SELECT * FROM item WHERE id = ?').get(mfg.raw_item_id);
+    raw = db.prepare('SELECT * FROM item WHERE id = ?').get(mfg.raw_item_id);
     if (!raw) {
       return { error: `Raw item missing for component ${erp_sku}`, missing: [], plan: null, item };
     }
     const raw_wh = raw.warehouse_id || whIdByCode(db, 'raw') || comp_wh_id;
     let reqDisplay = qty * num(mfg.raw_qty_per_unit);
     if (num(mfg.scrap_pct)) reqDisplay *= (1 + num(mfg.scrap_pct) / 100);
+    // Prefer measured grams for the issue quantity when available
+    if (
+      costOpts.telemetry_quality === 'measured'
+      && costOpts.actual_grams != null
+      && num(costOpts.actual_grams) > 0
+    ) {
+      reqDisplay = convertQty(num(costOpts.actual_grams), 'G', raw.display_uom_code, factors);
+    }
     const reqStock = convertQty(reqDisplay, raw.display_uom_code, raw.purchase_uom_code, factors);
     const avail = stockAvailable(db, raw.id, raw_wh);
     if (avail + 1e-9 < reqStock) {
@@ -159,35 +317,37 @@ function buildIssuePlan(db, erp_sku, qty) {
         required: round4(reqStock), available: round4(avail), component_sku: erp_sku,
       });
     }
-    const rawWac = avgWacForRaw(db, raw.id) || (() => {
-      const ic = db.prepare('SELECT wac FROM item_cost WHERE item_id = ? LIMIT 1').get(raw.id);
-      return num(ic?.wac);
-    })();
-    const rawWacDisplay = convertUnitCost(rawWac, raw.purchase_uom_code, raw.display_uom_code, factors);
-    const matPerUnit = rawWacDisplay * num(mfg.raw_qty_per_unit) * (1 + num(mfg.scrap_pct) / 100);
-    const timePerUnit = (num(mfg.std_minutes) / 60) * machineRate(db, mfg.machine);
-    plan.unit_cost = round4(matPerUnit + timePerUnit);
     plan.issues.push({
       item_id: raw.id,
       warehouse_id: raw_wh,
       qty: reqStock,
-      unit_wac: rawWac,
+      unit_wac: avgWacForRaw(db, raw.id) || num(
+        db.prepare('SELECT wac FROM item_cost WHERE item_id = ? LIMIT 1').get(raw.id)?.wac
+      ),
       component_sku: erp_sku,
     });
-  } else {
-    // No recipe: receive component only (outsource / purchased), no material issue
-    const ic = db.prepare(
-      'SELECT wac FROM item_cost WHERE item_id = ? AND warehouse_id = ?'
-    ).get(item.id, comp_wh_id);
-    plan.unit_cost = round4(num(ic?.wac));
   }
 
   plan.receive = {
     item_id: item.id,
     warehouse_id: item.warehouse_id || comp_wh_id,
     qty,
-    unit_cost: plan.unit_cost,
+    unit_cost: 0,
   };
+
+  if (mfg) {
+    applyCostingToPlan(db, plan, mfg, raw, factors, { ...costOpts, qty });
+  } else {
+    const ic = db.prepare(
+      'SELECT wac FROM item_cost WHERE item_id = ? AND warehouse_id = ?'
+    ).get(item.id, comp_wh_id);
+    plan.unit_cost = round4(num(ic?.wac));
+    plan.std_unit_cost = plan.unit_cost;
+    plan.actual_unit_cost = null;
+    plan.cost_basis = 'standard';
+    plan.telemetry_quality = costOpts.telemetry_quality || 'none';
+    plan.receive.unit_cost = plan.unit_cost;
+  }
 
   return { error: null, missing, plan, item };
 }
@@ -235,7 +395,7 @@ function applyIssuePlan(db, posting, plan) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         plan.receive.item_id, plan.receive.warehouse_id, plan.receive.qty, plan.receive.unit_cost,
-        `posting #${posting.id} receive`, nowIso, nowIso, key
+        `posting #${posting.id} receive (${plan.cost_basis || 'standard'})`, nowIso, nowIso, key
       );
       lastMoveId = r.lastInsertRowid;
 
@@ -262,11 +422,29 @@ function applyIssuePlan(db, posting, plan) {
 
   db.prepare(`
     UPDATE erp_posting
-    SET status = 'posted', posted_at = ?, stock_move_id = ?, shortage_json = NULL
+    SET status = 'posted', posted_at = ?, stock_move_id = ?, shortage_json = NULL,
+        std_unit_cost = ?, actual_unit_cost = ?, cost_basis = ?, telemetry_quality = ?
     WHERE id = ?
-  `).run(nowMs, lastMoveId, posting.id);
+  `).run(
+    nowMs, lastMoveId,
+    plan.std_unit_cost ?? null,
+    plan.actual_unit_cost ?? null,
+    plan.cost_basis || 'standard',
+    plan.telemetry_quality || 'none',
+    posting.id
+  );
 
   return postingOut(db.prepare('SELECT * FROM erp_posting WHERE id = ?').get(posting.id));
+}
+
+function costOptsFromPosting(row) {
+  return {
+    printer_id: row.printer_id,
+    actual_minutes: row.actual_minutes != null ? num(row.actual_minutes) : null,
+    actual_grams: row.actual_grams != null ? num(row.actual_grams) : null,
+    actual_energy_kwh: row.actual_energy_kwh != null ? num(row.actual_energy_kwh) : null,
+    telemetry_quality: row.telemetry_quality || 'none',
+  };
 }
 
 function previewPosting(db, id) {
@@ -277,12 +455,16 @@ function previewPosting(db, id) {
     err.status = 404;
     throw err;
   }
-  const built = buildIssuePlan(db, row.erp_sku, num(row.qty));
+  const built = buildIssuePlan(db, row.erp_sku, num(row.qty), costOptsFromPosting(row));
   return {
     posting: postingOut(row),
     missing: built.missing,
     error: built.error,
     unit_cost: built.plan?.unit_cost ?? null,
+    std_unit_cost: built.plan?.std_unit_cost ?? null,
+    actual_unit_cost: built.plan?.actual_unit_cost ?? null,
+    cost_basis: built.plan?.cost_basis ?? 'standard',
+    telemetry_quality: built.plan?.telemetry_quality || row.telemetry_quality || 'none',
     item: built.item ? { id: built.item.id, sku: built.item.sku, name: built.item.name } : null,
   };
 }
@@ -306,7 +488,7 @@ function confirmPosting(db, id, opts = {}) {
     throw err;
   }
 
-  const built = buildIssuePlan(db, row.erp_sku, num(row.qty));
+  const built = buildIssuePlan(db, row.erp_sku, num(row.qty), costOptsFromPosting(row));
   if (built.error) {
     const err = new Error(built.error);
     err.status = 400;
@@ -409,4 +591,6 @@ module.exports = {
   listPostings,
   pendingCount,
   postingOut,
+  buildIssuePlan,
+  snapshotJobTelemetry,
 };

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import CameraFeed from '../components/CameraFeed';
+import { useToast } from '../useToast';
+import { useConfirm } from '../useConfirm';
 
 function formatTimestamp(ms) {
   if (!ms) return '—';
@@ -102,6 +104,19 @@ export default function PrinterDetail() {
   const [detailsError, setDetailsError]     = useState(null);
   const [savingDetails, setSavingDetails]   = useState(false);
 
+  const [showToast, toastEl] = useToast();
+  const [, confirmModal] = useConfirm();
+  const [tlBusy, setTlBusy] = useState(false);
+  const [activeTl, setActiveTl] = useState(null);
+
+  const refreshTimelapse = useCallback(async () => {
+    const res = await fetch(`/api/timelapses?printer_id=${id}&limit=5`);
+    if (!res.ok) return;
+    const rows = await res.json();
+    const capturing = rows.find(r => r.status === 'capturing');
+    setActiveTl(capturing || rows[0] || null);
+  }, [id]);
+
   const fetchData = useCallback(async () => {
     const [printerRes, eventsRes, statsRes, modelsRes, typesRes, colorsRes, groupsRes] = await Promise.all([
       fetch(`/api/printers/${id}`),
@@ -120,7 +135,8 @@ export default function PrinterDetail() {
     if (colorsRes.ok)   setFilamentColors(await colorsRes.json());
     if (groupsRes.ok)   setGroups((await groupsRes.json()).map(g => g.name));
     setLoading(false);
-  }, [id]);
+    refreshTimelapse();
+  }, [id, refreshTimelapse]);
 
   const fetchJobPage = useCallback(async (page) => {
     const res = await fetch(`/api/printers/${id}/jobs?page=${page}`);
@@ -552,6 +568,76 @@ export default function PrinterDetail() {
           printerType={printer.type}
           printerIp={printer.ip}
         />
+        <div style={{
+          background: '#131720', border: '1px solid #1e2433',
+          borderRadius: 8, padding: '14px 18px', marginBottom: 16,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Timelapse</div>
+            <Link to="/timelapses" style={{ fontSize: 12, color: '#64748b' }}>Gallery</Link>
+          </div>
+          <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 10 }}>
+            {activeTl
+              ? `#${activeTl.id} · ${activeTl.status} · ${activeTl.frame_count} frames${activeTl.job_id ? ` · job ${activeTl.job_id}` : ' · manual'}`
+              : 'No capture on this printer yet.'}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              disabled={tlBusy || activeTl?.status === 'capturing'}
+              onClick={async () => {
+                setTlBusy(true);
+                try {
+                  const r = await fetch(`/api/printers/${id}/timelapse/start`, { method: 'POST' });
+                  const body = await r.json().catch(() => ({}));
+                  if (!r.ok) throw new Error(body.error || r.status);
+                  showToast(`Timelapse #${body.id} started`);
+                  refreshTimelapse();
+                } catch (ex) {
+                  showToast(`Start failed: ${ex.message}`, 'error');
+                } finally {
+                  setTlBusy(false);
+                }
+              }}
+              style={{
+                background: activeTl?.status === 'capturing' ? '#1e2433' : '#2563eb',
+                color: activeTl?.status === 'capturing' ? '#475569' : '#fff',
+                border: 'none', borderRadius: 5, padding: '7px 14px',
+                fontSize: 13, fontWeight: 600,
+                cursor: activeTl?.status === 'capturing' ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Start capture
+            </button>
+            <button
+              type="button"
+              disabled={tlBusy || activeTl?.status !== 'capturing'}
+              onClick={async () => {
+                setTlBusy(true);
+                try {
+                  const r = await fetch(`/api/printers/${id}/timelapse/stop`, { method: 'POST' });
+                  const body = await r.json().catch(() => ({}));
+                  if (!r.ok) throw new Error(body.error || r.status);
+                  showToast('Capture stopped (rendering)');
+                  refreshTimelapse();
+                } catch (ex) {
+                  showToast(`Stop failed: ${ex.message}`, 'error');
+                } finally {
+                  setTlBusy(false);
+                }
+              }}
+              style={{
+                background: activeTl?.status === 'capturing' ? '#7f1d1d' : '#1e2433',
+                color: activeTl?.status === 'capturing' ? '#fca5a5' : '#475569',
+                border: 'none', borderRadius: 5, padding: '7px 14px',
+                fontSize: 13, fontWeight: 600,
+                cursor: activeTl?.status === 'capturing' ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Stop
+            </button>
+          </div>
+        </div>
         <div>
       <div style={{
         background: '#131720', border: '1px solid #1e2433',
@@ -693,6 +779,8 @@ export default function PrinterDetail() {
           )}
         </div>
       )}
+      {toastEl}
+      {confirmModal}
     </div>
   );
 }

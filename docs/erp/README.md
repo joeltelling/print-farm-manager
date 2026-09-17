@@ -19,6 +19,7 @@ Production: one process (`node server/index.js` serving `client/dist`).
 |---|---|---|
 | Dashboard (KPIs + sync + needs data + pending postings) | `/api/erp/dashboard`, `POST /sync` | `/erp` |
 | Shopfloor postings queue | `/postings`, `/postings/:id/confirm`, `/postings/:id/dismiss` | `/erp/postings` |
+| Analytics (profitability, OEE, cost variance) | `/reports/profitability`, `/reports/machine-oee`, `/reports/cost-variance` | `/erp/analytics` |
 | Products & components | `/items` (`item_role`, `sourcing`) | `/erp/items` |
 | Warehouses + locations | `/warehouses`, `/locations` | `/erp/locations` |
 | Inventory receive + stock + charts | `/inventory/*` | `/erp/inventory` |
@@ -70,11 +71,15 @@ Machine rows created from printers stay in Dashboard `Needs ERP data` until thei
 Set Ready (and `POST /api/bridge/units-completed`) create a pending row in `erp_posting` keyed by `job_id` (unique, survives restarts). **No path in this queue changes `parts.completed_qty`.**
 
 1. Operator confirms quality on the printer (Set Ready) as today.
-2. CoMa enqueues `erp_posting` with qty and linked `erp_sku`.
-3. Operator opens `/erp/postings` and confirms. That consumes raw (via `mfg_component` recipe when present) and receives the component into the `comp` warehouse inside a transaction.
+2. CoMa enqueues `erp_posting` with qty, linked `erp_sku`, and a snapshot of job telemetry (`actual_minutes`, `actual_grams`, `actual_energy_kwh`, `telemetry_quality`).
+3. Operator opens `/erp/postings` and confirms. That consumes raw (via `mfg_component` recipe when present) and receives the component into the `comp` warehouse inside a transaction. When `telemetry_quality` is `measured`, receive `unit_cost` uses actual machine time / material / energy; otherwise the standard recipe cost is used. Preview shows both.
 4. If stock is short, the API returns 409 with `acknowledge_required`. The plastic was already used on the printer, so the operator may confirm with `acknowledge_shortage: true` (qty_on_hand may go negative). Dismiss abandons the posting without stock moves.
 
 Double confirm of a posted row returns 409. Stock moves use `idem_key` values derived from the posting id.
+
+Analytics at `/erp/analytics` (and `GET /api/erp/reports/*`) cross telemetried jobs with costing and sales: cost variance vs standards, project profitability including failed-job waste, and machine OEE from `printer_status_history`.
+
+Gap left from the legacy Acres SQL (not in either runtime): purchase orders / vendors. Raw material WAC still enters via Inventory receive.
 
 ## Single database
 

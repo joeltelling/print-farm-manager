@@ -152,6 +152,8 @@ module.exports = (db) => {
     const gcodes          = db.prepare('SELECT * FROM gcodes').all();
     const jobs            = db.prepare('SELECT * FROM jobs').all();
     const printer_events  = db.prepare('SELECT * FROM printer_events').all();
+    const printer_status_history = db.prepare('SELECT * FROM printer_status_history').all();
+    const timelapses      = db.prepare('SELECT * FROM timelapses').all();
     const printer_models  = db.prepare('SELECT * FROM printer_models').all();
     const printer_groups  = db.prepare('SELECT * FROM printer_groups').all();
     const filament_types  = db.prepare('SELECT * FROM filament_types').all();
@@ -176,6 +178,8 @@ module.exports = (db) => {
       gcodes,
       jobs,
       printer_events,
+      printer_status_history,
+      timelapses,
       printer_models,
       printer_groups,
       filament_types,
@@ -245,6 +249,8 @@ module.exports = (db) => {
 
         // Delete in FK dependency order
         db.prepare('DELETE FROM printer_events').run();
+        try { db.prepare('DELETE FROM printer_status_history').run(); } catch (_) {}
+        try { db.prepare('DELETE FROM timelapses').run(); } catch (_) {}
         db.prepare('DELETE FROM jobs').run();
         db.prepare('DELETE FROM gcodes').run();
         db.prepare('DELETE FROM parts').run();
@@ -266,6 +272,8 @@ module.exports = (db) => {
           gcode:          makeInserter(db, 'gcodes', backup.gcodes || []),
           job:            makeInserter(db, 'jobs', backup.jobs || []),
           printer_event:  makeInserter(db, 'printer_events', backup.printer_events || []),
+          printer_status_history: makeInserter(db, 'printer_status_history', backup.printer_status_history || []),
+          timelapse:      makeInserter(db, 'timelapses', backup.timelapses || []),
           printer_model:  makeInserter(db, 'printer_models', backup.printer_models || []),
           printer_group:  makeInserter(db, 'printer_groups', backup.printer_groups || []),
           filament_type:  makeInserter(db, 'filament_types', backup.filament_types || []),
@@ -289,6 +297,8 @@ module.exports = (db) => {
         }
         for (const j of (backup.jobs || [])) stmts.job.run(j);
         for (const e of (backup.printer_events || [])) stmts.printer_event.run(e);
+        for (const h of (backup.printer_status_history || [])) stmts.printer_status_history.run(h);
+        for (const t of (backup.timelapses || [])) stmts.timelapse.run(t);
         // filament_types before filament_colors — FK on type_id
         for (const t of (backup.filament_types  || [])) stmts.filament_type.run(t);
         for (const c of (backup.filament_colors || [])) stmts.filament_color.run(c);
@@ -305,12 +315,16 @@ module.exports = (db) => {
           ['printers', 'printers'], ['projects', 'projects'],
           ['parts', 'parts'], ['gcodes', 'gcodes'], ['jobs', 'jobs'],
           ['printer_events', 'printer_events'],
+          ['printer_status_history', 'printer_status_history'],
+          ['timelapses', 'timelapses'],
           ['filament_types', 'filament_types'], ['filament_colors', 'filament_colors'],
         ]) {
-          db.prepare(`
-            INSERT OR REPLACE INTO sqlite_sequence (name, seq)
-            VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM ${table}))
-          `).run(col);
+          try {
+            db.prepare(`
+              INSERT OR REPLACE INTO sqlite_sequence (name, seq)
+              VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM ${table}))
+            `).run(col);
+          } catch (_) { /* table may be empty / missing sequence */ }
         }
         if (hasErp) {
           for (const table of ERP_SEQUENCE_TABLES) syncSequence(db, table);

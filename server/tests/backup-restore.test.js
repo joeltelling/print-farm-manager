@@ -50,7 +50,9 @@ beforeEach(() => {
       job_time_remaining  INTEGER,
       serial_number       TEXT DEFAULT '',
       loaded_material     TEXT,
-      loaded_color        TEXT
+      loaded_color        TEXT,
+      camera_snapshot_url TEXT,
+      camera_stream_url   TEXT
     );
     CREATE TABLE projects (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +104,14 @@ beforeEach(() => {
       status           TEXT DEFAULT 'queued',
       started_at       INTEGER,
       finished_at      INTEGER,
-      created_at       INTEGER NOT NULL
+      created_at       INTEGER NOT NULL,
+      printing_seconds REAL NOT NULL DEFAULT 0,
+      paused_seconds   REAL NOT NULL DEFAULT 0,
+      sample_count     INTEGER NOT NULL DEFAULT 0,
+      last_sample_at   INTEGER,
+      material_grams_actual REAL,
+      energy_kwh       REAL,
+      telemetry_quality TEXT NOT NULL DEFAULT 'none'
     );
     CREATE TABLE printer_events (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,6 +119,30 @@ beforeEach(() => {
       event_type  TEXT NOT NULL,
       note        TEXT,
       created_at  INTEGER NOT NULL
+    );
+    CREATE TABLE printer_status_history (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_id  INTEGER NOT NULL,
+      job_id      INTEGER,
+      status      TEXT NOT NULL,
+      started_at  INTEGER NOT NULL,
+      ended_at    INTEGER,
+      duration_ms INTEGER
+    );
+    CREATE TABLE timelapses (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id           INTEGER UNIQUE,
+      printer_id       INTEGER NOT NULL,
+      part_id          INTEGER,
+      status           TEXT NOT NULL DEFAULT 'capturing',
+      interval_seconds INTEGER NOT NULL DEFAULT 10,
+      frame_count      INTEGER NOT NULL DEFAULT 0,
+      dir_path         TEXT,
+      video_path       TEXT,
+      bytes            INTEGER,
+      started_at       INTEGER NOT NULL,
+      ended_at         INTEGER,
+      render_error     TEXT
     );
     CREATE TABLE printer_models (
       model_id   TEXT PRIMARY KEY,

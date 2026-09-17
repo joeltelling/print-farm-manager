@@ -1,7 +1,15 @@
 const express = require('express');
 const router = express.Router();
 
-const ALLOWED_KEYS = new Set(['dispatch_batch_size', 'farm_name', 'camera_mode']);
+const ALLOWED_KEYS = new Set([
+  'dispatch_batch_size',
+  'farm_name',
+  'camera_mode',
+  'timelapse_enabled',
+  'timelapse_interval_seconds',
+  'timelapse_fps',
+  'timelapse_retention_days',
+]);
 
 module.exports = (db) => {
   // GET /api/settings — returns all settings as { key: value, ... }

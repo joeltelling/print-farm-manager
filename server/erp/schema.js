@@ -179,6 +179,15 @@ function ensureErpSchema(db) {
     );
   `);
 
+  // Actual-cost snapshot columns on erp_posting (additive for existing installs)
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_minutes REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_grams REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_energy_kwh REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN std_unit_cost REAL'); } catch (_) {}
+  try { db.exec('ALTER TABLE erp_posting ADD COLUMN actual_unit_cost REAL'); } catch (_) {}
+  try { db.exec("ALTER TABLE erp_posting ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'standard'"); } catch (_) {}
+  try { db.exec("ALTER TABLE erp_posting ADD COLUMN telemetry_quality TEXT NOT NULL DEFAULT 'none'"); } catch (_) {}
+
   // Seed baselines only when empty (never overwrite operator data)
   const uomCount = db.prepare('SELECT COUNT(*) AS n FROM uom').get().n;
   if (uomCount === 0) {

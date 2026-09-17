@@ -8,6 +8,7 @@ import Projects from './pages/Projects';
 import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
+import Timelapses from './pages/Timelapses';
 import Erp, {
   ItemsPage as ErpItems,
   LocationsPage as ErpLocations,
@@ -19,6 +20,7 @@ import Erp, {
   QrCompletePage as ErpQr,
   ManufacturingDashboard as ErpMfgDash,
   PostingsPage as ErpPostings,
+  AnalyticsPage as ErpAnalytics,
   SalesHubPage as ErpSales,
   SalesConfigPage as ErpSalesConfig,
   SalesPricingPage as ErpSalesPricing,
@@ -143,6 +145,7 @@ export default function App() {
             <Route path="/"                element={<Dashboard />} />
             <Route path="/erp"             element={<Erp />} />
             <Route path="/erp/postings"    element={<ErpPostings />} />
+            <Route path="/erp/analytics"   element={<ErpAnalytics />} />
             <Route path="/erp/items"       element={<ErpItems />} />
             <Route path="/erp/locations"   element={<ErpLocations />} />
             <Route path="/erp/machines"    element={<ErpMachines />} />
@@ -162,6 +165,7 @@ export default function App() {
             <Route path="/printers/:id"    element={<PrinterDetail />} />
             <Route path="/projects"        element={<Projects />} />
             <Route path="/jobs"            element={<Jobs />} />
+            <Route path="/timelapses"      element={<Timelapses />} />
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
           </Routes>

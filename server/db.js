@@ -115,6 +115,54 @@ try { db.exec('ALTER TABLE projects ADD COLUMN allowed_groups TEXT'); } catch (_
 try { db.exec('ALTER TABLE parts ADD COLUMN erp_sku TEXT'); } catch (_) {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_parts_erp_sku ON parts(erp_sku)'); } catch (_) {}
 
+// Job telemetry: real machine time / energy / material for ERP actual costing
+try { db.exec('ALTER TABLE jobs ADD COLUMN printing_seconds REAL NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE jobs ADD COLUMN paused_seconds REAL NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE jobs ADD COLUMN sample_count INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE jobs ADD COLUMN last_sample_at INTEGER'); } catch (_) {}
+try { db.exec('ALTER TABLE jobs ADD COLUMN material_grams_actual REAL'); } catch (_) {}
+try { db.exec('ALTER TABLE jobs ADD COLUMN energy_kwh REAL'); } catch (_) {}
+try { db.exec("ALTER TABLE jobs ADD COLUMN telemetry_quality TEXT NOT NULL DEFAULT 'none'"); } catch (_) {}
+
+// Status history: one row per real status transition (not per poll sample)
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS printer_status_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    printer_id  INTEGER NOT NULL,
+    job_id      INTEGER,
+    status      TEXT NOT NULL,
+    started_at  INTEGER NOT NULL,
+    ended_at    INTEGER,
+    duration_ms INTEGER
+  )`);
+} catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_psh_printer_started ON printer_status_history(printer_id, started_at DESC)'); } catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_psh_open ON printer_status_history(printer_id, ended_at)'); } catch (_) {}
+
+// Optional camera URL overrides (any brand; Klipper still auto-discovers via driver)
+try { db.exec('ALTER TABLE printers ADD COLUMN camera_snapshot_url TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE printers ADD COLUMN camera_stream_url TEXT'); } catch (_) {}
+
+// Timelapse captures per job (or manual per-printer session)
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS timelapses (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id           INTEGER UNIQUE,
+    printer_id       INTEGER NOT NULL,
+    part_id          INTEGER,
+    status           TEXT NOT NULL DEFAULT 'capturing',
+    interval_seconds INTEGER NOT NULL DEFAULT 10,
+    frame_count      INTEGER NOT NULL DEFAULT 0,
+    dir_path         TEXT,
+    video_path       TEXT,
+    bytes            INTEGER,
+    started_at       INTEGER NOT NULL,
+    ended_at         INTEGER,
+    render_error     TEXT
+  )`);
+} catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_timelapses_printer ON timelapses(printer_id, started_at DESC)'); } catch (_) {}
+
 const { ensureErpSchema } = require('./erp/schema');
 ensureErpSchema(db);
 
@@ -260,6 +308,10 @@ try {
 // Seed defaults (INSERT OR IGNORE so existing values are never overwritten)
 try {
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('dispatch_batch_size', '10')").run();
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_enabled', 'true')").run();
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_interval_seconds', '10')").run();
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_fps', '10')").run();
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_retention_days', '30')").run();
 } catch (_) {}
 
 // Make jobs.gcode_id nullable so gcodes can be deleted after jobs have run

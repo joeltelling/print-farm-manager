@@ -34,8 +34,11 @@ setInterval (15s)
     └─ any error → 'OFFLINE'
     │
     ├─ if status changed → UPDATE printers SET status = ?
-    ├─ if FINISHED transition → also set is_held = 1 in DB
+    ├─ recordStatusTransition → printer_status_history (close previous, open new)
+    ├─ timelapse.onPrinterStatus (start/stop capture on PRINTING)
+    ├─ if FINISHED transition → also set is_held = 1 in DB (only with active job)
     ├─ emit 'statusChange' for any transition
+    ├─ while PRINTING/PAUSED → accumulateJobSample on the active job (capped gap)
     └─ emit 'printerIdle' when transitioning into IDLE ← triggers scheduler dispatch
                                                             (via scheduleForPrinter, so it
                                                             defers behind an in-progress

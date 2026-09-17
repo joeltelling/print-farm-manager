@@ -178,4 +178,82 @@ describe('ERP shopfloor postings queue', () => {
     expect(() => confirmPosting(db, 99999)).toThrow(/not found/i);
     expect(() => dismissPosting(db, 99999)).toThrow(/not found/i);
   });
+
+  test('measured telemetry values inventory at actual cost; otherwise standard', async () => {
+    await seedComponentRecipe(app, db);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS jobs (
+        id INTEGER PRIMARY KEY,
+        printing_seconds REAL DEFAULT 0,
+        material_grams_actual REAL,
+        energy_kwh REAL,
+        telemetry_quality TEXT DEFAULT 'none'
+      );
+    `);
+    // 60 minutes printing for qty=1 vs std 30 min → actual time cost doubles
+    db.prepare(`
+      INSERT INTO jobs (id, printing_seconds, material_grams_actual, energy_kwh, telemetry_quality)
+      VALUES (55, 3600, 100, 0, 'measured')
+    `).run();
+
+    const { posting } = recordShopfloorPosting(db, {
+      job_id: 55, part_id: 1, printer_id: 1, qty: 1,
+    });
+    expect(posting.telemetry_quality).toBe('measured');
+    expect(posting.actual_minutes).toBe(60);
+
+    const preview = await request(app).get(`/api/erp/postings/${posting.id}`);
+    expect(preview.status).toBe(200);
+    expect(preview.body.cost_basis).toBe('actual');
+    expect(preview.body.actual_unit_cost).toBeGreaterThan(preview.body.std_unit_cost);
+
+    const confirmed = await request(app)
+      .post(`/api/erp/postings/${posting.id}/confirm`)
+      .send({});
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.cost_basis).toBe('actual');
+
+    // Fallback path: no measured quality
+    db.prepare(`
+      INSERT INTO jobs (id, printing_seconds, telemetry_quality)
+      VALUES (56, 10, 'none')
+    `).run();
+    const { posting: p2 } = recordShopfloorPosting(db, {
+      job_id: 56, part_id: 1, qty: 1,
+    });
+    const prev2 = await request(app).get(`/api/erp/postings/${p2.id}`);
+    expect(prev2.body.cost_basis).toBe('standard');
+  });
+
+  test('cost-variance and analytics reports return rows shape', async () => {
+    await seedComponentRecipe(app, db);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS printers (
+        id INTEGER PRIMARY KEY, name TEXT, is_active INTEGER DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY, name TEXT
+      );
+      CREATE TABLE IF NOT EXISTS jobs (
+        id INTEGER PRIMARY KEY,
+        part_id INTEGER, printer_id INTEGER, status TEXT,
+        parts_per_plate INTEGER DEFAULT 1,
+        printing_seconds REAL DEFAULT 0, energy_kwh REAL,
+        material_grams_actual REAL,
+        finished_at INTEGER, started_at INTEGER, created_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS printer_status_history (
+        id INTEGER PRIMARY KEY, printer_id INTEGER, status TEXT,
+        started_at INTEGER, ended_at INTEGER, duration_ms INTEGER
+      );
+    `);
+    const cv = await request(app).get('/api/erp/reports/cost-variance');
+    expect(cv.status).toBe(200);
+    expect(Array.isArray(cv.body.rows)).toBe(true);
+    const pf = await request(app).get('/api/erp/reports/profitability');
+    expect(pf.status).toBe(200);
+    const oee = await request(app).get('/api/erp/reports/machine-oee');
+    expect(oee.status).toBe(200);
+    expect(Array.isArray(oee.body.rows)).toBe(true);
+  });
 });

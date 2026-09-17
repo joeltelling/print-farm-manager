@@ -518,6 +518,25 @@ Job statuses: `uploading` | `printing` | `queued` | `finished` | `failed` | `can
 
 Single job with same joins, including `printer_is_held` and `printer_status`. `404` if not found.
 
+### `GET /api/jobs/:id/telemetry`
+
+Real machine time / energy / material for a job, plus related `printer_status_history` rows.
+
+```json
+{
+  "job_id": 12,
+  "printing_seconds": 3540.2,
+  "paused_seconds": 0,
+  "sample_count": 236,
+  "material_grams_actual": 42.5,
+  "energy_kwh": 0.344,
+  "telemetry_quality": "measured",
+  "history": [{ "status": "PRINTING", "started_at": 1710000000000, "ended_at": 1710003540000, "duration_ms": 3540000 }]
+}
+```
+
+`404` if the job is missing.
+
 ### `DELETE /api/jobs/:id`
 
 Cancels a job. Returns `409` if status is not `queued` (only queued jobs can be cancelled).
@@ -576,9 +595,41 @@ Body: `{ "value": "..." }`. Allowed keys:
 |---|---|---|
 | `dispatch_batch_size` | integer 1-100 | How many printers the scheduler keeps uploading or printing at once (a concurrency target, not a fixed group size; it draws deeper into the ready queue to fill the target if some printers have no dispatchable candidate) |
 | `farm_name` | ≤ 40 chars | Sidebar branding (falls back to "CoMa") |
-| `camera_mode` | `snapshot` or `stream` | Default camera feed on printer detail (Klipper). Snapshot refreshes every 5 seconds. |
+| `camera_mode` | `snapshot` or `stream` | Default camera feed on printer detail (Klipper or configured URL). Snapshot refreshes every 5 seconds. |
+| `timelapse_enabled` | `true` / `false` | Auto-capture while jobs are PRINTING |
+| `timelapse_interval_seconds` | positive integer | Frame interval (independent of the 15 s poll) |
+| `timelapse_fps` | positive integer | ffmpeg output framerate |
+| `timelapse_retention_days` | positive integer | Auto-delete ready/failed captures older than this |
 
 Returns `400` for unknown keys or failed validation.
+
+---
+
+## Timelapses
+
+### `GET /api/timelapses`
+
+Query: `?printer_id=`, `?job_id=`, `?part_id=`, `?status=`, `?limit=`.
+
+### `GET /api/timelapses/:id`
+
+### `GET /api/timelapses/:id/video`
+
+MP4 stream when `status` is `ready`.
+
+### `GET /api/timelapses/:id/frames/:n`
+
+JPEG frame `n` (1-based).
+
+### `POST /api/timelapses/:id/stop` / `POST /api/timelapses/:id/render` / `DELETE /api/timelapses/:id`
+
+### `POST /api/printers/:id/timelapse/start` / `POST /api/printers/:id/timelapse/stop`
+
+Manual capture for a machine (no job required).
+
+### `GET /api/printers/:id/utilization?days=30`
+
+Aggregated `printer_status_history` plus job counts for OEE-style utilization.
 
 ---
 
@@ -660,9 +711,12 @@ Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/RE
 | `GET` | `/api/erp/dashboard` | KPIs including `pending_postings`, shopfloor link, sync summary, needs_attention |
 | `POST` | `/api/erp/sync` | Soft-sync printers/projects/parts/filaments into ERP |
 | `GET` | `/api/erp/postings` | Posting queue; optional `?status=pending\|posted\|dismissed` |
-| `GET` | `/api/erp/postings/:id` | Preview shortage / unit cost for one posting |
-| `POST` | `/api/erp/postings/:id/confirm` | Apply stock moves; body `{ "acknowledge_shortage": true }` when 409 shortage |
+| `GET` | `/api/erp/postings/:id` | Preview shortage / std+actual unit cost / cost_basis for one posting |
+| `POST` | `/api/erp/postings/:id/confirm` | Apply stock moves (actual cost when telemetry measured); body `{ "acknowledge_shortage": true }` when 409 shortage |
 | `POST` | `/api/erp/postings/:id/dismiss` | Discard pending posting without stock moves |
+| `GET` | `/api/erp/reports/cost-variance` | Std vs actual minutes/cost by component SKU; `?days=` |
+| `GET` | `/api/erp/reports/profitability` | Project revenue / margin from telemetry + pricing; `?days=` |
+| `GET` | `/api/erp/reports/machine-oee` | Availability / performance / quality / OEE per printer; `?days=` |
 | `GET`/`POST` | `/api/erp/items`, `PUT /api/erp/items/:id` | SKU master (`item_role`: product/component/raw, `sourcing`: manufactured/outsource) |
 | `GET`/`POST` | `/api/erp/warehouses`, `/api/erp/locations` | WH + bins |
 | `GET`/`POST` | `/api/erp/mfg/machines` | Rate centers. Per machine: `rate_mode` `manual` (set `hourly_rate` USD/h) or `calculated` (`maintenance_rate` USD/h + `power_kw` × site electricity). GET joins linked printer name/model/status. Seeded `LABOR` is the BOM labor rate. |

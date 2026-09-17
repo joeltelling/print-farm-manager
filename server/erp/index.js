@@ -28,6 +28,11 @@ const {
   pendingCount,
   recordShopfloorPosting,
 } = require('./postings');
+const {
+  costVarianceReport,
+  profitabilityReport,
+  machineOeeReport,
+} = require('./reports');
 
 const PIECE_UOM_CANDIDATES = ['EA', 'EACH', 'UN', 'UNIT', 'PCS', 'PC', 'PZA'];
 const ITEM_ROLES = new Set(['product', 'component', 'raw']);
@@ -1473,6 +1478,31 @@ function mountErp(db) {
     try {
       const note = (req.body || {}).note || null;
       res.json(dismissPosting(db, req.params.id, note));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  // ---------- Cross-shopfloor analytics ----------
+  router.get('/reports/cost-variance', (req, res) => {
+    try {
+      res.json(costVarianceReport(db, { days: req.query.days || 90 }));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.get('/reports/profitability', (req, res) => {
+    try {
+      res.json(profitabilityReport(db, { days: req.query.days || 90 }));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.get('/reports/machine-oee', (req, res) => {
+    try {
+      res.json(machineOeeReport(db, { days: req.query.days || 30 }));
     } catch (e) {
       res.status(e.status || 500).json({ error: e.message });
     }

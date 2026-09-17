@@ -31,8 +31,10 @@ const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
 const sharedRouter       = require('./routes/shared')(db);
 const bridgeRouter       = require('./routes/bridge')(db);
+const timelapsesRouter   = require('./routes/timelapses')(db);
 const { mountErp }       = require('./erp');
 const { recordFromSetReady } = require('./erp/postings');
+const timelapse          = require('./timelapse');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -51,6 +53,7 @@ app.use('/api/groups',          groupsRouter);
 app.use('/api/filaments',       filamentsRouter);
 app.use('/api/shared',          sharedRouter);
 app.use('/api/bridge',          bridgeRouter);
+app.use('/api/timelapses',      timelapsesRouter);
 
 // Acres ERP embedded in Express (same process, same SQLite DB)
 app.use('/api/erp', mountErp(db));
@@ -111,6 +114,7 @@ const server = app.listen(PORT, () => {
   scheduler.start();
   poller.start();
   backup.start(db);
+  timelapse.start(db);
 
   // Wait for the first poll to complete before sweeping — ensures DB status reflects
   // live printer state rather than whatever was last persisted before shutdown.

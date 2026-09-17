@@ -27,10 +27,12 @@ Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ER
 | `client/src/App.jsx` | Layout shell, sidebar/topbar, `<Routes>` |
 | `client/src/components/NavTree.jsx` | Module / group / screen nav tree, accordion state, route sync |
 | `client/src/pages/Erp.jsx` | ERP route exports; `/erp` renders the live ERP Dashboard |
-| `client/src/pages/erp/modules.jsx` | Dashboard, postings, manufacturing dashboard, products/components, locations, inventory charts, machines, MFG components, BOM, WO, QR |
+| `client/src/pages/erp/modules.jsx` | Dashboard, postings (std/actual cost), analytics, manufacturing dashboard, products/components, locations, inventory charts, machines, MFG components, BOM, WO, QR |
 | `client/src/pages/erp/sales.jsx` | Sales dashboard, defaults, pricing (Enter/Escape), order entry with live totals, matrix badges/sort, history exports |
 | `client/src/pages/erp/format.js` | Acres-compatible numeric display helpers |
 | `client/src/pages/erp/qr.js` | Dependency-free local QR SVG generator for printable WO pick lists |
+| `client/src/pages/Timelapses.jsx` | Timelapse gallery, manual start, video/frame preview |
+| `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, timelapse interval/FPS/retention, models, CSV, backup) |
 | `client/src/components/BootSplash.jsx` | Session boot splash (once per tab session; not on in-app navigation) |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
@@ -235,7 +237,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Multi-section tabs (General, Hardware, Materials) use a two-column layout above ~1100px. List rows (models, groups, filament types/colors) sit in a shared bordered list instead of sparse table cells.
 
-**General:** site name (`farm_name`, label "Site name", fallback CoMa), camera mode (`snapshot` or `stream`), dispatch batch size, polling explanation.
+**General:** site name (`farm_name`, label "Site name", fallback CoMa), camera mode (`snapshot` or `stream`), timelapse (enabled, interval seconds, FPS, retention days), dispatch batch size, polling explanation.
 
 **Hardware:** printer models and groups on the left; add printer and CSV import on the right.
 
@@ -252,7 +254,8 @@ All ERP pages use the CoMa shell, `theme.js`, inline styles, `useToast`, and `us
 | Route | Operator workflow |
 |---|---|
 | `/erp` | KPIs, shopfloor sync, linked master counts, pending postings, and Needs ERP data reminders |
-| `/erp/postings` | Confirm or dismiss shopfloor postings (stock moves); acknowledge shortage when plastic already used |
+| `/erp/postings` | Confirm or dismiss shopfloor postings (stock moves); shows std vs actual unit cost; acknowledge shortage when plastic already used |
+| `/erp/analytics` | Profitability, machine OEE, and cost variance from shopfloor telemetry |
 | `/erp/items` | Create/filter products, components, and raw materials; warehouse and UOM columns; set sourcing |
 | `/erp/locations` | Create warehouses and validated `##A##` locations |
 | `/erp/inventory` | Receive by SKU; value-by-warehouse charts; per-warehouse qty/value charts; on-hand total footer |
@@ -264,6 +267,7 @@ All ERP pages use the CoMa shell, `theme.js`, inline styles, `useToast`, and `us
 | `/erp/qr` | Mobile completion target used by pick-list QR codes |
 | `/erp/sales` | Sales dashboard (revenue, margin, FG stock) plus links to config/pricing/order/reports |
 | `/erp/sales/*` | Defaults, Enter/Escape pricing edits, live order totals, margin badges, header sort, CSV/PDF |
+| `/timelapses` | Gallery of job/manual captures; start on a machine; video or last-frame preview |
 
 WO completion, sales orders, pricing resets, BOM deletion, BOM-line deletion, and posting confirm/dismiss use the CoMa confirmation modal. User-triggered mutations surface success/error toasts. The QR SVG is generated inside the browser and never sends an internal URL or WO identifier to an external service.
 

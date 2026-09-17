@@ -4,6 +4,7 @@ export {
   Dashboard as Overview,
   ManufacturingDashboard,
   PostingsPage,
+  AnalyticsPage,
   ItemsPage,
   LocationsPage,
   InventoryPage,

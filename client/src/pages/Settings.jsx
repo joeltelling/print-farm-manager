@@ -316,6 +316,11 @@ export default function Settings() {
   const [farmNameError, setFarmNameError] = useState(null);
   const [cameraMode, setCameraMode] = useState('snapshot');
   const [cameraModeError, setCameraModeError] = useState(null);
+  const [tlEnabled, setTlEnabled] = useState('true');
+  const [tlInterval, setTlInterval] = useState('10');
+  const [tlFps, setTlFps] = useState('10');
+  const [tlRetention, setTlRetention] = useState('30');
+  const [tlError, setTlError] = useState(null);
 
   useEffect(() => {
     fetch('/api/settings')
@@ -324,6 +329,10 @@ export default function Settings() {
         if (data.dispatch_batch_size) setBatchSize(data.dispatch_batch_size);
         if (data.farm_name) setFarmName(data.farm_name);
         if (data.camera_mode) setCameraMode(data.camera_mode);
+        if (data.timelapse_enabled != null) setTlEnabled(data.timelapse_enabled);
+        if (data.timelapse_interval_seconds) setTlInterval(data.timelapse_interval_seconds);
+        if (data.timelapse_fps) setTlFps(data.timelapse_fps);
+        if (data.timelapse_retention_days) setTlRetention(data.timelapse_retention_days);
       })
       .catch(() => {});
   }, []);
@@ -374,6 +383,29 @@ export default function Settings() {
       showToast('Camera mode saved');
     } catch (err) {
       setCameraModeError(err.message);
+    }
+  }
+
+  async function handleSaveTimelapse() {
+    setTlError(null);
+    try {
+      for (const [key, value] of [
+        ['timelapse_enabled', tlEnabled],
+        ['timelapse_interval_seconds', tlInterval],
+        ['timelapse_fps', tlFps],
+        ['timelapse_retention_days', tlRetention],
+      ]) {
+        const res = await fetch(`/api/settings/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Save ${key} failed`);
+      }
+      showToast('Timelapse settings saved');
+    } catch (err) {
+      setTlError(err.message);
     }
   }
 
@@ -1251,6 +1283,43 @@ export default function Settings() {
         </div>
         {cameraModeError && (
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{cameraModeError}</div>
+        )}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Timelapse</h2>
+        <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+          Capture JPEG frames while a job is PRINTING (or start manually on a printer). Render to MP4 with ffmpeg when available. Interval is independent of the 15 s poll loop. Not yet validated on physical hardware beyond the Klipper simulator.
+        </p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Enabled</label>
+            <select value={tlEnabled} onChange={e => setTlEnabled(e.target.value)} style={{ ...inputStyle, width: 120 }}>
+              <option value="true">On</option>
+              <option value="false">Off</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Interval (s)</label>
+            <input value={tlInterval} onChange={e => setTlInterval(e.target.value)} style={{ ...inputStyle, width: 90 }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>FPS</label>
+            <input value={tlFps} onChange={e => setTlFps(e.target.value)} style={{ ...inputStyle, width: 90 }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Retention (days)</label>
+            <input value={tlRetention} onChange={e => setTlRetention(e.target.value)} style={{ ...inputStyle, width: 110 }} />
+          </div>
+          <button
+            onClick={handleSaveTimelapse}
+            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Save
+          </button>
+        </div>
+        {tlError && (
+          <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{tlError}</div>
         )}
       </section>
 

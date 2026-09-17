@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-09-17: Shopfloor telemetry, actual costing, timelapse, analytics
+
+Shopfloor and ERP masters were linked, but cost still came only from `mfg_component.std_minutes`. Real print duration already existed on `jobs.started_at`/`finished_at` and the poller refreshed progress every 15 s without persisting history. This change records machine time and energy per job, values ERP postings from that telemetry when quality is `measured` (otherwise standard), captures optional camera timelapses, and surfaces profitability / OEE / cost variance.
+
+Timelapse was exercised against the Klipper simulator path; not yet validated on physical hardware.
+
+### Changes
+- `server/db.js`: `printer_status_history`, job telemetry columns, `timelapses`, optional `printers.camera_*` URLs, timelapse settings seeds.
+- `server/telemetry.js`, `server/poller.js`, `server/scheduler.js`: status history by transition, capped sample accumulator, seal energy/material/quality on job close.
+- `server/erp/postings.js`, `server/erp/schema.js`, `server/erp/reports.js`, `server/erp/index.js`: actual cost snapshot on postings; reports `cost-variance`, `profitability`, `machine-oee`.
+- `server/camera.js`, `server/timelapse.js`, `server/routes/timelapses.js`, `server/routes/printers.js`, `server/routes/jobs.js`, `server/routes/settings.js`, `server/routes/backup.js`: camera overrides, utilization, timelapse capture/render, backup of new tables.
+- `client/src/pages/Timelapses.jsx`, `PrinterDetail.jsx`, `Settings.jsx`, `erp/modules.jsx` (Analytics + posting cost columns), `App.jsx`, `NavTree.jsx`, `Erp.jsx`.
+- `server/tests/telemetry.test.js`, `erp-postings.test.js`, `backup-restore.test.js`.
+- `docs/database.md`, `docs/poller.md`, `docs/api.md`, `docs/erp/README.md`, `docs/web-app.md`, `docs/README.md`.
+
 ## 2026-09-17: Sidebar modules, groups, and accordion screens
 
 The left nav grew into a long flat list once ERP modules landed. Operators need to collapse by module (ERP / Shopfloor) and, inside ERP, by subgroup (Resumen, Inventario, Fabricacion, Ventas). Shopfloor stays a flat list under its module. Accordion state (one module and one ERP group open) persists in `localStorage` and re-opens from the active route. Module and group headers render as bordered cards with larger type so the hierarchy is easy to scan.

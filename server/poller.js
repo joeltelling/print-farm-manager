@@ -1,5 +1,7 @@
 const EventEmitter = require('events');
 const { getDriver } = require('./drivers');
+const { recordStatusTransition, accumulateJobSample } = require('./telemetry');
+const timelapse = require('./timelapse');
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -111,6 +113,25 @@ class PrinterPoller extends EventEmitter {
         .prepare(`UPDATE printers SET status = ?${holdUpdate}${clearJob} WHERE id = ?`)
         .run(newStatus, printer.id);
 
+      try {
+        recordStatusTransition(this.db, {
+          printerId: printer.id,
+          previousStatus,
+          newStatus,
+        });
+      } catch (err) {
+        console.error(`[poller] telemetry transition failed for ${printer.name}:`, err.message);
+      }
+
+      try {
+        timelapse.onPrinterStatus(this.db, {
+          printerId: printer.id,
+          newStatus,
+        });
+      } catch (err) {
+        console.error(`[poller] timelapse hook failed for ${printer.name}:`, err.message);
+      }
+
       console.log(`[poller] ${printer.name}: ${previousStatus} → ${newStatus}`);
       this.emit('statusChange', { printer, previousStatus, newStatus });
 
@@ -120,23 +141,30 @@ class PrinterPoller extends EventEmitter {
     }
 
     // Always persist latest job progress while printing (status may not have changed)
-    if (newStatus === 'PRINTING') {
-      // Prefer the filename reported directly by the printer (Elegoo SDCP).
-      // Fall back to a DB lookup via the jobs table (Prusa Link and others).
-      if (result.currentFile) {
-        jobName = result.currentFile;
-      } else {
-        const activeJob = this.db.prepare(`
-          SELECT gcodes.filename FROM jobs
-          JOIN gcodes ON gcodes.id = jobs.gcode_id
-          WHERE jobs.printer_id = ? AND jobs.status = 'printing'
-          ORDER BY jobs.started_at DESC LIMIT 1
-        `).get(printer.id);
-        jobName = activeJob?.filename ?? null;
+    if (newStatus === 'PRINTING' || newStatus === 'PAUSED') {
+      if (newStatus === 'PRINTING') {
+        // Prefer the filename reported directly by the printer (Elegoo SDCP).
+        // Fall back to a DB lookup via the jobs table (Prusa Link and others).
+        if (result.currentFile) {
+          jobName = result.currentFile;
+        } else {
+          const activeJob = this.db.prepare(`
+            SELECT gcodes.filename FROM jobs
+            JOIN gcodes ON gcodes.id = jobs.gcode_id
+            WHERE jobs.printer_id = ? AND jobs.status = 'printing'
+            ORDER BY jobs.started_at DESC LIMIT 1
+          `).get(printer.id);
+          jobName = activeJob?.filename ?? null;
+        }
+        this.db
+          .prepare('UPDATE printers SET job_name = ?, job_progress = ?, job_time_remaining = ? WHERE id = ?')
+          .run(jobName, jobProgress, jobTimeRemaining, printer.id);
       }
-      this.db
-        .prepare('UPDATE printers SET job_name = ?, job_progress = ?, job_time_remaining = ? WHERE id = ?')
-        .run(jobName, jobProgress, jobTimeRemaining, printer.id);
+      try {
+        accumulateJobSample(this.db, { printerId: printer.id, status: newStatus });
+      } catch (err) {
+        console.error(`[poller] telemetry sample failed for ${printer.name}:`, err.message);
+      }
     }
   }
 }

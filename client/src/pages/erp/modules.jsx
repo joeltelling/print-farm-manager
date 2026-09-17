@@ -328,6 +328,30 @@ export function PostingsPage() {
             { key: 'job_id', label: 'Job' },
             { key: 'erp_sku', label: 'SKU' },
             { key: 'qty', label: 'Qty', render: r => wac4(r.qty) },
+            {
+              key: 'cost',
+              label: 'Unit cost',
+              render: r => {
+                const basis = r.cost_basis || 'standard';
+                const applied = basis === 'actual' && r.actual_unit_cost != null
+                  ? r.actual_unit_cost
+                  : r.std_unit_cost;
+                if (applied == null) return '-';
+                return (
+                  <span title={`std ${usd(r.std_unit_cost)} / actual ${r.actual_unit_cost != null ? usd(r.actual_unit_cost) : 'n/a'} (${r.telemetry_quality || 'none'})`}>
+                    {usd(applied)}
+                    <span style={{ color: theme.textFaint, marginLeft: 6, fontSize: 11 }}>
+                      {basis === 'actual' ? 'actual' : 'std'}
+                    </span>
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'actual_minutes',
+              label: 'Min',
+              render: r => (r.actual_minutes != null ? min3(r.actual_minutes) : '-'),
+            },
             { key: 'status', label: 'Status' },
             { key: 'shortage', label: 'Shortage', render: r => (r.shortage?.length ? `${r.shortage.length} SKU(s)` : '') },
             { key: 'created_at', label: 'Created', render: r => (r.created_at ? new Date(r.created_at).toLocaleString() : '') },
@@ -1735,6 +1759,112 @@ export function QrCompletePage() {
         )}
         {err && <div style={{ color: theme.red, marginTop: 12 }}>{err}</div>}
         {msg && <div style={{ color: theme.lime, marginTop: 12 }}>{msg}</div>}
+      </Card>
+      {feedbackEl}
+    </ErpShell>
+  );
+}
+
+export function AnalyticsPage() {
+  const [days, setDays] = useState(30);
+  const [profit, setProfit] = useState(null);
+  const [oee, setOee] = useState(null);
+  const [variance, setVariance] = useState(null);
+  const [err, setErr] = useState('');
+  const { feedbackEl } = useErpFeedback();
+
+  useEffect(() => {
+    setErr('');
+    Promise.all([
+      fetch(`/api/erp/reports/profitability?days=${days}`).then(r => r.json()),
+      fetch(`/api/erp/reports/machine-oee?days=${days}`).then(r => r.json()),
+      fetch(`/api/erp/reports/cost-variance?days=${days}`).then(r => r.json()),
+    ]).then(([p, o, v]) => {
+      setProfit(p);
+      setOee(o);
+      setVariance(v);
+    }).catch(() => setErr('Failed to load analytics'));
+  }, [days]);
+
+  const oeeBars = (oee?.rows || []).map(r => ({
+    label: r.printer_name,
+    value: r.oee_pct,
+  }));
+  const marginBars = (profit?.rows || []).map(r => ({
+    label: r.project_name,
+    value: r.margin_usd,
+  }));
+
+  return (
+    <ErpShell title="Analytics" subtitle="Real machine time, cost variance, profitability, and OEE from shopfloor telemetry.">
+      <Card style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ ...labelStyle, marginBottom: 0 }} htmlFor="analytics-days">Window (days)</label>
+          <select id="analytics-days" value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...INPUT_STYLE, maxWidth: 140 }}>
+            <option value={7}>7</option>
+            <option value={30}>30</option>
+            <option value={90}>90</option>
+          </select>
+        </div>
+      </Card>
+      {err && <div style={{ color: theme.red, marginBottom: 8 }}>{err}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <Card title="OEE by machine">
+          {oeeBars.length ? <BarChart items={oeeBars} height={180} /> : <div style={{ color: theme.textDim, fontSize: 13 }}>No status history yet.</div>}
+        </Card>
+        <Card title="Margin by project (USD)">
+          {marginBars.length ? <BarChart items={marginBars} height={180} /> : <div style={{ color: theme.textDim, fontSize: 13 }}>No finished jobs in window.</div>}
+        </Card>
+      </div>
+
+      <Card title="Machine OEE" style={{ marginBottom: 12 }}>
+        <Table
+          columns={[
+            { key: 'printer_name', label: 'Printer' },
+            { key: 'oee_pct', label: 'OEE %', render: r => wac4(r.oee_pct) },
+            { key: 'availability_pct', label: 'Avail %', render: r => wac4(r.availability_pct) },
+            { key: 'quality_pct', label: 'Quality %', render: r => wac4(r.quality_pct) },
+            { key: 'printing_hours', label: 'Hours', render: r => wac4(r.printing_hours) },
+            { key: 'configured_hourly_rate', label: 'Rate $/h', render: r => usd(r.configured_hourly_rate) },
+            { key: 'actual_cost_per_hour', label: 'Actual $/h', render: r => (r.actual_cost_per_hour != null ? usd(r.actual_cost_per_hour) : '-') },
+            { key: 'jobs_finished', label: 'OK' },
+            { key: 'jobs_failed', label: 'Fail' },
+          ]}
+          rows={oee?.rows || []}
+        />
+      </Card>
+
+      <Card title="Profitability by project" style={{ marginBottom: 12 }}>
+        <Table
+          columns={[
+            { key: 'project_name', label: 'Project' },
+            { key: 'pieces', label: 'Pieces' },
+            { key: 'machine_hours', label: 'Machine h', render: r => wac4(r.machine_hours) },
+            { key: 'failed_hours', label: 'Fail h', render: r => wac4(r.failed_hours) },
+            { key: 'unit_cost_actual', label: 'Unit cost', render: r => (r.unit_cost_actual != null ? usd(r.unit_cost_actual) : usd(r.unit_cost_std)) },
+            { key: 'selling_price', label: 'Sell', render: r => usd(r.selling_price) },
+            { key: 'margin_usd', label: 'Margin', render: r => usd(r.margin_usd) },
+            { key: 'margin_pct', label: 'Margin %', render: r => (r.margin_pct != null ? wac4(r.margin_pct) : '-') },
+          ]}
+          rows={profit?.rows || []}
+        />
+      </Card>
+
+      <Card title="Cost variance (std vs actual)">
+        <Table
+          columns={[
+            { key: 'erp_sku', label: 'SKU' },
+            { key: 'qty', label: 'Qty', render: r => wac4(r.qty) },
+            { key: 'std_minutes_total', label: 'Std min', render: r => min3(r.std_minutes_total) },
+            { key: 'actual_minutes_total', label: 'Actual min', render: r => min3(r.actual_minutes_total) },
+            { key: 'suggested_std_minutes', label: 'Suggest std', render: r => (r.suggested_std_minutes != null ? min3(r.suggested_std_minutes) : '-') },
+            { key: 'suggested_scrap_pct', label: 'Scrap %', render: r => (r.suggested_scrap_pct != null ? wac4(r.suggested_scrap_pct) : '-') },
+            { key: 'variance_usd', label: 'Variance $', render: r => usd(r.variance_usd) },
+            { key: 'measured_count', label: 'Measured' },
+          ]}
+          rows={variance?.rows || []}
+        />
       </Card>
       {feedbackEl}
     </ErpShell>

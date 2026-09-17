@@ -5,6 +5,8 @@ const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
 const { getDriver } = require('../drivers');
+const { getPrinterUtilization } = require('../telemetry');
+const { fetchSnapshotBuffer } = require('../camera');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -154,7 +156,7 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
 
-    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color } = req.body;
+    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color, camera_snapshot_url, camera_stream_url } = req.body;
     let normalized = undefined;
     if (model !== undefined) {
       normalized = normalizeModel(model);
@@ -166,6 +168,8 @@ module.exports = (db) => {
     // loaded_material / loaded_color: if key is present in body, use the value (even if empty → null to clear)
     const newMaterial = 'loaded_material' in req.body ? (loaded_material || null) : printer.loaded_material;
     const newColor    = 'loaded_color'    in req.body ? (loaded_color    || null) : printer.loaded_color;
+    const newCamSnap  = 'camera_snapshot_url' in req.body ? (camera_snapshot_url || null) : printer.camera_snapshot_url;
+    const newCamStream = 'camera_stream_url' in req.body ? (camera_stream_url || null) : printer.camera_stream_url;
 
     // Compute effective new values for all tracked fields (COALESCE: body wins, else keep existing)
     const after = {
@@ -186,22 +190,48 @@ module.exports = (db) => {
     };
 
     try {
-      db.prepare(`
-        UPDATE printers
-        SET name = COALESCE(?, name),
-            ip = COALESCE(?, ip),
-            api_key = COALESCE(?, api_key),
-            serial_number = COALESCE(?, serial_number),
-            group_name = COALESCE(?, group_name),
-            type = COALESCE(?, type),
-            model = COALESCE(?, model),
-            is_held = COALESCE(?, is_held),
-            decommission_note = COALESCE(?, decommission_note),
-            loaded_material = ?,
-            loaded_color = ?
-        WHERE id = ?
-      `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
-             newMaterial, newColor, req.params.id);
+      const printerCols = new Set(
+        db.prepare('PRAGMA table_info(printers)').all().map(c => c.name)
+      );
+      const hasCameraCols = printerCols.has('camera_snapshot_url');
+
+      if (hasCameraCols) {
+        db.prepare(`
+          UPDATE printers
+          SET name = COALESCE(?, name),
+              ip = COALESCE(?, ip),
+              api_key = COALESCE(?, api_key),
+              serial_number = COALESCE(?, serial_number),
+              group_name = COALESCE(?, group_name),
+              type = COALESCE(?, type),
+              model = COALESCE(?, model),
+              is_held = COALESCE(?, is_held),
+              decommission_note = COALESCE(?, decommission_note),
+              loaded_material = ?,
+              loaded_color = ?,
+              camera_snapshot_url = ?,
+              camera_stream_url = ?
+          WHERE id = ?
+        `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
+               newMaterial, newColor, newCamSnap, newCamStream, req.params.id);
+      } else {
+        db.prepare(`
+          UPDATE printers
+          SET name = COALESCE(?, name),
+              ip = COALESCE(?, ip),
+              api_key = COALESCE(?, api_key),
+              serial_number = COALESCE(?, serial_number),
+              group_name = COALESCE(?, group_name),
+              type = COALESCE(?, type),
+              model = COALESCE(?, model),
+              is_held = COALESCE(?, is_held),
+              decommission_note = COALESCE(?, decommission_note),
+              loaded_material = ?,
+              loaded_color = ?
+          WHERE id = ?
+        `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
+               newMaterial, newColor, req.params.id);
+      }
 
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer update into a reported error.
@@ -568,6 +598,18 @@ module.exports = (db) => {
   });
 
   async function cameraInfoFor(printer) {
+    // Explicit overrides win over driver discovery (any brand / USB webcam / MJPEG)
+    if (printer.camera_snapshot_url || printer.camera_stream_url) {
+      return {
+        available: true,
+        name: 'configured',
+        snapshotUrl: printer.camera_snapshot_url || printer.camera_stream_url,
+        streamUrl: printer.camera_stream_url || printer.camera_snapshot_url,
+        rotation: 0,
+        flipHorizontal: false,
+        flipVertical: false,
+      };
+    }
     let driver;
     try {
       driver = getDriver(printer.type);
@@ -577,6 +619,36 @@ module.exports = (db) => {
     if (typeof driver.getCameraInfo !== 'function') return null;
     return driver.getCameraInfo(printer);
   }
+
+  // GET /api/printers/:id/utilization?days=30
+  router.get('/:id/utilization', (req, res) => {
+    const days = parseInt(req.query.days || '30', 10);
+    const data = getPrinterUtilization(db, req.params.id, { days });
+    if (!data) return res.status(404).json({ error: 'Printer not found' });
+    res.json(data);
+  });
+
+  // POST /api/printers/:id/timelapse/start — manual capture (no job required)
+  router.post('/:id/timelapse/start', (req, res) => {
+    try {
+      const { startForPrinter } = require('../timelapse');
+      const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+      if (!printer) return res.status(404).json({ error: 'Printer not found' });
+      res.status(201).json(startForPrinter(db, printer.id));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/printers/:id/timelapse/stop
+  router.post('/:id/timelapse/stop', (req, res) => {
+    try {
+      const { stopForPrinter } = require('../timelapse');
+      res.json(stopForPrinter(db, req.params.id));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
 
   // GET /api/printers/:id/camera: metadata only (no raw printer URLs)
   router.get('/:id/camera', async (req, res) => {
@@ -611,18 +683,12 @@ module.exports = (db) => {
   router.get('/:id/camera/snapshot', async (req, res) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
-    const info = await cameraInfoFor(printer);
-    if (!info?.available || !info.snapshotUrl) {
-      return res.status(404).json({ error: 'Camera not available' });
-    }
     try {
-      const img = await axios.get(info.snapshotUrl, {
-        responseType: 'arraybuffer',
-        timeout: 8000,
-      });
-      res.set('Content-Type', img.headers['content-type'] || 'image/jpeg');
+      const buf = await fetchSnapshotBuffer(printer, cameraInfoFor);
+      if (!buf) return res.status(404).json({ error: 'Camera not available' });
+      res.set('Content-Type', 'image/jpeg');
       res.set('Cache-Control', 'no-store');
-      res.send(Buffer.from(img.data));
+      res.send(buf);
     } catch (err) {
       res.status(502).json({ error: 'Camera snapshot failed' });
     }

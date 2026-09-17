@@ -15,6 +15,7 @@ export const NAV_SECTIONS = [
         items: [
           { to: '/erp', label: 'Dashboard', end: true },
           { to: '/erp/postings', label: 'Postings' },
+          { to: '/erp/analytics', label: 'Analytics' },
         ],
       },
       {
@@ -59,6 +60,7 @@ export const NAV_SECTIONS = [
       { to: '/printers', label: 'Printers', end: true },
       { to: '/projects', label: 'Projects' },
       { to: '/jobs',     label: 'Jobs' },
+      { to: '/timelapses', label: 'Timelapses' },
     ],
   },
 ];
