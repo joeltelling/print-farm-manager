@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-09-17: Remove standalone Acres Python trees
+
+Tracked `erp/` and `tools/ERP-BackUp/` were the old Acres FastAPI + HTML sources. They were never the CoMa runtime, but they polluted GitHub language stats (~11% Python) and implied a second server stack. CoMa ERP already lives in Express + React (`server/erp/`, `/erp/*`). Those trees are deleted; runtime stays the original Node process only.
+
+### Changes
+- `erp/`, `tools/ERP-BackUp/`: removed from the repository (reference Acres sources).
+- `.gitignore`: dropped obsolete `erp/` / `ERP-BackUp` venv ignores.
+- `README.md`, `docs/README.md`, `docs/erp/README.md`: structure and wording no longer point at a Python ERP tree.
+- `docs/CHANGELOG.md`: this entry.
+
 ## 2026-09-17: README and operator user guide
 
 README lagged behind the fork: it still read as shopfloor-only Print Farm Manager and omitted the embedded ERP, telemetry, actual costing, timelapse, and analytics. Operators also lacked a single walkthrough of day-to-day screens.

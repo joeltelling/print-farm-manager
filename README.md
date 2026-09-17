@@ -93,7 +93,7 @@ Camera auto-discovery is implemented for Klipper. Any printer can also use optio
 |---|---|
 | SQLite (via better-sqlite3) | One file for shopfloor + ERP (`server/data/*.db`) |
 
-There is **no** Python / uvicorn / Acres HTML process at runtime. Sources under `erp/` are reference only.
+There is **no** Python process and no separate ERP server. Manufacturing ERP lives in the same Express app as shopfloor (`server/erp/` + React `/erp/*`).
 
 ---
 
@@ -277,7 +277,6 @@ core-manufacturing/
 │ └── routes/ # printers, projects, jobs, timelapses, backup, ...
 ├── client/ # React + Vite (Fleet, Projects, Erp, Timelapses, ...)
 ├── docs/ # Operator guide, API, ERP, installation, changelog
-├── erp/ # Reference-only Acres/Python sources (not runtime)
 ├── start.sh / stop.sh # Linux dev process helpers
 ├── Dockerfile
 └── docker-compose.yml

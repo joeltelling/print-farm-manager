@@ -1,4 +1,4 @@
-// Numeric display helpers matching Acres erp/ui/js/us.js conventions.
+// Numeric display helpers matching Acres us.js conventions (embedded CoMa ERP).
 // Currency 2 dp, WAC/price/rate 4 dp, stock qty 6 dp, std minutes 3 dp.
 
 export function usd(n) {

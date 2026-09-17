@@ -53,7 +53,6 @@ core-manufacturing/
 ├── client/
 │ └── src/pages/ # Fleet, Projects, Jobs, Timelapses, Settings, Erp, ...
 ├── docs/ # This folder
-├── erp/ # Reference-only Python/Acres sources (not runtime)
 ├── Dockerfile
 └── docker-compose.yml
 ```

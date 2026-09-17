@@ -1,8 +1,8 @@
 # ERP inside CoMa
 
-Acres ERP functionality runs entirely inside CoMa: Express (`/api/erp`) + React CoMa UI (`/erp/*`) + the same SQLite file as shopfloor. There is no Python/uvicorn process and no Acres HTML skin in the operator app.
+Acres ERP functionality runs entirely inside CoMa: Express (`/api/erp`) + React CoMa UI (`/erp/*`) + the same SQLite file as shopfloor. There is no Python process, no second server, and no Acres HTML skin.
 
-Python sources under `erp/` are reference only (formulas / history). Runtime is Node: `server/erp/`.
+Runtime is Node only: `server/erp/`.
 
 ## Two processes only
 
@@ -36,7 +36,7 @@ Navigation lives in the CoMa sidebar only (Dashboard, Inventory, Manufacturing, 
 
 ## Acres parity audit
 
-Audit source: `erp/backend/app` and every `erp/ui/*.html` file. The Python and HTML trees remain reference-only and are not served.
+The standalone Acres Python/HTML tree was removed from this repository once parity landed in CoMa. Behavior below is what CoMa implements in Express + React.
 
 | Reference capability | Status | CoMa implementation |
 |---|---|---|
@@ -79,7 +79,7 @@ Double confirm of a posted row returns 409. Stock moves use `idem_key` values de
 
 Analytics at `/erp/analytics` (and `GET /api/erp/reports/*`) cross telemetried jobs with costing and sales: cost variance vs standards, project profitability including failed-job waste, and machine OEE from `printer_status_history`.
 
-Gap left from the legacy Acres SQL (not in either runtime): purchase orders / vendors. Raw material WAC still enters via Inventory receive.
+Gap left from the original Acres design (not implemented in CoMa): purchase orders / vendors. Raw material WAC still enters via Inventory receive.
 
 ## Single database
 
