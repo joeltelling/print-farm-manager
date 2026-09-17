@@ -1,6 +1,7 @@
 const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
+const { activeDispatchBlock } = require('../calendar-gate');
 const router  = express.Router();
 
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
@@ -51,6 +52,16 @@ module.exports = (db, scheduler = null) => {
     const blockers = [];
     const notes = [];
     let anyGcodeReady = false;
+
+    const closure = activeDispatchBlock(db);
+    if (closure) {
+      const until = closure.end_at
+        ? new Date(closure.end_at).toLocaleString()
+        : 'further notice';
+      blockers.push(
+        `Production closure active: "${closure.title}" - no new jobs until ${until}`
+      );
+    }
 
     if (part.project_status !== 'active') {
       blockers.push('Project is not Active — activate it to enable dispatch');

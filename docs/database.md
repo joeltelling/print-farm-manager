@@ -218,6 +218,34 @@ CREATE TABLE IF NOT EXISTS timelapses (
 
 Optional printer camera overrides (any brand / MJPEG URL): `printers.camera_snapshot_url`, `printers.camera_stream_url`.
 
+### calendar_events
+
+Operator-planned dates: stock arrivals, shipments, deadlines, notes, and production closures. Own source of truth for future dates (ERP/shopfloor tables mostly record what already happened). Included in backup export/restore.
+
+```sql
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type       TEXT NOT NULL,
+                   -- stock_arrival | shipment | deadline | production_closure | note
+  title            TEXT NOT NULL,
+  notes            TEXT,
+  start_at         INTEGER NOT NULL,
+  end_at           INTEGER,
+  all_day          INTEGER NOT NULL DEFAULT 1,
+  status           TEXT NOT NULL DEFAULT 'planned',
+                   -- planned | done | cancelled
+  blocks_dispatch  INTEGER NOT NULL DEFAULT 0,
+  project_id       INTEGER REFERENCES projects(id),
+  item_sku         TEXT,
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+);
+```
+
+Index: `idx_calendar_events_range ON calendar_events(start_at, end_at)`.
+
+Only rows with `blocks_dispatch = 1` and `status = 'planned'` whose window contains "now" stop new job reservations (`server/calendar-gate.js`). See [docs/calendar.md](calendar.md).
+
 ### printer_events
 
 Permanent audit log for each printer. Events are never deleted and survive printer deletion (no FK constraint on `printer_id`).

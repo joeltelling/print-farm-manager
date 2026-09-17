@@ -5,6 +5,7 @@ const { getDriver } = require('./drivers');
 const notifications = require('./notifications');
 const events = require('./events');
 const { sealJobTelemetry } = require('./telemetry');
+const { activeDispatchBlock } = require('./calendar-gate');
 
 const GCODE_DIR = path.join(__dirname, 'gcode');
 
@@ -28,6 +29,10 @@ class JobScheduler extends EventEmitter {
     // Prevents stale failed jobs from a previous session being credited when a
     // Bambu printer transitions OFFLINE → FINISHED on reconnect.
     this.startedAt = 0;
+    // Last calendar_events.id we already notified about for an active production
+    // closure. Avoids spamming the operator on every 15 s sweep (same class of
+    // bug as toasting poll errors).
+    this._notifiedClosureId = null;
   }
 
   start() {
@@ -77,6 +82,14 @@ class JobScheduler extends EventEmitter {
     // was never ours). Some printers (Bambu) latch the stopped state until the
     // next print starts, so they never transition to IDLE on their own —
     // dispatching to them is what returns them to service.
+    const block = activeDispatchBlock(this.db);
+    if (block) {
+      this._notifyClosureOnce(block);
+      console.log(`[scheduler] Production closure active ("${block.title}") - skipping sweep`);
+      return;
+    }
+    this._notifiedClosureId = null;
+
     const eligiblePrinters = this.db.prepare(`
       SELECT * FROM printers
       WHERE status IN ('IDLE', 'FINISHED', 'STOPPED') AND is_held = 0 AND is_active = 1
@@ -88,6 +101,17 @@ class JobScheduler extends EventEmitter {
 
     this._sweepInBatches(eligiblePrinters).catch((err) =>
       console.error('[scheduler] Sweep error:', err)
+    );
+  }
+
+  _notifyClosureOnce(block) {
+    if (!block || this._notifiedClosureId === block.id) return;
+    this._notifiedClosureId = block.id;
+    const until = block.end_at
+      ? new Date(block.end_at).toLocaleString()
+      : 'further notice';
+    notifications.add(
+      `Production closure active: "${block.title}" - no new jobs will dispatch until ${until}.`
     );
   }
 
@@ -237,6 +261,16 @@ class JobScheduler extends EventEmitter {
     const fresh = this.db.prepare('SELECT is_held, status FROM printers WHERE id = ?').get(printer.id);
     if (!fresh || fresh.is_held) {
       console.log(`[scheduler] ${printer.name} is held — skipping dispatch`);
+      return null;
+    }
+
+    // Production closure gate: every dispatch path converges here before the
+    // job INSERT, so set-ready-batch, sweeps, and idle events all respect it.
+    // Uploads already reserved keep running; this only blocks new reservations.
+    const block = activeDispatchBlock(this.db);
+    if (block) {
+      this._notifyClosureOnce(block);
+      console.log(`[scheduler] ${printer.name}: production closure "${block.title}" - skipping dispatch`);
       return null;
     }
 

@@ -26,7 +26,7 @@ Al abrir CoMa por primera vez pide crear una cuenta de operador (usuario y contr
 La barra lateral tiene dos bloques:
 
 1. **ERP** (Resumen, Inventario, Fabricacion, Ventas)
-2. **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs, Timelapses)
+2. **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs, Calendar, Timelapses)
 
 Settings queda debajo. En movil (< 600 px) los enlaces salen en la barra superior.
 
@@ -87,7 +87,18 @@ Cola e historial: `queued`, `uploading`, `printing`, `finished`, `failed`, `canc
 
 Solo puedes cancelar jobs en `queued`. Si ves "Awaiting Sign-off", la impresora esta held aunque el job siga marcado `printing` en la fila.
 
-### 3.5 CSV de flota
+### 3.5 Calendar
+
+Pagina Shopfloor `/calendar`: rejilla mensual de eventos planificados (llegada de stock, envios, fechas limite, notas) y un cierre de produccion.
+
+- Crea un evento con **New event** o doble clic en un dia.
+- Un **production closure** bloquea el despacho de trabajos nuevos mientras dure la ventana (hay que poner fecha de fin). Las impresiones ya en marcha siguen.
+- El Dashboard muestra un aviso rojo si hay un cierre activo.
+- Las fichas de historial (ventas, recepciones, jobs) son solo lectura; vienen del ERP y del shopfloor.
+
+Detalle tecnico: [docs/calendar.md](calendar.md).
+
+### 3.6 CSV de flota
 
 En Settings, importa CSV con columnas: `name`, `ip`, `type`, `api_key` (si aplica), `serial_number` (Bambu / CC2), `group`, `model`. Detalle en el [README raiz](../README.md#csv-import-format).
 

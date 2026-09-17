@@ -189,6 +189,7 @@ module.exports = (db) => {
     const filament_types  = db.prepare('SELECT * FROM filament_types').all();
     const filament_colors = db.prepare('SELECT * FROM filament_colors').all();
     const settings        = db.prepare('SELECT * FROM settings').all();
+    const calendar_events = db.prepare('SELECT * FROM calendar_events').all();
 
     // Embed gcode files as base64, keyed by their on-disk basename
     const gcodeFiles = {};
@@ -215,6 +216,7 @@ module.exports = (db) => {
       filament_types,
       filament_colors,
       settings,
+      calendar_events,
       erp: exportErp(db),
       gcode_files: gcodeFiles,
     };
@@ -268,6 +270,7 @@ module.exports = (db) => {
       const hasFilamentTypes  = Array.isArray(backup.filament_types);
       const hasFilamentColors = Array.isArray(backup.filament_colors);
       const hasSettings       = Array.isArray(backup.settings);
+      const hasCalendarEvents = Array.isArray(backup.calendar_events);
       const hasErp            = backup.erp !== undefined;
 
       const restore = db.transaction(() => {
@@ -281,6 +284,7 @@ module.exports = (db) => {
         db.prepare('DELETE FROM printer_events').run();
         try { db.prepare('DELETE FROM printer_status_history').run(); } catch (_) {}
         try { db.prepare('DELETE FROM timelapses').run(); } catch (_) {}
+        if (hasCalendarEvents) db.prepare('DELETE FROM calendar_events').run();
         db.prepare('DELETE FROM jobs').run();
         db.prepare('DELETE FROM gcodes').run();
         db.prepare('DELETE FROM parts').run();
@@ -309,6 +313,7 @@ module.exports = (db) => {
           filament_type:  makeInserter(db, 'filament_types', backup.filament_types || []),
           filament_color: makeInserter(db, 'filament_colors', backup.filament_colors || []),
           setting:        makeInserter(db, 'settings', backup.settings || []),
+          calendar_event: makeInserter(db, 'calendar_events', backup.calendar_events || []),
         };
 
         const erpStmts = hasErp
@@ -336,6 +341,7 @@ module.exports = (db) => {
         for (const t of (backup.filament_types  || [])) stmts.filament_type.run(t);
         for (const c of (backup.filament_colors || [])) stmts.filament_color.run(c);
         for (const s of (backup.settings || [])) stmts.setting.run(s);
+        for (const e of (backup.calendar_events || [])) stmts.calendar_event.run(e);
 
         if (hasErp) {
           for (const table of ERP_INSERT_ORDER) {
@@ -352,6 +358,7 @@ module.exports = (db) => {
           ['printer_status_history', 'printer_status_history'],
           ['timelapses', 'timelapses'],
           ['filament_types', 'filament_types'], ['filament_colors', 'filament_colors'],
+          ['calendar_events', 'calendar_events'],
         ]) {
           try {
             db.prepare(`
@@ -381,6 +388,7 @@ module.exports = (db) => {
         printer_groups:  (backup.printer_groups  || []).length,
         filament_types:  (backup.filament_types  || []).length,
         filament_colors: (backup.filament_colors || []).length,
+        calendar_events: (backup.calendar_events || []).length,
         erp: hasErp
           ? Object.fromEntries(ERP_TABLES.map(table => [
             table,

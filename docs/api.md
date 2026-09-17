@@ -645,6 +645,56 @@ Returns `400` for unknown keys or failed validation.
 
 ---
 
+## Calendar
+
+Planned shopfloor events (stock arrivals, shipments, deadlines, production closures) plus a read-only overlay of recent ERP/job history. See [docs/calendar.md](calendar.md). Closures with `blocks_dispatch = 1` stop **new** job reservations in the scheduler; in-flight uploads and running prints are not cancelled.
+
+### `GET /api/calendar/dispatch-block`
+
+Returns whether a production closure is currently blocking dispatch.
+
+```json
+{
+  "active": true,
+  "block": {
+    "id": 3,
+    "title": "Holiday shutdown",
+    "start_at": 1789200000000,
+    "end_at": 1789460000000
+  }
+}
+```
+
+When nothing blocks: `{ "active": false, "block": null }`.
+
+### `GET /api/calendar/events?from=&to=&type=`
+
+**Required query:** `from` and `to` as epoch milliseconds. Optional `type` filter (`stock_arrival`, `shipment`, `deadline`, `production_closure`, `note`).
+
+Returns events whose range overlaps `[from, to)`. Ordered by `start_at`.
+
+### `GET /api/calendar/overview?from=&to=`
+
+Same range params. Read-only derived items (jobs, sales, positive stock moves, work-order open/close markers), each with `source`, `title`, `start_at`, and optional `end_at`, normalized to epoch ms.
+
+### `POST /api/calendar/events`
+
+**Body (required):** `event_type`, `title`, `start_at` (epoch ms).
+
+**Optional:** `end_at`, `notes`, `all_day` (default 1), `status` (default `planned`), `blocks_dispatch` (default 0; production_closure defaults to 1 if omitted), `project_id`, `item_sku`.
+
+Returns `201` with the created row. Returns `400` when validation fails (unknown type, empty title, missing `start_at`, `end_at` before `start_at`, or `blocks_dispatch` without `end_at`).
+
+### `PUT /api/calendar/events/:id`
+
+Partial update via `COALESCE` for omitted fields. Same validation rules as create when the resulting row would block dispatch. Returns `404` if the event does not exist.
+
+### `DELETE /api/calendar/events/:id`
+
+Returns `{ "ok": true }` or `404`.
+
+---
+
 ## Timelapses
 
 ### `GET /api/timelapses`

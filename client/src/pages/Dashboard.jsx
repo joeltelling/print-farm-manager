@@ -104,6 +104,7 @@ export default function Dashboard() {
   const [clock, setClock] = useState(new Date());
   const [allModels, setAllModels] = useState([]);
   const [lastPolled, setLastPolled] = useState(null);
+  const [closureBlock, setClosureBlock] = useState(null);
   const dashRef = useRef(null);
   const navigate = useNavigate();
 
@@ -122,6 +123,13 @@ export default function Dashboard() {
       if (res.ok) {
         setData(await res.json());
         setLastPolled(Date.now());
+      }
+    } catch (_) {}
+    try {
+      const bl = await fetch('/api/calendar/dispatch-block');
+      if (bl.ok) {
+        const body = await bl.json();
+        setClosureBlock(body.active ? body.block : null);
       }
     } catch (_) {}
   }, []);
@@ -345,6 +353,28 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {closureBlock && (
+        <div
+          onClick={() => navigate('/calendar')}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 10,
+            border: `1px solid ${theme.redDeep}`,
+            background: 'rgba(248, 113, 113, 0.08)',
+            color: theme.red,
+            fontSize: 13,
+            cursor: 'pointer',
+          }}
+          title="Open Calendar"
+        >
+          Production closure active: <strong style={{ color: theme.text }}>{closureBlock.title}</strong>
+          {closureBlock.end_at
+            ? ` - no new jobs until ${new Date(closureBlock.end_at).toLocaleString()}`
+            : ' - no new jobs until further notice'}
+          . Click to open Calendar.
+        </div>
+      )}
 
       <div className="coma-kpi">
         {STAT_CARDS.map(({ key, label, color, help }) => (

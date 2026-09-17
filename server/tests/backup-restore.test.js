@@ -165,6 +165,21 @@ beforeEach(() => {
       UNIQUE(type_id, name)
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE calendar_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      notes TEXT,
+      start_at INTEGER NOT NULL,
+      end_at INTEGER,
+      all_day INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'planned',
+      blocks_dispatch INTEGER NOT NULL DEFAULT 0,
+      project_id INTEGER REFERENCES projects(id),
+      item_sku TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
   ensureErpSchema(db);
 
@@ -208,6 +223,15 @@ beforeEach(() => {
   db.prepare(`INSERT INTO filament_colors (type_id, name, hex_color) VALUES (2, 'Signal Red', '#cc0000')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('farm_name', 'Test Farm')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('dispatch_batch_size', '5')`).run();
+  db.prepare(`
+    INSERT INTO calendar_events (
+      event_type, title, notes, start_at, end_at, all_day, status,
+      blocks_dispatch, item_sku, created_at, updated_at
+    ) VALUES (
+      'production_closure', 'Holiday shutdown', 'Plant closed', ?, ?, 1, 'planned',
+      1, NULL, ?, ?
+    )
+  `).run(now, now + 3 * 86400000, now, now);
 
   const rawWh = db.prepare("SELECT id FROM warehouse WHERE code = 'raw'").get();
   const compWh = db.prepare("SELECT id FROM warehouse WHERE code = 'comp'").get();
@@ -652,6 +676,61 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
         expect.objectContaining({ key: 'dispatch_batch_size', value: '5' }),
       ])
     );
+    expect(res.body.calendar_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'production_closure',
+          title: 'Holiday shutdown',
+          blocks_dispatch: 1,
+        }),
+      ])
+    );
+  });
+
+  test('restore round-trips calendar_events', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    expect(exportRes.status).toBe(200);
+    const backupFile = writeTempBackupFile(exportRes.body);
+
+    try {
+      db.prepare("UPDATE calendar_events SET title = 'Wiped'").run();
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.ok).toBe(true);
+      expect(restoreRes.body.calendar_events).toBe(1);
+
+      const row = db.prepare('SELECT * FROM calendar_events WHERE title = ?').get('Holiday shutdown');
+      expect(row).toMatchObject({
+        event_type: 'production_closure',
+        blocks_dispatch: 1,
+        status: 'planned',
+      });
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('older backup without calendar_events leaves current calendar rows alone', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    expect(exportRes.status).toBe(200);
+    const backup = { ...exportRes.body };
+    delete backup.calendar_events;
+    const backupFile = writeTempBackupFile(backup);
+
+    try {
+      const before = db.prepare('SELECT COUNT(*) AS n FROM calendar_events').get().n;
+      expect(before).toBe(1);
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+
+      const after = db.prepare('SELECT COUNT(*) AS n FROM calendar_events').get().n;
+      expect(after).toBe(1);
+      expect(db.prepare('SELECT title FROM calendar_events').get().title).toBe('Holiday shutdown');
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
   });
 
   test('restore round-trips printer models, filament library (preserving type/color FK relationships), and settings', async () => {

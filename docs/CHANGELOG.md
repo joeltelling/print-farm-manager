@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-17: Calendar module with production-closure dispatch gate
+
+Operators needed a place for planned dates that do not live anywhere else in CoMa yet: expected stock arrivals, outbound shipments, deadlines, and multi-day plant shutdowns. ERP and shopfloor tables mostly record what already happened (`sales_order.sale_date`, `jobs.started_at`, etc.), so this adds an owned `calendar_events` table plus a Shopfloor Calendar page.
+
+The safety-critical piece is the production closure: a planned event with `blocks_dispatch = 1` stops **new** job reservations for its date range. Every dispatch path converges on `_reserveJob`, so set-ready, sweeps, and idle events all respect the gate. Uploads already reserved and prints already running continue. `GET /api/parts/:id/dispatch-status` mirrors the same blocker (documented sync pair). Closures require an `end_at` so the farm cannot be locked open-ended by mistake.
+
+### Changes
+- `server/db.js`: additive `calendar_events` table + `idx_calendar_events_range`
+- `server/calendar-gate.js`: shared `activeDispatchBlock(db, now)`
+- `server/routes/calendar.js`: CRUD, overview (derived jobs/sales/stock/WO), dispatch-block endpoint
+- `server/index.js`: mounts `/api/calendar`
+- `server/scheduler.js`: gate in `_reserveJob` and early exit in `sweepIdlePrinters`; one notification per closure id
+- `server/routes/parts.js`: dispatch-status blocker during active closures
+- `server/routes/backup.js`: export + restore + sqlite_sequence for `calendar_events`
+- `client/src/pages/Calendar.jsx`, `App.jsx`, `NavTree.jsx`: month grid UI under Shopfloor
+- `client/src/pages/Dashboard.jsx`: passive closure banner
+- `server/tests/calendar.test.js`, `scheduler-closure.test.js`, updates to `dispatch-status.test.js` and `backup-restore.test.js`
+- `docs/calendar.md`, `docs/api.md`, `docs/database.md`, `docs/web-app.md`, `docs/server.md`, `docs/user-guide.md`, `docs/README.md`
+
 ## 2026-09-17: Onboarding wizard used the wrong HTTP method for settings
 
 The first-run setup guide added earlier today (see the login gate entry below) called `POST /api/settings/farm_name` and `POST /api/settings/dispatch_batch_size` to save the site name and dispatch concurrency. `server/routes/settings.js` only registers `router.put('/:key', ...)`, so Express had no matching route and every real operator hit a 404 on "Finish setup" right after creating their first account, the first thing anyone self-installing CoMa would see.

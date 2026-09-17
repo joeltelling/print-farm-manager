@@ -41,6 +41,16 @@ beforeEach(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       part_id INTEGER NOT NULL, status TEXT DEFAULT 'queued', parts_per_plate INTEGER NOT NULL
     );
+    CREATE TABLE calendar_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL, title TEXT NOT NULL, notes TEXT,
+      start_at INTEGER NOT NULL, end_at INTEGER,
+      all_day INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'planned',
+      blocks_dispatch INTEGER NOT NULL DEFAULT 0,
+      project_id INTEGER, item_sku TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
   `);
 
   // routes/parts.js declares its Express router at module scope, like every route
@@ -180,5 +190,24 @@ describe('GET /api/parts/:id/dispatch-status', () => {
     expect(res.status).toBe(200);
     expect(res.body.dispatchable).toBe(false);
     expect(res.body.reasons.join(' ')).toContain('Rack A');
+  });
+
+  test('blocks when a production closure with blocks_dispatch is active (mirrors scheduler gate)', async () => {
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId);
+    seedPrinter();
+    const t = Date.now();
+    db.prepare(`
+      INSERT INTO calendar_events (
+        event_type, title, start_at, end_at, status, blocks_dispatch, created_at, updated_at
+      ) VALUES ('production_closure', 'Holiday shutdown', ?, ?, 'planned', 1, ?, ?)
+    `).run(t - 1000, t + 86400000, t, t);
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(false);
+    expect(res.body.reasons.join(' ')).toMatch(/Production closure/i);
+    expect(res.body.reasons.join(' ')).toContain('Holiday shutdown');
   });
 });

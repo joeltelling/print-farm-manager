@@ -34,6 +34,7 @@ const printerJobsRouter  = require('./routes/printer-jobs')(db);
 const sharedRouter       = require('./routes/shared')(db);
 const bridgeRouter       = require('./routes/bridge')(db);
 const timelapsesRouter   = require('./routes/timelapses')(db);
+const calendarRouter     = require('./routes/calendar')(db);
 const { mountErp }       = require('./erp');
 const { mountEbay }      = require('./ebay');
 const { recordFromSetReady } = require('./erp/postings');
@@ -74,6 +75,7 @@ app.use('/api/filaments',       filamentsRouter);
 app.use('/api/shared',          sharedRouter);
 app.use('/api/bridge',          bridgeRouter);
 app.use('/api/timelapses',      timelapsesRouter);
+app.use('/api/calendar',        calendarRouter);
 
 // eBay Sell APIs (must mount before /api/erp so /api/erp/ebay is not shadowed)
 app.use('/api/erp/ebay', mountEbay(db));

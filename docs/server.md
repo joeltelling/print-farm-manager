@@ -13,9 +13,10 @@
 | `server/db.js` | SQLite connection, schema creation, directory setup |
 | `server/poller.js` | Printer status polling loop |
 | `server/scheduler.js` | Job dispatch engine — listens to poller events, dispatches prints |
+| `server/calendar-gate.js` | Shared `activeDispatchBlock(db)` used by scheduler and dispatch-status |
 | `server/ebay/` | eBay Sell APIs (orders, inventory push, analytics); see [docs/erp/ebay.md](erp/ebay.md) |
 | `server/notifications.js` | In-memory alert store for recoverable server errors |
-| `server/routes/` | One file per resource (printers, projects, parts, gcodes, jobs, backup) |
+| `server/routes/` | One file per resource (printers, projects, parts, gcodes, jobs, calendar, backup) |
 | `server/data/farm.db` | SQLite database file (auto-created, gitignored) |
 | `server/gcode/` | G-code file storage directory (auto-created, gitignored) |
 
@@ -54,11 +55,14 @@ DELETE /api/notifications/:id       → notifications.dismiss() (inline handler)
 *      /api/parts                   → server/routes/parts.js (mounted after scheduler exists, see below)
 *      /api/gcodes                  → server/routes/gcodes.js (mounted after scheduler exists, see below)
 *      /api/jobs                    → server/routes/jobs.js
+*      /api/calendar                → server/routes/calendar.js
 *      /api/backup                  → server/routes/backup.js
 *      /api/erp/ebay                → server/ebay (before /api/erp)
 *      /api/erp                     → server/erp
 ```
 All route modules export a factory function `(db) => router`. This passes the shared synchronous `better-sqlite3` instance into each router without any global state.
+
+Production closures: when `calendar_events` has a planned row with `blocks_dispatch = 1` whose window contains now, `_reserveJob` and `sweepIdlePrinters` skip new reservations (see [docs/calendar.md](calendar.md)). The same check appears on `GET /api/parts/:id/dispatch-status`.
 
 ## Route Factory Pattern
 

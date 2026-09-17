@@ -12,6 +12,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Settings page:** tabbed site, hardware, materials, alerts, backup, account, and about
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
+- **Calendar page** - planned stock arrivals, shipments, deadlines, and production closures (closures block new job dispatch)
 
 Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ERP: Resumen, Inventario, Fabricacion, Ventas), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor is a flat list under its module. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
 
@@ -35,6 +36,7 @@ Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ER
 | `client/src/pages/erp/format.js` | Acres-compatible numeric display helpers |
 | `client/src/pages/erp/qr.js` | Dependency-free local QR SVG generator for printable WO pick lists |
 | `client/src/pages/Timelapses.jsx` | Timelapse gallery, manual start, video/frame preview |
+| `client/src/pages/Calendar.jsx` | Month grid of planned events + ERP/job history overlay; production-closure banner |
 | `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, timelapse interval/FPS/retention, models, CSV, backup, account) |
 | `client/src/components/BootSplash.jsx` | Session boot splash (once per tab session; not on in-app navigation) |
 | `client/src/components/AuthGate.jsx` | Wraps `<App />`; gates on account creation, login, and the one-time setup guide |
@@ -346,6 +348,14 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 | cancelled | near-black | muted gray |
 
 **"Awaiting Sign-off" badge (display-only):** a row whose `jobs.status` is still `printing` can belong to a printer that is already held for operator confirmation (for example a printer that transitions `PRINTING` -> `IDLE` directly, with no observable `FINISHED`/`STOPPED` in between two polls). `GET /api/jobs` joins `printer_is_held` and `printer_status` for exactly this case; `displayJobStatus()` in Jobs.jsx renders such a row as "Awaiting Sign-off" (green) instead of "Printing" (blue) so the Jobs page agrees with Fleet/Dashboard, which already reflect the hold via `is_held`. The underlying job row is untouched: it still says `printing` until the operator resolves it via Set Ready or Bad Print, at which point it becomes `finished`/`failed` normally.
+
+## Calendar Page
+
+`client/src/pages/Calendar.jsx`
+
+Monday-based month grid of planned events (`calendar_events`) plus a read-only history overlay from jobs, sales, stock receipts, and work orders (`GET /api/calendar/overview`). Day click opens a detail panel; double-click (or New event) opens the create form. Production closures show a red banner on this page and on the Dashboard when active.
+
+Mutations use `useToast` / `useConfirm` (toast and confirm modal must be rendered in the page JSX). Layout uses a scoped `@media (max-width: 600px)` block so the grid and side panel stack on small screens. See [docs/calendar.md](calendar.md).
 
 ## Live Update Pattern
 

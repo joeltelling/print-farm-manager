@@ -61,6 +61,7 @@ export const NAV_SECTIONS = [
       { to: '/printers', label: 'Printers', end: true },
       { to: '/projects', label: 'Projects' },
       { to: '/jobs',     label: 'Jobs' },
+      { to: '/calendar', label: 'Calendar' },
       { to: '/timelapses', label: 'Timelapses' },
     ],
   },

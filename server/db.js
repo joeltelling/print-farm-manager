@@ -163,6 +163,27 @@ try {
 } catch (_) {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_timelapses_printer ON timelapses(printer_id, started_at DESC)'); } catch (_) {}
 
+// Planned calendar events (stock arrivals, shipments, deadlines, production closures).
+// Own source of truth for future dates: ERP/shopfloor tables only record what already happened.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS calendar_events (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type       TEXT NOT NULL,
+    title            TEXT NOT NULL,
+    notes            TEXT,
+    start_at         INTEGER NOT NULL,
+    end_at           INTEGER,
+    all_day          INTEGER NOT NULL DEFAULT 1,
+    status           TEXT NOT NULL DEFAULT 'planned',
+    blocks_dispatch  INTEGER NOT NULL DEFAULT 0,
+    project_id       INTEGER REFERENCES projects(id),
+    item_sku         TEXT,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+  )`);
+} catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_calendar_events_range ON calendar_events(start_at, end_at)'); } catch (_) {}
+
 const { ensureErpSchema } = require('./erp/schema');
 ensureErpSchema(db);
 

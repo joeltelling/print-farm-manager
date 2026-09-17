@@ -30,6 +30,7 @@ Prefer Docker? `docker compose up --build print-farm-manager-dev` - see the [REA
 | [docs/multi-brand.md](multi-brand.md) | Phase 6 design - driver abstraction for non-Prusa brands |
 | [docs/driver-authoring.md](driver-authoring.md) | Connector authoring guide: contract, registration, hardware matrix |
 | [docs/filaments.md](filaments.md) | Filament Library - types/colors, API, client usage |
+| [docs/calendar.md](calendar.md) | Planned events, production closures, dispatch gate |
 | [docs/erp/README.md](erp/README.md) | Embedded ERP: sync, postings, actual costing, analytics |
 | [docs/erp/ebay.md](erp/ebay.md) | eBay Sell APIs: order import, inventory push, credentials |
 | [docs/docker-publish.md](docker-publish.md) | CI workflow that publishes multi-arch images to GHCR |

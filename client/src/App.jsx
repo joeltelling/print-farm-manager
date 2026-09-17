@@ -9,6 +9,7 @@ import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
 import Timelapses from './pages/Timelapses';
+import Calendar from './pages/Calendar';
 import Erp, {
   ItemsPage as ErpItems,
   LocationsPage as ErpLocations,
@@ -175,6 +176,7 @@ export default function App() {
             <Route path="/projects"        element={<Projects />} />
             <Route path="/jobs"            element={<Jobs />} />
             <Route path="/timelapses"      element={<Timelapses />} />
+            <Route path="/calendar"        element={<Calendar />} />
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
           </Routes>
