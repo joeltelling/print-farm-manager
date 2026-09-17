@@ -363,6 +363,20 @@ beforeEach(() => {
     VALUES (1, 1, 1, 'COMP-BRACKET', 1, 'pending', ?, 'backup seed')
   `).run(Date.now());
 
+  const customer = db.prepare(`
+    INSERT INTO customer (name, tax_id, email, phone, address, city, postal_code, country, is_active, created_at)
+    VALUES ('Acme SL', 'B12345678', 'acme@example.com', '555-0100', 'Calle Mayor 1', 'Madrid', '28001', 'ES', 1, ?)
+  `).run(Date.now());
+  const salesDoc = db.prepare(`
+    INSERT INTO sales_doc
+      (doc_type, doc_number, customer_id, status, issue_date, notes, subtotal, tax_total, total, created_at)
+    VALUES ('quote', 'PRE-000001', ?, 'draft', '2026-09-17', 'backup seed', 100, 21, 121, ?)
+  `).run(customer.lastInsertRowid, Date.now());
+  db.prepare(`
+    INSERT INTO sales_doc_line (doc_id, sku, description, qty, unit_price, tax_rate, line_total, created_at)
+    VALUES (?, 'FG-BRACKET', 'Bracket', 5, 20, 21, 100, ?)
+  `).run(salesDoc.lastInsertRowid, Date.now());
+
   // eBay Sell tables (credentials seeded but must NOT appear in backup export)
   db.prepare(`
     UPDATE ebay_credential SET
@@ -535,6 +549,7 @@ describe('Backup export/restore: embedded ERP domain', () => {
     'uom', 'warehouse', 'location', 'item', 'machine', 'bom', 'bom_line',
     'stock_move', 'item_cost', 'mfg_component', 'work_order', 'wo_issue',
     'wo_labor', 'pricing_config', 'sales_order', 'erp_posting',
+    'customer', 'sales_doc', 'sales_doc_line', 'doc_counter',
     'ebay_listing', 'ebay_order', 'ebay_order_line', 'ebay_sync_state',
   ];
 
@@ -547,6 +562,9 @@ describe('Backup export/restore: embedded ERP domain', () => {
     expect(res.body.erp.sales_order[0]).toMatchObject({
       sku: 'FG-BRACKET', qty: 1, total_price: 15,
     });
+    expect(res.body.erp.customer[0]).toMatchObject({ name: 'Acme SL', tax_id: 'B12345678' });
+    expect(res.body.erp.sales_doc[0]).toMatchObject({ doc_type: 'quote', doc_number: 'PRE-000001', total: 121 });
+    expect(res.body.erp.sales_doc_line[0]).toMatchObject({ description: 'Bracket', qty: 5, line_total: 100 });
   });
 
   test('export never includes ebay_credential secrets', async () => {
@@ -575,6 +593,10 @@ describe('Backup export/restore: embedded ERP domain', () => {
         DELETE FROM ebay_listing;
         DELETE FROM ebay_sync_state;
         DELETE FROM erp_posting;
+        DELETE FROM sales_doc_line;
+        DELETE FROM sales_doc;
+        DELETE FROM customer;
+        DELETE FROM doc_counter;
         DELETE FROM sales_order;
         DELETE FROM wo_labor;
         DELETE FROM wo_issue;
@@ -621,6 +643,12 @@ describe('Backup export/restore: embedded ERP domain', () => {
       expect(db.prepare("SELECT ebay_sku FROM ebay_listing WHERE ebay_sku = 'EBAY-FG-BRACKET'").get().ebay_sku)
         .toBe('EBAY-FG-BRACKET');
       expect(db.prepare("SELECT order_id FROM ebay_order WHERE order_id = 'ORD-1'").get().order_id).toBe('ORD-1');
+      expect(db.prepare("SELECT name, tax_id FROM customer WHERE name = 'Acme SL'").get())
+        .toMatchObject({ name: 'Acme SL', tax_id: 'B12345678' });
+      const restoredDoc = db.prepare("SELECT * FROM sales_doc WHERE doc_number = 'PRE-000001'").get();
+      expect(restoredDoc).toMatchObject({ doc_type: 'quote', status: 'draft', total: 121 });
+      expect(db.prepare('SELECT * FROM sales_doc_line WHERE doc_id = ?').get(restoredDoc.id))
+        .toMatchObject({ description: 'Bracket', qty: 5, line_total: 100 });
     } finally {
       fs.unlinkSync(backupFile);
     }

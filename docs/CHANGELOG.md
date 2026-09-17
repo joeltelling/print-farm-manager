@@ -2,6 +2,33 @@
 
 ---
 
+## 2026-09-17: Sales documents module (Presupuesto / Albaran / Factura)
+
+The embedded ERP only had a bare-bones Sales Order (no customer, no tax, no PDF chain). Some shops need real customer-facing paperwork: a quote that becomes a delivery note that becomes an invoice, each one numbered and downloadable as a PDF, with delivery notes able to pick up lines straight from confirmed shopfloor postings instead of being retyped. This adds a `Customer` master and a `sales_doc` / `sales_doc_line` chain next to (not instead of) the existing Sales Order flow, plus a `sales_doc_mode` setting so each install can pick which one is the default landing point without losing access to the other.
+
+Scope is intentionally simple: internal sequential numbering (`PRE-`, `ALB-`, `FAC-` prefixes via `doc_counter`), a flat per-line IVA rate (default 21%, editable), and hand-rolled PDF export reusing the existing low-level PDF builder. There is no VeriFactu/SII integration and no legally-enforced no-gaps numbering; that would need its own sign-off before being built. Shopfloor sync is one-directional and additive: attaching a posting to a delivery-note line never re-runs the stock move or touches `parts.completed_qty`, it only copies quantity/description for billing.
+
+### Changes
+- `server/erp/schema.js`: new `customer`, `sales_doc`, `sales_doc_line`, `doc_counter` tables; `doc_counter` seeded with the three prefixes
+- `server/erp/salesDocs.js`: new module, customer CRUD, sales-doc CRUD, status transitions (draft/confirmed/cancelled), chain conversion (quote to delivery to invoice), attach-posting-to-delivery
+- `server/erp/pdf.js`: `buildSalesDocPdf` for Presupuesto/Albaran/Factura downloads
+- `server/erp/index.js`: mounts `/customers`, `/sales-docs`, `/sales-docs/:id/{confirm,cancel,convert,pdf}`, `/postings/:id/attach-to-delivery`
+- `server/db.js`: default setting `sales_doc_mode = 'legacy'`
+- `server/routes/settings.js`: `sales_doc_mode` added to `ALLOWED_KEYS` with `legacy`/`quotes_flow` validation
+- `server/routes/backup.js`: `customer`, `sales_doc`, `sales_doc_line`, `doc_counter` added to ERP export/restore (doc_counter excluded from the auto-increment sequence list, it has no integer PK)
+- `server/tests/erp-sales-docs.test.js`: new test file, customer CRUD, document lifecycle, conversion chain, PDF export, posting attach
+- `server/tests/backup-restore.test.js`, `server/tests/settings.test.js`: extended for the new tables and setting
+- `client/src/pages/erp/salesDocs.jsx`: `CustomersPage`, `SalesDocList` (plus `QuotesPage`/`DeliveryNotesPage`/`InvoicesPage` wrappers), `SalesDocDetailPage`
+- `client/src/pages/erp/shared.jsx`: `Table` render prop now also receives the row index
+- `client/src/pages/erp/modules.jsx`: `PostingsPage` gains an inline "Crear albaran" action per posted row
+- `client/src/pages/Erp.jsx`, `client/src/App.jsx`, `client/src/components/NavTree.jsx`: routes and sidebar entries under Ventas (Clientes, Presupuestos, Albaranes, Facturas)
+- `client/src/components/AuthGate.jsx`: onboarding wizard asks once which sales flow to default to
+- `client/src/pages/Settings.jsx`: General tab lets the flow be changed later
+- `docs/database.md`, `docs/erp/README.md`, `docs/api.md`: schema, module, and endpoint documentation
+- `docs/CHANGELOG.md`: this entry
+
+Hardware/legal status: pure software, no printer driver involved. Not yet used against a real customer invoice run; treat the numbering/PDF output as implemented-from-spec until Joel checks a printed sample.
+
 ## 2026-09-17: README gallery includes Workspace tablero and bloc
 
 The public README gallery still stopped before the Workspace module shipped earlier today. The capture helper now seeds a few board cards and a notebook page into `seed-data.db` when empty, takes `/workspace` and `/workspace/bloc` shots, and the README feature tables / operator map / docs index mention Workspace.

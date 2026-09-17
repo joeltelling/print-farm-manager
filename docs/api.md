@@ -640,6 +640,7 @@ Body: `{ "value": "..." }`. Allowed keys:
 | `timelapse_interval_seconds` | positive integer | Frame interval (independent of the 15 s poll) |
 | `timelapse_fps` | positive integer | ffmpeg output framerate |
 | `timelapse_retention_days` | positive integer | Auto-delete ready/failed captures older than this |
+| `sales_doc_mode` | `legacy` or `quotes_flow` | Default sales-document flow shown after login: `legacy` (Sales Order) or `quotes_flow` (Presupuesto/Albaran/Factura). Both flows stay reachable from the sidebar regardless of this value; see [docs/erp/README.md](erp/README.md). |
 
 Returns `400` for unknown keys or failed validation.
 
@@ -907,6 +908,48 @@ Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/RE
 | `GET` | `/api/erp/sales/order/items` | Sellable FG + stock |
 | `POST` | `/api/erp/sales/orders` | Sale (depletes FIN_GOOD) |
 | `GET` | `/api/erp/sales/orders/report` | History; `format=csv\|pdf` |
+| `GET`/`POST` | `/api/erp/customers`, `PUT /api/erp/customers/:id` | Customer master (name, tax_id, address, ...) |
+| `GET`/`POST` | `/api/erp/sales-docs` | List (`?doc_type=quote\|delivery\|invoice&customer_id=&status=`) / create a document |
+| `GET`/`PUT` | `/api/erp/sales-docs/:id` | Fetch with lines; edit (draft only, `409` otherwise) |
+| `POST` | `/api/erp/sales-docs/:id/confirm` | Lock a draft document |
+| `POST` | `/api/erp/sales-docs/:id/cancel` | Cancel a draft or confirmed document |
+| `POST` | `/api/erp/sales-docs/:id/convert` | Body `{ "to": "delivery" \| "invoice" }`; only from a confirmed doc, one step of the chain |
+| `GET` | `/api/erp/sales-docs/:id/pdf` | Presupuesto/Albaran/Factura PDF download |
+| `POST` | `/api/erp/postings/:id/attach-to-delivery` | Shopfloor sync: turn a posted `erp_posting` into a delivery-note line; body `{ "doc_id" }` or `{ "customer_id" }` |
+
+### Sales documents example: create a quote (Presupuesto)
+
+Full module notes: [docs/erp/README.md](erp/README.md) "Sales documents".
+
+Body (required: `doc_type`, `customer_id`, `lines` with at least one entry):
+
+```json
+{
+  "doc_type": "quote",
+  "customer_id": 1,
+  "issue_date": "2026-09-17",
+  "lines": [
+    { "description": "Bracket x5", "sku": "FG-BRACKET", "qty": 5, "unit_price": 20, "tax_rate": 21 }
+  ]
+}
+```
+
+`201`:
+
+```json
+{
+  "id": 1,
+  "doc_type": "quote",
+  "doc_number": "PRE-000001",
+  "status": "draft",
+  "subtotal": 100,
+  "tax_total": 21,
+  "total": 121,
+  "lines": [{ "id": 1, "description": "Bracket x5", "sku": "FG-BRACKET", "qty": 5, "unit_price": 20, "tax_rate": 21, "line_total": 100 }]
+}
+```
+
+`400` when `doc_type` is not `quote`/`delivery`/`invoice`, `customer_id` is missing, or `lines` is empty. `404` when `customer_id` does not exist. `409` on `PUT`/`confirm`/`cancel`/`convert` against a document whose status does not allow the action (for example editing a `confirmed` document, or converting a `draft` one).
 
 ### eBay Sell (`/api/erp/ebay`)
 

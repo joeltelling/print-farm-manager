@@ -367,6 +367,8 @@ export default function Settings() {
   const [farmNameError, setFarmNameError] = useState(null);
   const [cameraMode, setCameraMode] = useState('snapshot');
   const [cameraModeError, setCameraModeError] = useState(null);
+  const [salesDocMode, setSalesDocMode] = useState('legacy');
+  const [salesDocModeError, setSalesDocModeError] = useState(null);
   const [tlEnabled, setTlEnabled] = useState('true');
   const [tlInterval, setTlInterval] = useState('10');
   const [tlFps, setTlFps] = useState('10');
@@ -380,6 +382,7 @@ export default function Settings() {
         if (data.dispatch_batch_size) setBatchSize(data.dispatch_batch_size);
         if (data.farm_name) setFarmName(data.farm_name);
         if (data.camera_mode) setCameraMode(data.camera_mode);
+        if (data.sales_doc_mode) setSalesDocMode(data.sales_doc_mode);
         if (data.timelapse_enabled != null) setTlEnabled(data.timelapse_enabled);
         if (data.timelapse_interval_seconds) setTlInterval(data.timelapse_interval_seconds);
         if (data.timelapse_fps) setTlFps(data.timelapse_fps);
@@ -434,6 +437,22 @@ export default function Settings() {
       showToast('Camera mode saved');
     } catch (err) {
       setCameraModeError(err.message);
+    }
+  }
+
+  async function handleSaveSalesDocMode() {
+    setSalesDocModeError(null);
+    try {
+      const res = await fetch('/api/settings/sales_doc_mode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: salesDocMode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      showToast('Sales document flow saved');
+    } catch (err) {
+      setSalesDocModeError(err.message);
     }
   }
 
@@ -1335,6 +1354,35 @@ export default function Settings() {
         </div>
         {cameraModeError && (
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{cameraModeError}</div>
+        )}
+      </section>
+
+      <section style={sectionStyle}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Sales document flow</h2>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
+          Which sales flow is the default landing point under ERP &gt; Ventas: the simple Sales
+          Order (no customer, no tax) or Presupuesto / Albaran / Factura (customers, per-line
+          tax, and a convertible quote to delivery to invoice chain). Both stay available in the
+          sidebar regardless of this setting; switching it never deletes existing documents.
+        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            value={salesDocMode}
+            onChange={e => setSalesDocMode(e.target.value)}
+            style={{ ...inputStyle, width: 320 }}
+          >
+            <option value="legacy">Simple Sales Order</option>
+            <option value="quotes_flow">Presupuesto / Albaran / Factura</option>
+          </select>
+          <button
+            onClick={handleSaveSalesDocMode}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Save
+          </button>
+        </div>
+        {salesDocModeError && (
+          <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{salesDocModeError}</div>
         )}
       </section>
 

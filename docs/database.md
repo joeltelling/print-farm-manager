@@ -354,6 +354,67 @@ CREATE TABLE IF NOT EXISTS erp_posting (
 
 When `telemetry_quality` on the linked job is `measured`, confirm values `stock_move.unit_cost` from actual minutes/grams/energy; otherwise the existing `mfg_component` standard cost is used.
 
+### customer, sales_doc, sales_doc_line, doc_counter (embedded ERP)
+
+Sales documents: Presupuesto (quote) to Albaran (delivery note) to Factura (invoice). Simple-docs scope only: sequential numbering per type, per-line tax rate, no VeriFactu/SII wiring. Created by `server/erp/schema.js`, business logic in `server/erp/salesDocs.js`.
+
+```sql
+CREATE TABLE IF NOT EXISTS customer (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  tax_id TEXT,
+  email TEXT,
+  phone TEXT,
+  address TEXT,
+  city TEXT,
+  postal_code TEXT,
+  country TEXT,
+  notes TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sales_doc (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_type TEXT NOT NULL,             -- quote | delivery | invoice
+  doc_number TEXT UNIQUE NOT NULL,    -- PRE-000001 | ALB-000001 | FAC-000001
+  customer_id INTEGER REFERENCES customer(id),
+  status TEXT NOT NULL DEFAULT 'draft',  -- draft | confirmed | cancelled
+  issue_date TEXT NOT NULL,
+  due_date TEXT,
+  notes TEXT,
+  subtotal REAL NOT NULL DEFAULT 0,
+  tax_total REAL NOT NULL DEFAULT 0,
+  total REAL NOT NULL DEFAULT 0,
+  source_doc_id INTEGER REFERENCES sales_doc(id),  -- set when converted from another doc
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sales_doc_line (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_id INTEGER NOT NULL REFERENCES sales_doc(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES item(id),
+  sku TEXT,
+  description TEXT NOT NULL,
+  qty REAL NOT NULL DEFAULT 1,
+  unit_price REAL NOT NULL DEFAULT 0,
+  tax_rate REAL NOT NULL DEFAULT 21,
+  line_total REAL NOT NULL DEFAULT 0,  -- qty * unit_price, before tax
+  job_id INTEGER,      -- shopfloor traceability when the line came from a posting
+  posting_id INTEGER,  -- see erp_posting
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS doc_counter (
+  doc_type TEXT PRIMARY KEY,  -- quote | delivery | invoice
+  next_seq INTEGER NOT NULL DEFAULT 1
+);
+```
+
+Editing (`PUT`), confirming, and cancelling are only allowed while `status = 'draft'` (except cancel, allowed from `draft` or `confirmed`). Converting requires the source document to be `confirmed`, and only follows the chain quote to delivery to invoice one step at a time; a document can be converted more than once (partial delivery or partial invoicing), each conversion sets the new document's `source_doc_id`. Only "confirmed (posted)" `erp_posting` rows can be turned into a delivery-note line (`POST /api/erp/postings/:id/attach-to-delivery`), carrying `job_id`/`posting_id` for traceability; this never changes `parts.completed_qty`.
+
 Other ERP tables (`uom`, `warehouse`, `location`, `item`, `machine`, `bom`, `bom_line`, `stock_move`, `item_cost`, `mfg_component`, `work_order`, `wo_issue`, `wo_labor`, `pricing_config`, `sales_order`) are created by `server/erp/schema.js`. See [docs/erp/README.md](erp/README.md).
 
 `machine` stores `rate_mode` (`manual` or `calculated`), `hourly_rate` (effective USD/h used by costing), `maintenance_rate`, and `power_kw`. Site electricity USD/kWh is `pricing_config` code `ELEC_KWH`.

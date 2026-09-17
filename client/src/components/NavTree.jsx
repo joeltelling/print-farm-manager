@@ -43,6 +43,10 @@ export const NAV_SECTIONS = [
         label: 'Ventas',
         items: [
           { to: '/erp/sales', label: 'Sales', end: true },
+          { to: '/erp/customers', label: 'Clientes' },
+          { to: '/erp/quotes', label: 'Presupuestos' },
+          { to: '/erp/delivery-notes', label: 'Albaranes' },
+          { to: '/erp/invoices', label: 'Facturas' },
           { to: '/erp/sales/order', label: 'Sales Order' },
           { to: '/erp/sales/pricing', label: 'Pricing' },
           { to: '/erp/sales/config', label: 'Sales Config' },

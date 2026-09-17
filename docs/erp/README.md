@@ -31,6 +31,8 @@ Production: one process (`node server/index.js` serving `client/dist`).
 | Sales dashboard | reports + stock summary | `/erp/sales` |
 | Sales config / pricing / reset | `/sales/config`, `/sales/pricing`, `/sales/pricing/:id/reset` | `/erp/sales/*` |
 | Sales orders + history CSV/PDF | `/sales/order/items`, `/sales/orders`, `/sales/orders/report` | `/erp/sales/order`, `/erp/sales/reports` |
+| Customers | `/customers` | `/erp/customers` |
+| Sales documents: Presupuesto / Albaran / Factura | `/sales-docs/*` | `/erp/quotes`, `/erp/delivery-notes`, `/erp/invoices`, `/erp/sales-docs/:id` |
 | eBay Sell (orders, inventory push, analytics) | `/api/erp/ebay/*` | `/erp/ebay` |
 
 Navigation lives in the CoMa sidebar only (Dashboard, Inventory, Manufacturing, Sales modules). ERP pages use `ErpShell` for the page title; there is no second in-page module nav.
@@ -83,6 +85,22 @@ Double confirm of a posted row returns 409. Stock moves use `idem_key` values de
 Analytics at `/erp/analytics` (and `GET /api/erp/reports/*`) cross telemetried jobs with costing and sales: cost variance vs standards, project profitability including failed-job waste, and machine OEE from `printer_status_history`.
 
 Gap left from the original Acres design (not implemented in CoMa): purchase orders / vendors. Raw material WAC still enters via Inventory receive.
+
+## Sales documents: Presupuesto / Albaran / Factura
+
+A second, customer-facing sales flow next to the plain Sales Order above: `Customer` master data plus a convertible document chain, **Presupuesto** (quote) to **Albaran** (delivery note) to **Factura** (invoice). Scope is deliberately "simple docs": sequential numbering per type (`PRE-000001`, `ALB-000001`, `FAC-000001`), a per-line tax rate (defaults to 21% IVA, editable), and hand-rolled PDF export. There is no VeriFactu/SII wiring and no legal no-gaps numbering guarantee; that would need Joel's sign-off before being built.
+
+Tables: `customer`, `sales_doc`, `sales_doc_line`, `doc_counter` (see [docs/database.md](../database.md)). Business logic in `server/erp/salesDocs.js`, routes in `server/erp/index.js` under `/api/erp/customers` and `/api/erp/sales-docs`.
+
+Lifecycle:
+1. Create a document (`POST /sales-docs`) with a customer and at least one line. It starts as `draft` and can be freely edited (`PUT /sales-docs/:id`) or deleted by cancelling.
+2. Confirm it (`POST /sales-docs/:id/confirm`). Confirmed documents can no longer be edited.
+3. Convert a confirmed document one step down the chain (`POST /sales-docs/:id/convert { "to": "delivery" }` or `"invoice"`). This copies the lines into a brand-new draft document and stamps `source_doc_id` for traceability. A document can be converted more than once (partial delivery, partial invoicing).
+4. Download a PDF at any time (`GET /sales-docs/:id/pdf`).
+
+**Shopfloor sync:** a confirmed (`posted`) row in the `erp_posting` queue (see above) can become a delivery-note line via `POST /postings/:id/attach-to-delivery`, either appended to an existing draft delivery note (`doc_id`) or as a brand-new one for a chosen customer (`customer_id`). The line carries `job_id`/`posting_id` for traceability back to the printer job. This is purely a billing convenience: it never touches `parts.completed_qty` or re-runs any stock move already applied by the posting confirm. The Postings page (`/erp/postings`) exposes this as a "Crear albaran" action on posted rows.
+
+**Settings:** `sales_doc_mode` (`legacy` or `quotes_flow`, Settings > General) picks which sales flow is the default landing point. Both flows always stay available in the sidebar and share no exclusive data; switching the setting never deletes or hides existing documents. It is asked once during the first-run onboarding wizard (`client/src/components/AuthGate.jsx`) and can be changed later.
 
 ## Single database
 

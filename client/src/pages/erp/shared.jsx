@@ -57,7 +57,7 @@ export function Table({ columns, rows, rowKey }) {
             <tr key={rowKey ? rowKey(row) : (row.id ?? row.sku ?? i)}>
               {columns.map(c => (
                 <td key={c.key} style={{ padding: '9px 10px', borderBottom: `1px solid ${theme.borderSoft}`, color: theme.textStrong }}>
-                  {c.render ? c.render(row) : row[c.key]}
+                  {c.render ? c.render(row, i) : row[c.key]}
                 </td>
               ))}
             </tr>

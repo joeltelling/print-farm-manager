@@ -9,6 +9,7 @@ const ALLOWED_KEYS = new Set([
   'timelapse_interval_seconds',
   'timelapse_fps',
   'timelapse_retention_days',
+  'sales_doc_mode',
 ]);
 
 module.exports = (db) => {
@@ -46,6 +47,13 @@ module.exports = (db) => {
       const mode = String(value).trim();
       if (mode !== 'stream' && mode !== 'snapshot') {
         return res.status(400).json({ error: 'camera_mode must be stream or snapshot' });
+      }
+    }
+
+    if (key === 'sales_doc_mode') {
+      const mode = String(value).trim();
+      if (mode !== 'legacy' && mode !== 'quotes_flow') {
+        return res.status(400).json({ error: 'sales_doc_mode must be legacy or quotes_flow' });
       }
     }
 

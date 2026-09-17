@@ -372,6 +372,11 @@ try {
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_interval_seconds', '10')").run();
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_fps', '10')").run();
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_retention_days', '30')").run();
+  // Which sales-document flow is the default landing point: 'legacy' (simple Sales
+  // Order, no customer/tax) or 'quotes_flow' (Customers + Presupuesto/Albaran/Factura).
+  // Asked once during onboarding (AuthGate.jsx); changeable later in Settings > General.
+  // Both flows always stay usable regardless of this value, this only picks the default.
+  db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('sales_doc_mode', 'legacy')").run();
 } catch (_) {}
 
 // Local authentication: a single operator account gates entry to the app (see

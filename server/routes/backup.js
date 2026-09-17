@@ -23,6 +23,10 @@ const ERP_TABLES = [
   'pricing_config',
   'sales_order',
   'erp_posting',
+  'customer',
+  'sales_doc',
+  'sales_doc_line',
+  'doc_counter',
   // eBay Sell integration (optional in older backups; see ERP_OPTIONAL_TABLES)
   'ebay_listing',
   'ebay_order',
@@ -37,6 +41,10 @@ const ERP_OPTIONAL_TABLES = new Set([
   'ebay_order',
   'ebay_order_line',
   'ebay_sync_state',
+  'customer',
+  'sales_doc',
+  'sales_doc_line',
+  'doc_counter',
 ]);
 
 const ERP_DELETE_ORDER = [
@@ -45,6 +53,10 @@ const ERP_DELETE_ORDER = [
   'ebay_listing',
   'ebay_sync_state',
   'erp_posting',
+  'sales_doc_line',
+  'sales_doc',
+  'customer',
+  'doc_counter',
   'sales_order',
   'wo_labor',
   'wo_issue',
@@ -79,13 +91,17 @@ const ERP_INSERT_ORDER = [
   'pricing_config',
   'sales_order',
   'erp_posting',
+  'doc_counter',
+  'customer',
+  'sales_doc',
+  'sales_doc_line',
   'ebay_listing',
   'ebay_order',
   'ebay_order_line',
   'ebay_sync_state',
 ];
 
-const ERP_SEQUENCE_TABLES = ERP_TABLES.filter(table => !['uom', 'item_cost', 'ebay_sync_state'].includes(table));
+const ERP_SEQUENCE_TABLES = ERP_TABLES.filter(table => !['uom', 'item_cost', 'ebay_sync_state', 'doc_counter'].includes(table));
 
 // Multer for restore uploads — write to data/ dir, clean up after processing
 const restoreUpload = multer({

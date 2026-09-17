@@ -219,10 +219,23 @@ const ONBOARDING_STEPS = [
     placeholder: '10',
     type: 'number',
   },
+  {
+    key: 'sales_doc_mode',
+    label: 'Sales document flow',
+    help: 'Both flows always stay available in the sidebar; this only picks the default. Change it later in Settings > General.',
+    type: 'choice',
+    default: 'legacy',
+    options: [
+      { value: 'legacy', label: 'Simple Sales Order', description: 'Quick sale against stock, no customer or tax fields.' },
+      { value: 'quotes_flow', label: 'Presupuesto / Albaran / Factura', description: 'Customers, per-line tax, and a convertible quote -> delivery -> invoice chain.' },
+    ],
+  },
 ];
 
 function OnboardingWizard({ onDone }) {
-  const [values, setValues] = useState({});
+  const [values, setValues] = useState(() => Object.fromEntries(
+    ONBOARDING_STEPS.filter(s => s.default !== undefined).map(s => [s.key, s.default])
+  ));
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -257,16 +270,44 @@ function OnboardingWizard({ onDone }) {
         {ONBOARDING_STEPS.map((step, i) => (
           <div key={step.key} style={{ marginBottom: i === ONBOARDING_STEPS.length - 1 ? 22 : 14 }}>
             <label style={labelStyle}>{step.label}</label>
-            <input
-              type={step.type || 'text'}
-              value={values[step.key] ?? ''}
-              onChange={e => setValues(v => ({ ...v, [step.key]: e.target.value }))}
-              placeholder={step.placeholder}
-              maxLength={step.maxLength}
-              min={step.type === 'number' ? 1 : undefined}
-              max={step.type === 'number' ? 100 : undefined}
-              style={INPUT_STYLE}
-            />
+            {step.type === 'choice' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {step.options.map(opt => (
+                  <label
+                    key={opt.value}
+                    style={{
+                      display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px',
+                      borderRadius: 10, border: `1px solid ${values[step.key] === opt.value ? theme.lime : theme.border}`,
+                      background: values[step.key] === opt.value ? 'rgba(163, 230, 53, 0.08)' : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name={step.key}
+                      checked={values[step.key] === opt.value}
+                      onChange={() => setValues(v => ({ ...v, [step.key]: opt.value }))}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: theme.textBright }}>{opt.label}</div>
+                      <div style={{ fontSize: 11.5, color: theme.textMuted, marginTop: 2 }}>{opt.description}</div>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <input
+                type={step.type || 'text'}
+                value={values[step.key] ?? ''}
+                onChange={e => setValues(v => ({ ...v, [step.key]: e.target.value }))}
+                placeholder={step.placeholder}
+                maxLength={step.maxLength}
+                min={step.type === 'number' ? 1 : undefined}
+                max={step.type === 'number' ? 100 : undefined}
+                style={INPUT_STYLE}
+              />
+            )}
             <div style={helpStyle}>{step.help}</div>
           </div>
         ))}

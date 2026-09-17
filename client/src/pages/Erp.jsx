@@ -22,3 +22,10 @@ export {
   SalesReportsPage,
 } from './erp/sales';
 export { EbayPage } from './erp/ebay';
+export {
+  CustomersPage,
+  QuotesPage,
+  DeliveryNotesPage,
+  InvoicesPage,
+  SalesDocDetailPage,
+} from './erp/salesDocs';

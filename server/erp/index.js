@@ -17,7 +17,7 @@ const {
   finWarehouseId,
   whIdByCode,
 } = require('./costing');
-const { buildSalesReportPdf } = require('./pdf');
+const { buildSalesReportPdf, buildSalesDocPdf } = require('./pdf');
 const { syncShopfloorToErp, buildErpDashboard } = require('./sync');
 const {
   ensurePostingTable,
@@ -33,6 +33,20 @@ const {
   profitabilityReport,
   machineOeeReport,
 } = require('./reports');
+const {
+  listCustomers,
+  getCustomer,
+  createCustomer,
+  updateCustomer,
+  listSalesDocs,
+  getSalesDoc,
+  createSalesDoc,
+  updateSalesDoc,
+  confirmSalesDoc,
+  cancelSalesDoc,
+  convertSalesDoc,
+  attachPostingToDelivery,
+} = require('./salesDocs');
 
 const PIECE_UOM_CANDIDATES = ['EA', 'EACH', 'UN', 'UNIT', 'PCS', 'PC', 'PZA'];
 const ITEM_ROLES = new Set(['product', 'component', 'raw']);
@@ -1443,6 +1457,121 @@ function mountErp(db) {
     }
   });
 
+  // ---------- Customers ----------
+  router.get('/customers', (req, res) => {
+    try {
+      res.json(listCustomers(db, { search: req.query.search }));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/customers', (req, res) => {
+    try {
+      res.status(201).json(createCustomer(db, req.body || {}));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.put('/customers/:id', (req, res) => {
+    try {
+      res.json(updateCustomer(db, req.params.id, req.body || {}));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.get('/customers/:id', (req, res) => {
+    try {
+      res.json(getCustomer(db, req.params.id));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  // ---------- Sales documents: Presupuesto (quote) / Albaran (delivery) / Factura (invoice) ----------
+  router.get('/sales-docs', (req, res) => {
+    try {
+      res.json(listSalesDocs(db, {
+        doc_type: req.query.doc_type,
+        customer_id: req.query.customer_id,
+        status: req.query.status,
+      }));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/sales-docs', (req, res) => {
+    try {
+      res.status(201).json(createSalesDoc(db, req.body || {}));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.get('/sales-docs/:id', (req, res) => {
+    try {
+      res.json(getSalesDoc(db, req.params.id));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.put('/sales-docs/:id', (req, res) => {
+    try {
+      res.json(updateSalesDoc(db, req.params.id, req.body || {}));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/sales-docs/:id/confirm', (req, res) => {
+    try {
+      res.json(confirmSalesDoc(db, req.params.id));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/sales-docs/:id/cancel', (req, res) => {
+    try {
+      res.json(cancelSalesDoc(db, req.params.id));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.post('/sales-docs/:id/convert', (req, res) => {
+    try {
+      const to = (req.body || {}).to;
+      if (!to) return res.status(400).json({ error: 'to is required (delivery or invoice)' });
+      res.status(201).json(convertSalesDoc(db, req.params.id, to));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  router.get('/sales-docs/:id/pdf', (req, res) => {
+    try {
+      const doc = getSalesDoc(db, req.params.id);
+      const customer = doc.customer_id ? getCustomer(db, doc.customer_id) : null;
+      const labels = { quote: 'Presupuesto', delivery: 'Albaran', invoice: 'Factura' };
+      const buf = buildSalesDocPdf({
+        docTypeLabel: labels[doc.doc_type] || doc.doc_type,
+        doc,
+        customer,
+        lines: doc.lines,
+      });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=${doc.doc_number}.pdf`);
+      res.send(buf);
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
   // ---------- Shopfloor postings queue ----------
   router.get('/postings', (req, res) => {
     try {
@@ -1478,6 +1607,24 @@ function mountErp(db) {
     try {
       const note = (req.body || {}).note || null;
       res.json(dismissPosting(db, req.params.id, note));
+    } catch (e) {
+      res.status(e.status || 500).json({ error: e.message });
+    }
+  });
+
+  // Shopfloor sync: turn a confirmed (posted) posting into a delivery-note (albaran)
+  // line, either on an existing draft delivery note (doc_id) or a brand new one
+  // (customer_id). See server/erp/salesDocs.js attachPostingToDelivery.
+  router.post('/postings/:id/attach-to-delivery', (req, res) => {
+    try {
+      const b = req.body || {};
+      res.status(201).json(attachPostingToDelivery(db, req.params.id, {
+        doc_id: b.doc_id,
+        customer_id: b.customer_id,
+        unit_price: b.unit_price,
+        tax_rate: b.tax_rate,
+        issue_date: b.issue_date,
+      }));
     } catch (e) {
       res.status(e.status || 500).json({ error: e.message });
     }

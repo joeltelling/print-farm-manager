@@ -92,3 +92,22 @@ describe('PUT /api/settings/camera_mode', () => {
     expect(res.body.error).toMatch(/stream or snapshot/i);
   });
 });
+
+describe('PUT /api/settings/sales_doc_mode', () => {
+  test('saves legacy or quotes_flow', async () => {
+    const res = await request(app)
+      .put('/api/settings/sales_doc_mode')
+      .send({ value: 'quotes_flow' });
+    expect(res.status).toBe(200);
+    expect(res.body.value).toBe('quotes_flow');
+    expect(db.prepare("SELECT value FROM settings WHERE key = 'sales_doc_mode'").get().value).toBe('quotes_flow');
+  });
+
+  test('rejects an unknown mode', async () => {
+    const res = await request(app)
+      .put('/api/settings/sales_doc_mode')
+      .send({ value: 'hybrid' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/legacy or quotes_flow/i);
+  });
+});

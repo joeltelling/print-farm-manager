@@ -163,6 +163,59 @@ function ensureErpSchema(db) {
       created_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS customer (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      tax_id TEXT,
+      email TEXT,
+      phone TEXT,
+      address TEXT,
+      city TEXT,
+      postal_code TEXT,
+      country TEXT,
+      notes TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_doc (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      doc_type TEXT NOT NULL,
+      doc_number TEXT UNIQUE NOT NULL,
+      customer_id INTEGER REFERENCES customer(id),
+      status TEXT NOT NULL DEFAULT 'draft',
+      issue_date TEXT NOT NULL,
+      due_date TEXT,
+      notes TEXT,
+      subtotal REAL NOT NULL DEFAULT 0,
+      tax_total REAL NOT NULL DEFAULT 0,
+      total REAL NOT NULL DEFAULT 0,
+      source_doc_id INTEGER REFERENCES sales_doc(id),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_doc_line (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      doc_id INTEGER NOT NULL REFERENCES sales_doc(id) ON DELETE CASCADE,
+      item_id INTEGER REFERENCES item(id),
+      sku TEXT,
+      description TEXT NOT NULL,
+      qty REAL NOT NULL DEFAULT 1,
+      unit_price REAL NOT NULL DEFAULT 0,
+      tax_rate REAL NOT NULL DEFAULT 21,
+      line_total REAL NOT NULL DEFAULT 0,
+      job_id INTEGER,
+      posting_id INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS doc_counter (
+      doc_type TEXT PRIMARY KEY,
+      next_seq INTEGER NOT NULL DEFAULT 1
+    );
+
     CREATE TABLE IF NOT EXISTS erp_posting (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_id INTEGER UNIQUE,
@@ -224,6 +277,14 @@ function ensureErpSchema(db) {
         'INSERT INTO pricing_config (name, code, value, last_update_date) VALUES (?, ?, ?, ?)'
       ).run('Electricity USD/kWh', 'ELEC_KWH', 0, new Date().toISOString());
     }
+  }
+
+  const docCounterCount = db.prepare('SELECT COUNT(*) AS n FROM doc_counter').get().n;
+  if (docCounterCount === 0) {
+    const ins = db.prepare('INSERT INTO doc_counter (doc_type, next_seq) VALUES (?, 1)');
+    ins.run('quote');
+    ins.run('delivery');
+    ins.run('invoice');
   }
 
   const labor = db.prepare("SELECT id FROM machine WHERE machine = 'LABOR'").get();
