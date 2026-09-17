@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-09-17: Onboarding wizard used the wrong HTTP method for settings
+
+The first-run setup guide added earlier today (see the login gate entry below) called `POST /api/settings/farm_name` and `POST /api/settings/dispatch_batch_size` to save the site name and dispatch concurrency. `server/routes/settings.js` only registers `router.put('/:key', ...)`, so Express had no matching route and every real operator hit a 404 on "Finish setup" right after creating their first account, the first thing anyone self-installing CoMa would see.
+
+`AuthGate.jsx` had its own `postJson` helper (used correctly elsewhere for `/api/auth/register`, `/api/auth/login`, `/api/auth/complete-onboarding`, which are POST) but the onboarding wizard reused it against a PUT-only route instead of matching the existing pattern already used by the General tab in `Settings.jsx`.
+
+### Changes
+- `client/src/components/AuthGate.jsx`: added a `putJson` helper alongside `postJson`, and the onboarding wizard now calls `PUT /api/settings/:key` (matching `Settings.jsx`) instead of POST
+
+No automated regression test was added: this project has no client-side test harness (Jest/supertest only cover the server), and introducing one (Vitest, React Testing Library, etc.) is a new dev dependency that needs a separate decision rather than being folded into a one-line method fix. Verified manually with `npm run build` in `client/` and by re-reading `server/routes/settings.js` to confirm the route is PUT-only.
+
 ## 2026-09-17: Basic login gate, first-run account, and one-time setup guide
 
 CoMa had no authentication at all: anyone who could reach the web UI on the LAN could dispatch jobs, edit parts, or restore a backup over the fleet's data with no login of any kind. This adds a single local operator account that gates the entire app. On first run there is no account, so the app asks to create one (username and password); after that first login it shows a one-time setup guide (site name, dispatch concurrency, both already-existing Settings fields) that never reappears unless the account is deleted from Settings > Account, which requires the current password.

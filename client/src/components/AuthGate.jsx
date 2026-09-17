@@ -73,6 +73,19 @@ async function postJson(url, body) {
   return data;
 }
 
+// Settings routes are PUT, not POST (server/routes/settings.js follows the project's
+// "updates are PUT, not PATCH" convention). Used by the onboarding wizard below.
+async function putJson(url, body) {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
 function RegisterScreen({ onDone }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -221,7 +234,7 @@ function OnboardingWizard({ onDone }) {
       for (const step of ONBOARDING_STEPS) {
         const value = values[step.key];
         if (value === undefined || String(value).trim() === '') continue;
-        await postJson(`/api/settings/${step.key}`, { value });
+        await putJson(`/api/settings/${step.key}`, { value });
       }
       await postJson('/api/auth/complete-onboarding', {});
       onDone();
