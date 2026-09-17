@@ -2,7 +2,7 @@
 
 **Self-hosted shopfloor + manufacturing ERP for a multi-brand 3D print farm.**
 
-One Node process. One SQLite file. Live fleet dispatch for Prusa, Bambu, Elegoo, Klipper, and OctoPrint, plus inventory, costing, work orders, sales, eBay Sell sync, timelapses, and a planning calendar with production closures that actually stop new job dispatch.
+One Node process. One SQLite file. Live fleet dispatch for Prusa, Bambu, Elegoo, Klipper, and OctoPrint, plus inventory, costing, work orders, sales, eBay Sell sync, timelapses, a planning calendar with production closures that actually stop new job dispatch, and a Workspace board + technical notebook for operator tasks.
 
 Fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager), tuned for Linux ops. Product name: **CoMa** (short) / **CoreManufacturing** (long).
 
@@ -14,7 +14,7 @@ No cloud. No subscriptions. No vendor lock-in.
 
 ## Screenshots
 
-Captured from the seed demo (`./start.sh --seed-data`) at 1400x900. Dark UI: ERP and Shopfloor share one sidebar.
+Captured from the seed demo (`./start.sh --seed-data`) at 1400x900. Dark UI: ERP, Shopfloor, and Workspace share one sidebar.
 
 ### Sign in
 
@@ -63,6 +63,18 @@ Planned stock arrivals, shipments, deadlines, notes, and **production closures**
 Per-job JPEG frame captures; optional MP4 render when host `ffmpeg` is available.
 
 ![Timelapse gallery](docs/images/timelapses.png)
+
+### Workspace tablero
+
+Single shared CoMa-styled kanban for operator tasks (not a Trello clone). Columns and cards drag to reorder; card bodies hold short notes.
+
+![Workspace board with Pendiente En curso A revisar Hecho columns](docs/images/workspace-board.png)
+
+### Workspace bloc
+
+Technical notepad with dark graph paper, accent tags, autosave, and trash.
+
+![Workspace technical notebook with graph-paper editor](docs/images/workspace-notebook.png)
 
 ### Embedded ERP dashboard
 
@@ -133,6 +145,15 @@ That last point matters: a production closure is not a sticky note. While it is 
 | Timelapses | JPEG frames; MP4 via host `ffmpeg` when present |
 | Telemetry | Utilization / OEE inputs for ERP analytics |
 | Calendar | Planned events + hard production-closure gate |
+
+### Workspace
+
+| Capability | Detail |
+|---|---|
+| Tablero | Single shared CoMa kanban (columns + cards, drag reorder, card notes) |
+| Bloc | Technical notepad with dark graph paper, autosave, trash, `.txt` / print |
+
+Neither surface touches printers or `completed_qty`. See [docs/workspace.md](docs/workspace.md).
 
 ### Embedded ERP (same app, same DB)
 
@@ -261,6 +282,8 @@ npm start
 | Job queue / cancel queued | Shopfloor → Jobs |
 | Plan arrivals / closures | Shopfloor → Calendar |
 | Timelapse gallery | Shopfloor → Timelapses |
+| Day-to-day tasks | Workspace → Tablero |
+| Operator scratch notes | Workspace → Bloc |
 | Sync printers into ERP | ERP → Dashboard → Sync from shopfloor |
 | Receive filament / raw | ERP → Inventory |
 | Machine USD/h or kW | ERP → Machines |
@@ -315,7 +338,7 @@ core-manufacturing/
 │   ├── erp/                # Embedded ERP
 │   ├── ebay/               # eBay Sell client, orders, inventory push, runner
 │   ├── drivers/            # prusa, elegoo-*, bambu, klipper, octoprint
-│   └── routes/             # printers, projects, calendar, backup, ...
+│   └── routes/             # printers, projects, calendar, workspace, notebook, backup, ...
 ├── client/                 # React + Vite SPA
 ├── docs/                   # Guides, API, images used in this README
 ├── scripts/
@@ -335,6 +358,7 @@ core-manufacturing/
 | [docs/README.md](docs/README.md) | Technical index |
 | [docs/installation.md](docs/installation.md) | Linux install, scripts, systemd, simulator |
 | [docs/calendar.md](docs/calendar.md) | Planned events and production-closure gate |
+| [docs/workspace.md](docs/workspace.md) | Workspace tablero and technical notebook |
 | [docs/erp/README.md](docs/erp/README.md) | Embedded ERP |
 | [docs/erp/ebay.md](docs/erp/ebay.md) | eBay Sell integration |
 | [docs/api.md](docs/api.md) | REST contracts |

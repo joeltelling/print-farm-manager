@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-09-17: README gallery includes Workspace tablero and bloc
+
+The public README gallery still stopped before the Workspace module shipped earlier today. The capture helper now seeds a few board cards and a notebook page into `seed-data.db` when empty, takes `/workspace` and `/workspace/bloc` shots, and the README feature tables / operator map / docs index mention Workspace.
+
+### Changes
+- `scripts/capture-readme-screenshots.js`: Workspace routes + demo seed for non-empty gallery shots
+- `docs/images/workspace-board.png`, `workspace-notebook.png`: new captures; gallery refresh of existing pages
+- `README.md`: Workspace screenshots, capability table, operator map, docs link
+- `docs/CHANGELOG.md`: this entry
+
 ## 2026-09-17: Workspace module (tablero kanban + bloc tecnico)
 
 Operators needed a place for day-to-day tasks and freeform notes that is not Calendar (planned dates) and not printer incident notes. This adds a third nav module **Workspace** with a single shared CoMa-styled kanban (`/workspace`) and a dark graph-paper notebook (`/workspace/bloc`). Neither surface touches printers, dispatch, or `completed_qty`.

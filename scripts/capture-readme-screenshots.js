@@ -24,6 +24,8 @@ const PAGES = [
   ['/calendar', 'calendar.png'],
   ['/timelapses', 'timelapses.png'],
   ['/printers', 'printers.png'],
+  ['/workspace', 'workspace-board.png'],
+  ['/workspace/bloc', 'workspace-notebook.png'],
   ['/erp', 'erp-dashboard.png'],
   ['/erp/inventory', 'erp-inventory.png'],
   ['/erp/sales', 'erp-sales.png'],
@@ -31,6 +33,76 @@ const PAGES = [
   ['/erp/postings', 'erp-postings.png'],
   ['/settings', 'settings.png'],
 ];
+
+/** Seed board cards + a notebook page so gallery shots are not empty. */
+function seedWorkspaceDemo(db) {
+  const now = Date.now();
+  const colCount = db.prepare('SELECT COUNT(*) AS n FROM workspace_columns').get().n;
+  if (colCount === 0) {
+    const ins = db.prepare(`
+      INSERT INTO workspace_columns (title, accent, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    [
+      ['Pendiente', 'amber', 0],
+      ['En curso', 'violet', 1],
+      ['A revisar', 'cyan', 2],
+      ['Hecho', 'lime', 3],
+    ].forEach(([title, accent, order]) => ins.run(title, accent, order, now, now));
+  }
+
+  const cols = db.prepare('SELECT id, title FROM workspace_columns ORDER BY sort_order').all();
+  const byTitle = Object.fromEntries(cols.map(c => [c.title, c.id]));
+  const cardCount = db.prepare('SELECT COUNT(*) AS n FROM workspace_cards').get().n;
+  // Gallery wants a populated board. Top up when the seed DB is sparse.
+  if (cardCount < 4) {
+    db.prepare('DELETE FROM workspace_cards').run();
+    const insCard = db.prepare(`
+      INSERT INTO workspace_cards (column_id, title, body, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const samples = [
+      [byTitle.Pendiente, 'Recalibrar MK4S_07', 'Bed mesh off after nozzle change', 0],
+      [byTitle.Pendiente, 'Pedir PETG negro', 'SKU RAW-PETG-BLK, 5 kg', 1],
+      [byTitle['En curso'], 'Benchy Fleet plate 3', 'Waiting on sign-off for MK4S_03', 0],
+      [byTitle['A revisar'], 'Gridfinity bins QA', 'Check wall thickness on first plate', 0],
+      [byTitle.Hecho, 'Sync ERP from shopfloor', 'Done after morning sweep', 0],
+    ];
+    for (const [colId, title, body, order] of samples) {
+      if (colId) insCard.run(colId, title, body, order, now, now);
+    }
+  }
+
+  const checklist = db.prepare(
+    "SELECT id FROM notebook_pages WHERE title = 'Checklist de turno' AND trashed_at IS NULL"
+  ).get();
+  if (!checklist) {
+    db.prepare(`
+      INSERT INTO notebook_pages (title, body, accent, trashed_at, created_at, updated_at)
+      VALUES (?, ?, 'lime', NULL, ?, ?)
+    `).run(
+      'Checklist de turno',
+      [
+        '1. Sweep Idle printers',
+        '2. Confirmar holds en Fleet (Set Ready / Bad Print)',
+        '3. Revisar Calendar por cierres activos',
+        '4. Sync ERP si hay piezas nuevas',
+        '5. Anotar incidencias en este bloc',
+        '',
+        'Notas:',
+        '- Voron_02 camara: URL Moonraker ok',
+        '- AMS slot 2 = PETG Signal Red',
+      ].join('\n'),
+      now,
+      now,
+    );
+  }
+  // Drop empty auto-created "Nota nueva" leftovers so the checklist is the first row.
+  db.prepare(`
+    DELETE FROM notebook_pages
+    WHERE title = 'Nota nueva' AND (body IS NULL OR body = '') AND trashed_at IS NULL
+  `).run();
+}
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -162,6 +234,11 @@ async function main() {
   fs.rmSync('/tmp/coma-readme-shots', { recursive: true, force: true });
 
   const db = new Database(DB);
+  try {
+    seedWorkspaceDemo(db);
+  } catch (err) {
+    console.warn('[capture] workspace seed skipped:', err.message);
+  }
   const token = createSession(db);
 
   const chrome = spawn('chromium-browser', [
@@ -198,6 +275,19 @@ async function main() {
       process.stdout.write(`capturing ${route} -> ${file} ... `);
       await pageWs.send('Page.navigate', { url: `http://127.0.0.1:5173${route}` });
       await waitForApp(pageWs);
+      if (route === '/workspace/bloc') {
+        await sleep(400);
+        await pageWs.send('Runtime.evaluate', {
+          expression: `(() => {
+            const btn = [...document.querySelectorAll('button')]
+              .find(b => /Checklist de turno/.test(b.innerText));
+            if (btn) btn.click();
+            return !!btn;
+          })()`,
+          returnByValue: true,
+        });
+        await sleep(600);
+      }
       await sleep(800);
       const shot = await pageWs.send('Page.captureScreenshot', { format: 'png' });
       const buf = Buffer.from(shot.result.data, 'base64');
