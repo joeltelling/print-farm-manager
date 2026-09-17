@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-09-17: README and operator user guide
+
+README lagged behind the fork: it still read as shopfloor-only Print Farm Manager and omitted the embedded ERP, telemetry, actual costing, timelapse, and analytics. Operators also lacked a single walkthrough of day-to-day screens.
+
+### Changes
+- `README.md`: current CoMa feature set (shopfloor + ERP), tech stack, organic/seed DBs, ffmpeg note, operator map, updated structure and doc links.
+- `docs/user-guide.md`: Spanish operator guide (Fleet, Projects, ERP, postings, timelapse, analytics, backup, FAQ).
+- `docs/README.md`: index entry for the user guide; structure and ERP phase note refreshed.
+- `docs/CHANGELOG.md`: this entry.
+
 ## 2026-09-17: Shopfloor telemetry, actual costing, timelapse, analytics
 
 Shopfloor and ERP masters were linked, but cost still came only from `mfg_component.std_minutes`. Real print duration already existed on `jobs.started_at`/`finished_at` and the poller refreshed progress every 15 s without persisting history. This change records machine time and energy per job, values ERP postings from that telemetry when quality is `measured` (otherwise standard), captures optional camera timelapses, and surfaces profitability / OEE / cost variance.

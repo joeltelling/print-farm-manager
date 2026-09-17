@@ -1,6 +1,6 @@
 # CoMa documentation
 
-A locally-hosted web app for managing a multi-brand 3D printer fleet (this fork of Print Farm Manager). Supports Prusa (PrusaLink), Elegoo Centauri (SDCP), Bambu (MQTT), Klipper (Moonraker), and OctoPrint printers.
+A locally-hosted web app for managing a multi-brand 3D printer fleet **and** an embedded manufacturing ERP (this fork of Print Farm Manager). Supports Prusa (PrusaLink), Elegoo Centauri (SDCP), Bambu (MQTT), Klipper (Moonraker), and OctoPrint printers. Shopfloor and ERP share one SQLite file and one Express process.
 
 ## Quick Start
 
@@ -8,71 +8,54 @@ A locally-hosted web app for managing a multi-brand 3D printer fleet (this fork 
 ./start.sh
 ```
 
-- API: `http://localhost:3000`
+- API + ERP: `http://localhost:3000`
 - UI: `http://localhost:5173`
 
-Prefer Docker over a local Node.js install? `docker compose up --build print-farm-manager-dev` runs the same workflow in a container — see the [README](../README.md#quick-start-development).
+Prefer Docker? `docker compose up --build print-farm-manager-dev` - see the [README](../README.md#quick-start-linux-development).
+
+**Operators:** start with the [user guide](user-guide.md) (Spanish walkthrough of Fleet, Projects, ERP, postings, timelapse, analytics).
 
 ## Documentation Index
 
 | File | What it covers |
 |---|---|
-| [docs/installation.md](installation.md) | Linux prerequisites, development scripts, production setup, updating, and troubleshooting |
+| [docs/user-guide.md](user-guide.md) | **How to use CoMa** - day-to-day operator guide (Spanish) |
+| [docs/installation.md](installation.md) | Linux prerequisites, development scripts, production setup, updating, troubleshooting |
 | [docs/server.md](server.md) | Express entry point, scheduler wiring, port config, route mounting, startup sequence |
-| [docs/database.md](database.md) | SQLite schema — all tables, column types, conventions, migrations |
-| [docs/poller.md](poller.md) | Printer polling loop, concurrency model, event emissions |
-| [docs/api.md](api.md) | All REST endpoints — request/response shapes, error codes |
-| [docs/web-app.md](web-app.md) | React client — pages, routing, layout, live-update pattern |
+| [docs/database.md](database.md) | SQLite schema - shopfloor + ERP tables, telemetry, timelapses |
+| [docs/poller.md](poller.md) | Printer polling loop, telemetry hooks, event emissions |
+| [docs/api.md](api.md) | All REST endpoints - request/response shapes, error codes |
+| [docs/web-app.md](web-app.md) | React client - pages, routing, layout, live-update pattern |
 | [docs/CHANGELOG.md](CHANGELOG.md) | Dated log of all implemented features and changes |
-| [docs/multi-brand.md](multi-brand.md) | Phase 6 design — driver abstraction for non-Prusa brands (Elegoo Centauri Carbon) |
-| [docs/driver-authoring.md](driver-authoring.md) | Connector authoring guide for manufacturers and contributors: driver contract, canonical statuses, registration checklist, hardware test matrix |
-| [docs/filaments.md](filaments.md) | Filament Library — admin-managed type and color lists, API endpoints, client usage |
-| [docs/erp/README.md](erp/README.md) | Embedded ERP in Express + CoMa React: one SQLite DB, shared machines/materials, actual costing, analytics |
-| [docs/docker-publish.md](docker-publish.md) | CI workflow that builds and publishes multi-arch Docker images to GHCR |
+| [docs/multi-brand.md](multi-brand.md) | Phase 6 design - driver abstraction for non-Prusa brands |
+| [docs/driver-authoring.md](driver-authoring.md) | Connector authoring guide: contract, registration, hardware matrix |
+| [docs/filaments.md](filaments.md) | Filament Library - types/colors, API, client usage |
+| [docs/erp/README.md](erp/README.md) | Embedded ERP: sync, postings, actual costing, analytics |
+| [docs/docker-publish.md](docker-publish.md) | CI workflow that publishes multi-arch images to GHCR |
 
 ## Project Structure
 
 ```
-print-farm-manager/
+core-manufacturing/
 ├── server/
-│   ├── index.js          # Express entry point
-│   ├── db.js             # SQLite connection + schema init + startup migrations
-│   ├── poller.js         # Printer polling loop (EventEmitter)
-│   ├── scheduler.js      # Job dispatch engine (EventEmitter)
-│   ├── events.js         # Printer event log helper — insert(printerId, type, note)
-│   ├── notifications.js  # In-memory operator alert store
-│   ├── erp/              # Embedded ERP schema, API, sync, costing, and PDF reports
-│   └── routes/
-│       ├── printers.js   # CRUD + CSV import + decommission/recommission
-│       ├── events.js     # GET/POST /api/printers/:id/events
-│       ├── projects.js   # Project CRUD + complete/reactivate/reorder
-│       ├── parts.js      # Part CRUD + completed_qty state machine + reorder
-│       ├── gcodes.js     # G-code upload, parse-filename, delete
-│       ├── jobs.js       # Job listing, filtering, cancel
-│       ├── models.js     # Printer model registry CRUD
-│       ├── settings.js   # Key/value operator settings (dispatch_batch_size)
-│       ├── backup.js     # Farm export + restore
-│       └── dashboard.js  # TV command center — single-endpoint fleet summary
+│ ├── index.js # Express: shopfloor + /api/erp + SPA
+│ ├── db.js # SQLite + additive migrations
+│ ├── poller.js # Poll loop + telemetry + timelapse hooks
+│ ├── scheduler.js # Job dispatch engine
+│ ├── telemetry.js # Status history + job accumulators
+│ ├── timelapse.js # Frame capture + ffmpeg render
+│ ├── camera.js # Shared snapshot fetch
+│ ├── events.js # Printer event log helper
+│ ├── notifications.js # In-memory operator alerts
+│ ├── erp/ # Embedded ERP (schema, costing, postings, reports, PDF)
+│ ├── drivers/ # Per-brand connectors
+│ └── routes/ # printers, projects, jobs, timelapses, backup, settings, ...
 ├── client/
-│   ├── src/
-│   │   ├── App.jsx       # Layout + router
-│   │   ├── main.jsx      # React root
-│   │   └── pages/
-│   │       ├── Fleet.jsx          # Live printer grid
-│   │       ├── Printers.jsx       # All-printers directory
-│   │       ├── PrinterDetail.jsx  # Per-printer event timeline + notes
-│   │       ├── Decommissioned.jsx # Decommissioned printers + recommission
-│   │       ├── Settings.jsx       # CSV import, add printer, printer models
-│   │       ├── Dashboard.jsx      # Fleet summary (TV mode)
-│   │       ├── Projects.jsx       # Project/Part/G-code management
-│   │       ├── Jobs.jsx           # Job queue table
-│   │       ├── Erp.jsx            # ERP shell and module routing
-│   │       └── erp/               # CoMa ERP pages and local QR generator
-├── docs/                 # This folder
-├── .github/workflows/    # CI — see docs/docker-publish.md
-├── ARCHITECTURE.md       # Full product spec and phase planning
-├── Dockerfile            # Multi-stage: server-deps/client-build/runtime (production) + dev
-└── docker-compose.yml    # Production container + persistent volumes, plus an opt-in `dev` profile
+│ └── src/pages/ # Fleet, Projects, Jobs, Timelapses, Settings, Erp, ...
+├── docs/ # This folder
+├── erp/ # Reference-only Python/Acres sources (not runtime)
+├── Dockerfile
+└── docker-compose.yml
 ```
 
 ## Development Phases
@@ -83,10 +66,11 @@ print-farm-manager/
 | 2 | Complete | Job scheduling, dispatch, Part/Project/G-code management |
 | 3 | Complete | Error handling, operator safety workflows, UI improvements |
 | 4 | Complete | Hardening, retry logic, 409 conflict handling, configurable batch size, post-failure recovery |
-| 5 | Deferred | Mobile-responsive polish — Fleet UI already works on iPhone; no immediate need |
-| 6A | Complete | Driver abstraction layer — Prusa extracted into `server/drivers/prusa.js`; registry wired |
+| 5 | Deferred | Mobile-responsive polish - Fleet UI already works on iPhone; no immediate need |
+| 6A | Complete | Driver abstraction layer - Prusa extracted into `server/drivers/prusa.js`; registry wired |
 | 6B | Complete | Elegoo Centauri Carbon SDCP driver via `sdcp` package; UI and route changes for non-Prusa brands |
-| 6C | Complete | Klipper (Moonraker) driver — Voron and all Klipper-firmware printers via plain HTTP on port 7125 |
-| 6D | Complete | OctoPrint driver — any OctoPrint/OctoPi-managed printer via OctoPrint's own REST API |
+| 6C | Complete | Klipper (Moonraker) driver - Voron and all Klipper-firmware printers via plain HTTP on port 7125 |
+| 6D | Complete | OctoPrint driver - any OctoPrint/OctoPi-managed printer via OctoPrint's own REST API |
+| ERP | Complete (this fork) | Embedded Express ERP, shopfloor sync, postings, actual costing, analytics, timelapse |
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md) for full product spec.
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for the original product spec (phases 1-6). Runtime truth is `docs/` and the code.
