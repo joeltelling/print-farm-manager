@@ -33,8 +33,10 @@ const sharedRouter       = require('./routes/shared')(db);
 const bridgeRouter       = require('./routes/bridge')(db);
 const timelapsesRouter   = require('./routes/timelapses')(db);
 const { mountErp }       = require('./erp');
+const { mountEbay }      = require('./ebay');
 const { recordFromSetReady } = require('./erp/postings');
 const timelapse          = require('./timelapse');
+const ebayRunner         = require('./ebay/runner');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -55,6 +57,8 @@ app.use('/api/shared',          sharedRouter);
 app.use('/api/bridge',          bridgeRouter);
 app.use('/api/timelapses',      timelapsesRouter);
 
+// eBay Sell APIs (must mount before /api/erp so /api/erp/ebay is not shadowed)
+app.use('/api/erp/ebay', mountEbay(db));
 // Acres ERP embedded in Express (same process, same SQLite DB)
 app.use('/api/erp', mountErp(db));
 
@@ -115,6 +119,7 @@ const server = app.listen(PORT, () => {
   poller.start();
   backup.start(db);
   timelapse.start(db);
+  ebayRunner.start(db);
 
   // Wait for the first poll to complete before sweeping — ensures DB status reflects
   // live printer state rather than whatever was last persisted before shutdown.

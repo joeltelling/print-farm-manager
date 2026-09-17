@@ -244,6 +244,14 @@ function ensureErpSchema(db) {
   } catch (e) {
     console.log('[erp] shopfloor sync skipped:', e.message);
   }
+
+  // eBay Sell API tables (credentials excluded from backup by design)
+  try {
+    const { ensureEbaySchema } = require('../ebay/schema');
+    ensureEbaySchema(db);
+  } catch (e) {
+    console.log('[erp] ebay schema skipped:', e.message);
+  }
 }
 
 module.exports = { ensureErpSchema };

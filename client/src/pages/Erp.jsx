@@ -21,3 +21,4 @@ export {
   SalesOrderPage,
   SalesReportsPage,
 } from './erp/sales';
+export { EbayPage } from './erp/ebay';

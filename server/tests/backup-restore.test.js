@@ -300,6 +300,36 @@ beforeEach(() => {
     VALUES (1, 1, 1, 'COMP-BRACKET', 1, 'pending', ?, 'backup seed')
   `).run(Date.now());
 
+  // eBay Sell tables (credentials seeded but must NOT appear in backup export)
+  db.prepare(`
+    UPDATE ebay_credential SET
+      client_id = 'test-client-id',
+      client_secret = 'test-client-secret',
+      refresh_token = 'test-refresh-token',
+      updated_at = ?
+    WHERE id = 1
+  `).run(Date.now());
+  db.prepare(`
+    INSERT INTO ebay_listing (item_id, ebay_sku, offer_id, listing_id, last_pushed_qty, last_pushed_price, is_active)
+    VALUES (?, 'EBAY-FG-BRACKET', 'offer-1', 'listing-1', 3, 15.5, 1)
+  `).run(finishedItem.lastInsertRowid);
+  db.prepare(`
+    INSERT INTO ebay_order
+      (order_id, legacy_order_id, creation_date, last_modified_date, order_payment_status,
+       order_fulfillment_status, buyer_username, total_amount, currency, marketplace_id,
+       raw_json, imported_at)
+    VALUES ('ORD-1', 'LEG-1', '2026-09-17T12:00:00.000Z', '2026-09-17T12:05:00.000Z',
+            'PAID', 'NOT_STARTED', 'buyer1', 15.5, 'USD', 'EBAY_US', '{}', ?)
+  `).run(Date.now());
+  db.prepare(`
+    INSERT INTO ebay_order_line
+      (line_item_id, ebay_order_id, ebay_sku, title, qty, unit_price, total_price, item_id, status)
+    VALUES ('LINE-1', 'ORD-1', 'EBAY-FG-BRACKET', 'Bracket', 1, 15.5, 15.5, ?, 'pending')
+  `).run(finishedItem.lastInsertRowid);
+  db.prepare(
+    "INSERT INTO ebay_sync_state (key, value) VALUES ('orders_last_modified', '2026-09-17T12:05:00.000Z')"
+  ).run();
+
   // server/routes/backup.js declares its Express router at module scope, like every
   // route file in this codebase. Node's require() cache means a second require() in the
   // same process would reuse that router with a stale db closure from a previous test's
@@ -442,6 +472,7 @@ describe('Backup export/restore: embedded ERP domain', () => {
     'uom', 'warehouse', 'location', 'item', 'machine', 'bom', 'bom_line',
     'stock_move', 'item_cost', 'mfg_component', 'work_order', 'wo_issue',
     'wo_labor', 'pricing_config', 'sales_order', 'erp_posting',
+    'ebay_listing', 'ebay_order', 'ebay_order_line', 'ebay_sync_state',
   ];
 
   test('export includes every ERP table and the shopfloor ERP link', async () => {
@@ -455,6 +486,17 @@ describe('Backup export/restore: embedded ERP domain', () => {
     });
   });
 
+  test('export never includes ebay_credential secrets', async () => {
+    const res = await request(app).get('/api/backup');
+    expect(res.status).toBe(200);
+    expect(res.body.erp.ebay_credential).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toMatch(/test-client-secret/);
+    expect(JSON.stringify(res.body)).not.toMatch(/test-refresh-token/);
+    // Row still exists in DB
+    expect(db.prepare('SELECT client_secret FROM ebay_credential WHERE id = 1').get().client_secret)
+      .toBe('test-client-secret');
+  });
+
   test('restore round-trips inventory, costing, BOM, WO, machine, pricing, and sales data', async () => {
     const exportRes = await request(app).get('/api/backup');
     expect(exportRes.status).toBe(200);
@@ -465,6 +507,10 @@ describe('Backup export/restore: embedded ERP domain', () => {
 
     try {
       db.exec(`
+        DELETE FROM ebay_order_line;
+        DELETE FROM ebay_order;
+        DELETE FROM ebay_listing;
+        DELETE FROM ebay_sync_state;
         DELETE FROM erp_posting;
         DELETE FROM sales_order;
         DELETE FROM wo_labor;
@@ -509,6 +555,9 @@ describe('Backup export/restore: embedded ERP domain', () => {
       `).get()).toMatchObject({ product_sku: 'FG-BRACKET', component_sku: 'COMP-BRACKET', qty: 2 });
       expect(db.prepare("SELECT value FROM pricing_config WHERE code = 'MARGIN_DEF'").get().value).toBe(18);
       expect(db.prepare("SELECT total_price FROM sales_order WHERE sku = 'FG-BRACKET'").get().total_price).toBe(15);
+      expect(db.prepare("SELECT ebay_sku FROM ebay_listing WHERE ebay_sku = 'EBAY-FG-BRACKET'").get().ebay_sku)
+        .toBe('EBAY-FG-BRACKET');
+      expect(db.prepare("SELECT order_id FROM ebay_order WHERE order_id = 'ORD-1'").get().order_id).toBe('ORD-1');
     } finally {
       fs.unlinkSync(backupFile);
     }
@@ -545,6 +594,26 @@ describe('Backup export/restore: embedded ERP domain', () => {
       expect(restoreRes.status).toBe(400);
       expect(restoreRes.body.error).toMatch(/missing table arrays/);
       expect(db.prepare('SELECT COUNT(*) AS n FROM sales_order').get().n).toBe(before);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('older ERP backup without eBay tables still restores', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    const backup = exportRes.body;
+    delete backup.erp.ebay_listing;
+    delete backup.erp.ebay_order;
+    delete backup.erp.ebay_order_line;
+    delete backup.erp.ebay_sync_state;
+    const backupFile = writeTempBackupFile(backup);
+
+    try {
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.ok).toBe(true);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM ebay_listing').get().n).toBe(0);
+      expect(db.prepare("SELECT total_price FROM sales_order WHERE sku = 'FG-BRACKET'").get().total_price).toBe(15);
     } finally {
       fs.unlinkSync(backupFile);
     }

@@ -26,6 +26,7 @@ import Erp, {
   SalesPricingPage as ErpSalesPricing,
   SalesOrderPage as ErpSalesOrder,
   SalesReportsPage as ErpSalesReports,
+  EbayPage as ErpEbay,
 } from './pages/Erp';
 import AlertBell from './components/AlertBell';
 import BootSplash, { shouldShowBootSplash } from './components/BootSplash';
@@ -167,6 +168,7 @@ export default function App() {
             <Route path="/erp/sales/pricing"  element={<ErpSalesPricing />} />
             <Route path="/erp/sales/order"    element={<ErpSalesOrder />} />
             <Route path="/erp/sales/reports"  element={<ErpSalesReports />} />
+            <Route path="/erp/ebay"        element={<ErpEbay />} />
             <Route path="/fleet"           element={<Fleet />} />
             <Route path="/printers"        element={<Printers />} />
             <Route path="/printers/:id"    element={<PrinterDetail />} />

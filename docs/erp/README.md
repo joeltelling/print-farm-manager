@@ -31,8 +31,11 @@ Production: one process (`node server/index.js` serving `client/dist`).
 | Sales dashboard | reports + stock summary | `/erp/sales` |
 | Sales config / pricing / reset | `/sales/config`, `/sales/pricing`, `/sales/pricing/:id/reset` | `/erp/sales/*` |
 | Sales orders + history CSV/PDF | `/sales/order/items`, `/sales/orders`, `/sales/orders/report` | `/erp/sales/order`, `/erp/sales/reports` |
+| eBay Sell (orders, inventory push, analytics) | `/api/erp/ebay/*` | `/erp/ebay` |
 
 Navigation lives in the CoMa sidebar only (Dashboard, Inventory, Manufacturing, Sales modules). ERP pages use `ErpShell` for the page title; there is no second in-page module nav.
+
+eBay details (credentials, hybrid posting, push limits): [docs/erp/ebay.md](ebay.md).
 
 ## Acres parity audit
 

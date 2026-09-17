@@ -278,6 +278,20 @@ Other ERP tables (`uom`, `warehouse`, `location`, `item`, `machine`, `bom`, `bom
 
 `machine` stores `rate_mode` (`manual` or `calculated`), `hourly_rate` (effective USD/h used by costing), `maintenance_rate`, and `power_kw`. Site electricity USD/kWh is `pricing_config` code `ELEC_KWH`.
 
+### eBay Sell tables
+
+Created by `server/ebay/schema.js` (invoked from `ensureErpSchema`). See [docs/erp/ebay.md](erp/ebay.md).
+
+| Table | Role |
+|---|---|
+| `ebay_credential` | Single-row secrets (id=1). **Not exported in backup JSON.** Env vars override. |
+| `ebay_listing` | Maps `item_id` to `ebay_sku` / `offer_id` for inventory push |
+| `ebay_order` | Imported Fulfillment orders (`order_id` unique) |
+| `ebay_order_line` | Line items (`line_item_id` unique); statuses `pending` / `auto_posted` / `posted` / `dismissed` |
+| `ebay_sync_state` | Watermark and last-error key/value store |
+
+Backup export includes `ebay_listing`, `ebay_order`, `ebay_order_line`, and `ebay_sync_state` as optional ERP tables (older backups without them still restore).
+
 ## Conventions
 
 - All IDs: `INTEGER PRIMARY KEY AUTOINCREMENT`

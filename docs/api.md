@@ -734,6 +734,61 @@ Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/RE
 | `POST` | `/api/erp/sales/orders` | Sale (depletes FIN_GOOD) |
 | `GET` | `/api/erp/sales/orders/report` | History; `format=csv\|pdf` |
 
+### eBay Sell (`/api/erp/ebay`)
+
+Mounted **before** `/api/erp` so these paths are not shadowed. Full operator guide: [docs/erp/ebay.md](erp/ebay.md). Credentials are never returned in full (masked). `ebay_credential` is excluded from backup export.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/erp/ebay/status` | Configured flag, pending count, last sync errors |
+| `GET`/`PUT` | `/api/erp/ebay/credentials` | Masked GET; PUT accepts partial secrets (blank keeps stored) |
+| `POST` | `/api/erp/ebay/test-connection` | OAuth refresh + Account privilege probe |
+| `GET`/`POST` | `/api/erp/ebay/listings` | Map ERP item to eBay SKU / offer_id |
+| `PUT`/`DELETE` | `/api/erp/ebay/listings/:id` | Update or remove mapping |
+| `POST` | `/api/erp/ebay/inventory/push` | Optional `{ "listing_id": N }`; else all active |
+| `POST` | `/api/erp/ebay/orders/sync` | Pull Fulfillment orders; hybrid auto-post / queue |
+| `GET` | `/api/erp/ebay/orders` | Local order history; `limit`/`offset` |
+| `GET` | `/api/erp/ebay/orders/:orderId` | Order + lines |
+| `GET` | `/api/erp/ebay/pending` | Pending lines for operator confirm |
+| `POST` | `/api/erp/ebay/pending/:lineId/confirm` | Body `{ "acknowledge_shortage": true }` on 409 shortage |
+| `POST` | `/api/erp/ebay/pending/:lineId/dismiss` | Abandon pending line |
+| `GET` | `/api/erp/ebay/analytics/traffic` | Seller traffic report (cached) |
+| `GET` | `/api/erp/ebay/analytics/seller-standards` | Seller standards profiles |
+| `GET` | `/api/erp/ebay/analytics/privilege` | Account privilege |
+
+#### `PUT /api/erp/ebay/credentials`
+
+```json
+{
+  "environment": "sandbox",
+  "marketplace_id": "EBAY_US",
+  "client_id": "AppId...",
+  "client_secret": "CertId...",
+  "refresh_token": "v^1.1#i^1...",
+  "auto_post": 1
+}
+```
+
+Response (secrets masked):
+
+```json
+{
+  "configured": true,
+  "environment": "sandbox",
+  "marketplace_id": "EBAY_US",
+  "auto_post": 1,
+  "client_id": "AppI********...",
+  "client_secret": "Cert********...",
+  "refresh_token": "v^1.********..."
+}
+```
+
+#### `POST /api/erp/ebay/pending/:lineId/confirm`
+
+Success: `{ "ok": true, "status": "posted", "sales_order_id": 12, "stock_move_id": 34 }`.
+
+Shortage without acknowledge: `409` with `{ "error": "Insufficient stock", "acknowledge_required": true, "missing": [...] }`.
+
 Parts may carry optional `erp_sku` (nullable) via `PUT /api/parts/:id`.
 Set Ready and set-ready-batch enqueue `erp_posting` rows; they never alter completed_qty beyond the existing shopfloor credit paths.
 

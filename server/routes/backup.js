@@ -23,9 +23,27 @@ const ERP_TABLES = [
   'pricing_config',
   'sales_order',
   'erp_posting',
+  // eBay Sell integration (optional in older backups; see ERP_OPTIONAL_TABLES)
+  'ebay_listing',
+  'ebay_order',
+  'ebay_order_line',
+  'ebay_sync_state',
+  // ebay_credential intentionally excluded: secrets must not land in backup JSON
 ];
 
+// Tables added after earlier releases. Older backups without these arrays still restore.
+const ERP_OPTIONAL_TABLES = new Set([
+  'ebay_listing',
+  'ebay_order',
+  'ebay_order_line',
+  'ebay_sync_state',
+]);
+
 const ERP_DELETE_ORDER = [
+  'ebay_order_line',
+  'ebay_order',
+  'ebay_listing',
+  'ebay_sync_state',
   'erp_posting',
   'sales_order',
   'wo_labor',
@@ -61,9 +79,13 @@ const ERP_INSERT_ORDER = [
   'pricing_config',
   'sales_order',
   'erp_posting',
+  'ebay_listing',
+  'ebay_order',
+  'ebay_order_line',
+  'ebay_sync_state',
 ];
 
-const ERP_SEQUENCE_TABLES = ERP_TABLES.filter(table => !['uom', 'item_cost'].includes(table));
+const ERP_SEQUENCE_TABLES = ERP_TABLES.filter(table => !['uom', 'item_cost', 'ebay_sync_state'].includes(table));
 
 // Multer for restore uploads — write to data/ dir, clean up after processing
 const restoreUpload = multer({
@@ -131,7 +153,10 @@ function validateErpBackup(erp) {
   if (!erp || typeof erp !== 'object' || Array.isArray(erp)) {
     return 'erp must be an object containing every ERP table';
   }
-  const missing = ERP_TABLES.filter(table => !Array.isArray(erp[table]));
+  const missing = ERP_TABLES.filter(table => {
+    if (ERP_OPTIONAL_TABLES.has(table)) return false;
+    return !Array.isArray(erp[table]);
+  });
   if (missing.length > 0) return `erp is missing table arrays: ${missing.join(', ')}`;
   return null;
 }
@@ -282,7 +307,10 @@ module.exports = (db) => {
         };
 
         const erpStmts = hasErp
-          ? Object.fromEntries(ERP_TABLES.map(table => [table, makeInserter(db, table, backup.erp[table])]))
+          ? Object.fromEntries(ERP_TABLES.map(table => [
+            table,
+            makeInserter(db, table, Array.isArray(backup.erp[table]) ? backup.erp[table] : []),
+          ]))
           : null;
 
         // printer_models before printers — printers.model refers to it logically
@@ -306,7 +334,8 @@ module.exports = (db) => {
 
         if (hasErp) {
           for (const table of ERP_INSERT_ORDER) {
-            for (const row of backup.erp[table]) erpStmts[table].run(row);
+            const rows = Array.isArray(backup.erp[table]) ? backup.erp[table] : [];
+            for (const row of rows) erpStmts[table].run(row);
           }
         }
 
@@ -348,7 +377,10 @@ module.exports = (db) => {
         filament_types:  (backup.filament_types  || []).length,
         filament_colors: (backup.filament_colors || []).length,
         erp: hasErp
-          ? Object.fromEntries(ERP_TABLES.map(table => [table, backup.erp[table].length]))
+          ? Object.fromEntries(ERP_TABLES.map(table => [
+            table,
+            Array.isArray(backup.erp[table]) ? backup.erp[table].length : 0,
+          ]))
           : null,
       });
     } catch (err) {

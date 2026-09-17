@@ -31,6 +31,7 @@ Prefer Docker? `docker compose up --build print-farm-manager-dev` - see the [REA
 | [docs/driver-authoring.md](driver-authoring.md) | Connector authoring guide: contract, registration, hardware matrix |
 | [docs/filaments.md](filaments.md) | Filament Library - types/colors, API, client usage |
 | [docs/erp/README.md](erp/README.md) | Embedded ERP: sync, postings, actual costing, analytics |
+| [docs/erp/ebay.md](erp/ebay.md) | eBay Sell APIs: order import, inventory push, credentials |
 | [docs/docker-publish.md](docker-publish.md) | CI workflow that publishes multi-arch images to GHCR |
 
 ## Project Structure

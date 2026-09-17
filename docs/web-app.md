@@ -29,6 +29,7 @@ Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ER
 | `client/src/pages/Erp.jsx` | ERP route exports; `/erp` renders the live ERP Dashboard |
 | `client/src/pages/erp/modules.jsx` | Dashboard, postings (std/actual cost), analytics, manufacturing dashboard, products/components, locations, inventory charts, machines, MFG components, BOM, WO, QR |
 | `client/src/pages/erp/sales.jsx` | Sales dashboard, defaults, pricing (Enter/Escape), order entry with live totals, matrix badges/sort, history exports |
+| `client/src/pages/erp/ebay.jsx` | eBay Sell: credentials, SKU maps, pending order queue, inventory push, analytics |
 | `client/src/pages/erp/format.js` | Acres-compatible numeric display helpers |
 | `client/src/pages/erp/qr.js` | Dependency-free local QR SVG generator for printable WO pick lists |
 | `client/src/pages/Timelapses.jsx` | Timelapse gallery, manual start, video/frame preview |

@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-09-17: eBay Sell APIs in embedded ERP
+
+Operators selling finished goods on eBay needed orders and stock to meet the same ERP ledger as manual sales, without a second process. This adds a first-class eBay module under `/api/erp/ebay` and `/erp/ebay`: OAuth refresh-token credentials (sandbox-first, env or DB), hybrid order import from the Fulfillment API (auto-post when SKU mapped and stock covers qty; otherwise operator queue with shortage acknowledge), inventory push of price/qty to existing offers only (`bulkUpdatePriceQuantity`), and read-only Analytics/Account probes. Credentials live in `ebay_credential` and are intentionally excluded from backup export.
+
+Implemented from eBay OpenAPI contracts (Fulfillment, Account, Analytics) and the Inventory API reference for price/quantity updates. **Not yet validated against a real eBay sandbox or production seller account.**
+
+### Changes
+- `server/ebay/`: schema, credentials, client (token cache + backoff), orders, inventory, analytics, runner, routes factory
+- `server/erp/schema.js`: invokes `ensureEbaySchema`
+- `server/index.js`: mounts `/api/erp/ebay` before `/api/erp`; starts ebay runner
+- `server/routes/backup.js`: optional eBay tables in ERP export/restore; `ebay_credential` excluded
+- `client/src/pages/erp/ebay.jsx`, `Erp.jsx`, `App.jsx`, `NavTree.jsx`: eBay ERP page under Ventas
+- `server/tests/ebay-*.test.js`, `backup-restore.test.js`: mocks + backup round-trip / optional-table / secret exclusion
+- `docs/erp/ebay.md`, `docs/README.md`, `docs/erp/README.md`, `docs/api.md`, `docs/database.md`, `docs/web-app.md`, `docs/server.md`, `docs/CHANGELOG.md`: this release
+
 ## 2026-09-17: One design system across the whole app
 
 The UI had drifted into two palettes. The shell and ERP pages used the CoMa tokens in `theme.js` (near-black, lime, violet) while Fleet, Projects, Printers, Jobs, Settings, and the shared components still carried the original slate/blue hexes pasted inline (about 480 occurrences of `#94a3b8`, `#1e2433`, `#2563eb`, and friends). Moving between Fleet and the ERP dashboard looked like moving between two products. This change makes one set of tokens drive every screen and rebuilds the ERP dashboard as the reference for how a CoMa page is composed.
