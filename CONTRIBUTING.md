@@ -29,7 +29,7 @@ Using Docker instead? `docker compose exec print-farm-manager-dev npm test`.
 
 ## Before You Build Something Big
 
-Open an issue first and describe what you want to build. This project has a deliberate scope and a phased roadmap (see `ARCHITECTURE.md`), and some things that look like missing features are intentional decisions. Examples: there is no authentication (the app is designed for trusted LANs only), and there is no database migration framework. A quick issue conversation can save you a weekend of work on a PR that will not merge.
+Open an issue first and describe what you want to build. This project has a deliberate scope and a phased roadmap (see `ARCHITECTURE.md`), and some things that look like missing features are intentional decisions. Examples: authentication is intentionally basic (a single shared operator account, no roles, no CSRF token, no rate limiting; the app is still designed for trusted LANs only, not for exposure to the internet), and there is no database migration framework. A quick issue conversation can save you a weekend of work on a PR that will not merge.
 
 Small fixes, docs improvements, and bug reports need no advance discussion. Just send them.
 

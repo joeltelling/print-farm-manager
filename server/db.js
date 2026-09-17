@@ -314,6 +314,31 @@ try {
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('timelapse_retention_days', '30')").run();
 } catch (_) {}
 
+// Local authentication: a single operator account gates entry to the app (see
+// server/auth.js). auth_account holds at most one row (id = 1 enforced by CHECK);
+// auth_sessions is a plain token store read via an HttpOnly cookie. Both are excluded
+// from backup export/restore (server/routes/backup.js), the same way ebay_credential
+// is excluded: a restored backup should never silently change who can log into the
+// machine it is restored onto, or leak a password hash inside the backup JSON.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS auth_account (
+    id                       INTEGER PRIMARY KEY CHECK (id = 1),
+    username                 TEXT NOT NULL,
+    password_hash            TEXT NOT NULL,
+    password_salt            TEXT NOT NULL,
+    onboarding_completed_at  INTEGER,
+    created_at               INTEGER NOT NULL
+  )`);
+} catch (_) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
+    token       TEXT PRIMARY KEY,
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+
 // Make jobs.gcode_id nullable so gcodes can be deleted after jobs have run
 const gcodeIdCol = db.prepare("PRAGMA table_info(jobs)").all().find(c => c.name === 'gcode_id');
 if (gcodeIdCol && gcodeIdCol.notnull === 1) {

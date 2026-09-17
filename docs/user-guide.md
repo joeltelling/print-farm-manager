@@ -16,7 +16,7 @@ CoMa une en una sola app y una sola base SQLite:
 | **ERP** | Productos, componentes, materia prima, tarifas de maquina, BOM, ordenes de trabajo, ventas, postings |
 | **Cruce** | Tiempo real de impresion, coste real vs estandar, OEE, rentabilidad, timelapse |
 
-No hay autenticacion. Solo en red local de confianza. No publiques el puerto 3000 a internet.
+Al abrir CoMa por primera vez pide crear una cuenta de operador (usuario y contrasena) y luego muestra una guia de configuracion inicial una unica vez; esa guia solo vuelve a aparecer si se borra la cuenta desde Settings > Account (pide la contrasena actual). Esta autenticacion es basica (una sola cuenta compartida, sin roles). Usa CoMa solo en red local de confianza. No publiques el puerto 3000 a internet.
 
 ### Abrir la app
 

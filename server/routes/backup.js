@@ -170,6 +170,11 @@ function syncSequence(db, table) {
 
 module.exports = (db) => {
   // GET /api/backup: export the complete CoMa SQLite domain as a JSON bundle.
+  //
+  // auth_account and auth_sessions (server/auth.js, server/routes/auth.js) are
+  // intentionally excluded here, the same way ebay_credential is excluded above:
+  // restoring a backup must never change who can log into the machine it lands on, or
+  // leak a password hash inside the backup JSON.
   router.get('/', (req, res) => {
     const printers        = db.prepare('SELECT * FROM printers').all();
     const projects        = db.prepare('SELECT * FROM projects').all();

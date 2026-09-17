@@ -9,13 +9,15 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Fleet page** — live grid of all active printers with status, filterable and searchable
 - **Printers page** — searchable directory of all printers (active and decommissioned); click any row to open the detail view
 - **Printer detail / incident view:** camera (Klipper), event log, stats, notes, job history
-- **Settings page:** tabbed site, hardware, materials, alerts, backup, and about
+- **Settings page:** tabbed site, hardware, materials, alerts, backup, account, and about
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 
 Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ERP: Resumen, Inventario, Fabricacion, Ventas), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor is a flat list under its module. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
 
 **Boot splash:** on the first entry of a browser tab session, a full-screen CoMa boot animation covers the shell (`BootSplash`, keyed by `sessionStorage` `coma.boot.done`). React Router moves do not remount App, so in-app navigation never re-shows it. A reload in the same tab skips it; a new tab shows it again.
+
+**Login gate:** `client/src/components/AuthGate.jsx` wraps `<App />` in `main.jsx`, outside `<BrowserRouter>`. It fetches `GET /api/auth/status` and renders, in order: a blank shell while loading, an account-creation screen if no account exists yet, a login screen if not authenticated, a one-time setup guide (site name, dispatch concurrency) if the account has never completed onboarding, or `<App />` itself. `App` does not mount until all three gates pass, so its own effects (fetching `/api/settings` for the sidebar name) never run against a 401. Settings > Account dispatches the `authLoggedOut` and `authAccountDeleted` window events (the same cross-page pattern as `farmNameChanged`) to make `AuthGate` re-check status after logout or account deletion. See [docs/api.md](api.md#authentication).
 
 **Shared ERP DB:** Express embeds `/api/erp/*` and `/api/shared/*` on the same dataset SQLite file. React ERP pages use the CoMa theme.
 
@@ -33,13 +35,14 @@ Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ER
 | `client/src/pages/erp/format.js` | Acres-compatible numeric display helpers |
 | `client/src/pages/erp/qr.js` | Dependency-free local QR SVG generator for printable WO pick lists |
 | `client/src/pages/Timelapses.jsx` | Timelapse gallery, manual start, video/frame preview |
-| `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, timelapse interval/FPS/retention, models, CSV, backup) |
+| `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, timelapse interval/FPS/retention, models, CSV, backup, account) |
 | `client/src/components/BootSplash.jsx` | Session boot splash (once per tab session; not on in-app navigation) |
+| `client/src/components/AuthGate.jsx` | Wraps `<App />`; gates on account creation, login, and the one-time setup guide |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
 | `client/src/theme.js` | Design tokens: surfaces, borders, text ramp, accents, radii, shadows, and the shared card/input/button style objects |
 | `client/src/pages/PrinterDetail.jsx` | Incident view: camera, event timeline, notes |
-| `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, models, CSV, backup) |
+| `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, models, CSV, backup, account) |
 | `client/src/pages/Dashboard.jsx` | Command center dashboard |
 | `client/src/components/CameraFeed.jsx` | Snapshot (5s) or MJPEG stream for Klipper cameras |
 | `client/src/components/AlertBell.jsx` | Shell bell for in-memory server alerts |
@@ -250,7 +253,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 `client/src/pages/Settings.jsx`
 
-Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Multi-section tabs (General, Hardware, Materials) use a two-column layout above ~1100px. List rows (models, groups, filament types/colors) sit in a shared bordered list instead of sparse table cells.
+Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, Account, About. Multi-section tabs (General, Hardware, Materials) use a two-column layout above ~1100px. List rows (models, groups, filament types/colors) sit in a shared bordered list instead of sparse table cells.
 
 **General:** site name (`farm_name`, label "Site name", fallback CoMa), camera mode (`snapshot` or `stream`), timelapse (enabled, interval seconds, FPS, retention days), dispatch batch size, polling explanation.
 
@@ -261,6 +264,8 @@ Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Mu
 **Alerts:** in-memory scheduler notifications (`GET /api/notifications`). Also mirrored by the shell alert bell.
 
 **Backup:** one JSON export/restore covers shopfloor, G-code files, settings, and every embedded ERP table in the shared SQLite dataset. Legacy shopfloor-only backups remain accepted and preserve current ERP records. See [api.md](api.md).
+
+**Account:** shows the signed-in username with a Log out button, and a password-gated Delete account action. Deleting the account signs everyone out and makes `AuthGate` show account creation and the setup guide again on the next load; it does not touch printers, projects, parts, or ERP data. See [api.md](api.md#authentication).
 
 ## ERP Pages
 

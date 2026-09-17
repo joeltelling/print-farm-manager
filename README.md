@@ -6,7 +6,7 @@ Fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-fa
 
 No cloud. No subscriptions. No vendor lock-in.
 
-> **Security:** There is no built-in auth. Run only on a trusted LAN (or VPN). Do not expose ports 3000 / 5173 to the internet; printer API keys are reachable by anyone who can hit the server.
+> **Security:** A single operator account gates the app on first run (see [docs/api.md](docs/api.md#authentication)), but it is basic: one shared login, no CSRF token, no rate limiting, no TLS. Run only on a trusted LAN (or VPN) and do not expose ports 3000 / 5173 to the internet; printer API keys are reachable by anyone signed in.
 
 ---
 

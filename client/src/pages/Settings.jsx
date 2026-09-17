@@ -107,6 +107,57 @@ export default function Settings() {
   }, []);
   useEffect(() => { fetchModels(); }, [fetchModels]);
 
+  // Account tab: session username, logout, and the password-gated account deletion
+  // that is the only way the first-run setup guide (AuthGate) reappears.
+  const [authUsername, setAuthUsername] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteAccountError, setDeleteAccountError] = useState(null);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  useEffect(() => {
+    fetch('/api/auth/status').then(r => r.json()).then(d => setAuthUsername(d.username || '')).catch(() => {});
+  }, []);
+
+  async function handleLogout() {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) {
+      // Best-effort: even if the request fails, tell AuthGate to re-check status.
+    }
+    window.dispatchEvent(new CustomEvent('authLoggedOut'));
+  }
+
+  async function handleDeleteAccount() {
+    setDeleteAccountError(null);
+    if (!deletePassword) {
+      setDeleteAccountError('Password is required');
+      return;
+    }
+    const ok = await confirm({
+      title: 'Delete account',
+      message: 'This removes the operator account and every open session. The setup guide will run again the next time anyone opens CoMa. Fleet, project, and ERP data are not touched.',
+      confirmLabel: 'Delete account',
+      danger: true,
+    });
+    if (!ok) return;
+    setDeletingAccount(true);
+    try {
+      const res = await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Failed to delete account');
+      setDeletePassword('');
+      window.dispatchEvent(new CustomEvent('authAccountDeleted'));
+    } catch (err) {
+      setDeleteAccountError(err.message);
+      showToast('Delete account failed: ' + err.message, 'error');
+    } finally {
+      setDeletingAccount(false);
+    }
+  }
+
   // Filament Library management
   const [typeForm, setTypeForm] = useState({ name: '' });
   const [typeFormError, setTypeFormError] = useState(null);
@@ -603,6 +654,7 @@ export default function Settings() {
           { id: 'materials', label: 'Materials' },
           { id: 'alerts', label: 'Alerts' },
           { id: 'backup', label: 'Backup' },
+          { id: 'account', label: 'Account' },
           { id: 'about', label: 'About' },
         ].map(t => (
           <button
@@ -1489,6 +1541,55 @@ export default function Settings() {
       )}
 
       {/* About */}
+      {/* Account: session + password-gated account deletion */}
+      {tab === 'account' && (
+      <div style={{ maxWidth: 480 }}>
+        <section style={sectionStyle}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Session</h2>
+          <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
+            Signed in as <strong style={{ color: '#f4f4f5' }}>{authUsername || 'operator'}</strong>.
+          </p>
+          <button
+            onClick={handleLogout}
+            style={{ background: '#1a2332', color: '#e2e8f0', border: '1px solid #2d3146', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Log out
+          </button>
+        </section>
+
+        <section style={{ ...sectionStyle, marginTop: 20, border: '1px solid #7f1d1d' }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4, color: '#fca5a5' }}>Delete account</h2>
+          <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
+            Removes the login for this CoMa install and signs everyone out. The next visit will
+            ask to create a new account and will show the setup guide again. This does not
+            touch printers, projects, parts, or any ERP data.
+          </p>
+          <label style={{ display: 'block', fontSize: 12, color: '#a1a1aa', marginBottom: 6 }}>
+            Confirm your password
+          </label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={e => setDeletePassword(e.target.value)}
+              style={{ ...inputStyle, width: 220 }}
+              placeholder="Current password"
+            />
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deletingAccount}
+              style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #7f1d1d', borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: deletingAccount ? 'not-allowed' : 'pointer' }}
+            >
+              {deletingAccount ? 'Deleting...' : 'Delete account'}
+            </button>
+          </div>
+          {deleteAccountError && (
+            <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{deleteAccountError}</div>
+          )}
+        </section>
+      </div>
+      )}
+
       {tab === 'about' && (
       <section style={{ maxWidth: 640, borderTop: '1px solid #232639', paddingTop: 24 }}>
         <p style={{ color: '#a1a1aa', fontSize: 14, lineHeight: 1.7, marginBottom: 8 }}>

@@ -9,6 +9,7 @@
 | File | Responsibility |
 |---|---|
 | `server/index.js` | App setup, route mounting, server start, poller + scheduler init |
+| `server/auth.js` | Password hashing, session tokens, cookie helpers, `requireAuth` middleware |
 | `server/db.js` | SQLite connection, schema creation, directory setup |
 | `server/poller.js` | Printer status polling loop |
 | `server/scheduler.js` | Job dispatch engine — listens to poller events, dispatches prints |
@@ -36,10 +37,15 @@
 
 No `.env` file is required for core shopfloor. eBay can use env vars or the ERP UI.
 
+## Login Gate
+
+Right after `express.json()` and before any router is mounted, `server/index.js` registers an inline middleware that 401s any `/api/*` request without a valid `coma_session` cookie, except `/api/auth/*` (which is what issues the cookie) and `/api/health`. Because Express checks middleware in registration order for every request regardless of when a later route was added during startup, this single middleware also covers `/api/projects`, `/api/parts`, and `/api/gcodes`, which are mounted later inside the `app.listen()` callback once the scheduler exists (see below). See [docs/api.md](api.md#authentication) for the auth endpoints themselves.
+
 ## Route Mounting
 
 ```
-GET    /api/health                  → health check (inline handler)
+GET    /api/health                  → health check (inline handler; not gated by auth)
+*      /api/auth                    → server/routes/auth.js (not gated by auth: this is what issues the session)
 POST   /api/scheduler/dispatch      → scheduler.sweepIdlePrinters() (inline handler)
 GET    /api/notifications           → notifications.list() (inline handler)
 DELETE /api/notifications/:id       → notifications.dismiss() (inline handler)

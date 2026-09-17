@@ -1,6 +1,6 @@
 # Linux Installation and Development Guide
 
-This guide covers this fork's supported bare-metal workflow on Linux. Docker remains available when an isolated environment is preferable. CoMa must run on the same trusted local network as the printers and must not be exposed directly to the internet because it has no built-in authentication.
+This guide covers this fork's supported bare-metal workflow on Linux. Docker remains available when an isolated environment is preferable. CoMa gates entry behind a single operator account created on first run (see [docs/api.md](api.md#authentication)), but that login is basic (one shared account, no TLS, no rate limiting). CoMa must still run on the same trusted local network as the printers and must not be exposed directly to the internet.
 
 ## Supported Runtime
 
@@ -73,6 +73,8 @@ The services start in the background:
 - Development UI with hot reload: `http://localhost:5173`
 - API and built UI: `http://localhost:3000` (shopfloor + embedded `/api/erp` on the same SQLite file)
 - Combined log: `.run/dev.log`
+
+The first time either URL is opened on a fresh dataset, CoMa asks you to create the operator account (username and password), then walks through a short one-time setup guide (site name, dispatch concurrency). Neither screen reappears after that unless the account is deleted from Settings > Account, which requires the current password. See [docs/api.md](api.md#authentication) for the endpoints involved.
 
 ERP screens live in the CoMa React app under `/erp`. `start.sh` launches only Express and Vite through `setsid`; there is no Python, uvicorn, Next.js, or Acres HTML process at runtime.
 
@@ -365,4 +367,4 @@ Run `./stop.sh`. It safely removes stale or invalid PID state. Then use `./start
 
 ### Printers remain offline
 
-Confirm the Linux host and printers are on the same LAN and VLAN, verify the saved IP address and credentials, and check that local firewall rules allow outbound printer traffic. Do not expose the application to the public internet as a workaround.
+Confirm the Linux host and printers are on the same LAN and VLAN, verify the saved IP address and credentials, and check that local firewall rules allow outbound printer traffic. Do not expose the application to the public internet as a workaround, even now that it sits behind a login.

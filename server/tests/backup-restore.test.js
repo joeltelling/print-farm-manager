@@ -794,3 +794,39 @@ describe('Backup restore — gcode_files path traversal', () => {
     }
   });
 });
+
+// Regression guard for the login patch (server/auth.js, server/routes/auth.js): a backup
+// must never carry the operator account or its password hash. Restoring a backup on a
+// different machine must not change who can log into it, the same way ebay_credential is
+// excluded above for secrets.
+describe('Backup export: auth tables intentionally excluded', () => {
+  test('GET /api/backup never includes auth_account or auth_sessions, or a password hash', async () => {
+    db.exec(`
+      CREATE TABLE auth_account (
+        id                      INTEGER PRIMARY KEY CHECK (id = 1),
+        username                TEXT NOT NULL,
+        password_hash           TEXT NOT NULL,
+        password_salt           TEXT NOT NULL,
+        onboarding_completed_at INTEGER,
+        created_at              INTEGER NOT NULL
+      );
+      CREATE TABLE auth_sessions (
+        token       TEXT PRIMARY KEY,
+        created_at  INTEGER NOT NULL,
+        expires_at  INTEGER NOT NULL
+      );
+    `);
+    db.prepare(`
+      INSERT INTO auth_account (id, username, password_hash, password_salt, created_at)
+      VALUES (1, 'operator', 'deadbeefsecrethash', 'somesalt', ?)
+    `).run(Date.now());
+    db.prepare('INSERT INTO auth_sessions (token, created_at, expires_at) VALUES (?, ?, ?)')
+      .run('sometoken', Date.now(), Date.now() + 1000);
+
+    const res = await request(app).get('/api/backup');
+    expect(res.status).toBe(200);
+    expect(res.body.auth_account).toBeUndefined();
+    expect(res.body.auth_sessions).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toMatch(/deadbeefsecrethash/);
+  });
+});

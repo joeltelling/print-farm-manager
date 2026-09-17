@@ -2,6 +2,29 @@
 
 ---
 
+## 2026-09-17: Basic login gate, first-run account, and one-time setup guide
+
+CoMa had no authentication at all: anyone who could reach the web UI on the LAN could dispatch jobs, edit parts, or restore a backup over the fleet's data with no login of any kind. This adds a single local operator account that gates the entire app. On first run there is no account, so the app asks to create one (username and password); after that first login it shows a one-time setup guide (site name, dispatch concurrency, both already-existing Settings fields) that never reappears unless the account is deleted from Settings > Account, which requires the current password.
+
+This is deliberately basic, matching the request that prompted it: one shared account, no roles, no password reset flow, no CSRF token, no rate limiting, no TLS. It stops a stranger on the LAN from opening the app without logging in; it does not replace running CoMa on a trusted LAN or VPN only, which remains the documented deployment model (README.md, docs/installation.md, CONTRIBUTING.md are updated to reflect that this is now a real but basic gate, not "no authentication").
+
+No new runtime dependency: password hashing uses Node's built-in `crypto.scrypt`, and sessions are random tokens in a new `auth_sessions` table read from an HttpOnly `coma_session` cookie (`server/auth.js`). Both new tables (`auth_account`, `auth_sessions`) are additive `CREATE TABLE IF NOT EXISTS` statements in `server/db.js` and are intentionally excluded from `GET /api/backup` export/restore, the same way `ebay_credential` is excluded: a restored backup must never change who can log into the machine it lands on, or leak a password hash inside the backup JSON.
+
+### Changes
+- `server/auth.js`: password hashing/verification (`crypto.scrypt`, `crypto.timingSafeEqual`), session token generation, cookie helpers, `requireAuth` Express middleware
+- `server/routes/auth.js`: `GET /status`, `POST /register`, `POST /login`, `POST /logout`, `POST /complete-onboarding`, `POST /delete-account`
+- `server/db.js`: additive `auth_account` (single row, `id = 1`) and `auth_sessions` tables
+- `server/index.js`: mounts `/api/auth`; a global middleware 401s every other `/api/*` route without a valid session, registered before every other router (including projects/parts/gcodes, mounted later once the scheduler exists) so nothing is reachable without logging in first
+- `server/routes/backup.js`: comment documenting the intentional exclusion of `auth_account` / `auth_sessions`
+- `client/src/components/AuthGate.jsx`: account creation, login, and one-time setup guide screens; wraps `<App />` in `main.jsx` so the app's own effects don't fire before a session exists
+- `client/src/pages/Settings.jsx`: new Account tab (signed-in username, log out, password-gated delete account)
+- `server/tests/auth.test.js`: register/login/logout/status/onboarding/delete-account coverage, including that delete-account invalidates every open session and that onboarding state survives a fresh login
+- `server/tests/backup-restore.test.js`: regression test asserting `auth_account` / `auth_sessions` and any password hash never appear in a backup export
+- `docs/api.md`, `docs/database.md`, `docs/web-app.md`, `docs/server.md`: new Authentication section, table schemas, `AuthGate`/Account tab documentation, login-gate middleware placement
+- `README.md`, `CONTRIBUTING.md`, `docs/installation.md`, `docs/user-guide.md`: updated the "no authentication" claims to describe the new basic login gate while keeping the LAN-only deployment guidance
+
+Implemented and tested against an in-memory database (32 dedicated tests plus the full suite) and a real HTTP round trip via `supertest`'s cookie jar; **not yet used in a long-running production install**, so watch for session/cookie edge cases (browser private-mode storage restrictions, reverse proxies that strip cookies) on first real deployment.
+
 ## 2026-09-17: README gallery from live seed UI
 
 The README still showed two older slate-era PNGs while the product UI had moved to the CoMa dark token system (sidebar ERP/Shopfloor tree, ERP modules, eBay page). Fresh 1400x900 captures were taken against `./start.sh --seed-data` and the README was rewritten around that gallery so strangers cloning the repo see the app they will actually run.

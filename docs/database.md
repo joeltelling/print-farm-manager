@@ -292,6 +292,29 @@ Created by `server/ebay/schema.js` (invoked from `ensureErpSchema`). See [docs/e
 
 Backup export includes `ebay_listing`, `ebay_order`, `ebay_order_line`, and `ebay_sync_state` as optional ERP tables (older backups without them still restore).
 
+### Authentication tables
+
+Created by `server/db.js`, read and written by `server/auth.js` / `server/routes/auth.js`. See [docs/api.md](api.md#authentication).
+
+```sql
+CREATE TABLE IF NOT EXISTS auth_account (
+  id                       INTEGER PRIMARY KEY CHECK (id = 1),  -- single row: one shared account
+  username                 TEXT NOT NULL,
+  password_hash            TEXT NOT NULL,                       -- crypto.scrypt, hex
+  password_salt            TEXT NOT NULL,                       -- hex, unique per account
+  onboarding_completed_at  INTEGER,                             -- null until the setup guide finishes
+  created_at               INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token       TEXT PRIMARY KEY,   -- 32-byte random hex, read from the coma_session cookie
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL    -- created_at + 30 days
+);
+```
+
+**Not exported in backup JSON**, the same as `ebay_credential`: restoring a backup must never change who can log into the machine it lands on, or leak a password hash inside the backup file.
+
 ## Conventions
 
 - All IDs: `INTEGER PRIMARY KEY AUTOINCREMENT`

@@ -20,6 +20,8 @@ const notifications  = require('./notifications');
 const events         = require('./events');
 const backup         = require('./backup');
 
+const { requireAuth }    = require('./auth');
+const authRouter         = require('./routes/auth')(db);
 const printersRouter     = require('./routes/printers')(db);
 const jobsRouter         = require('./routes/jobs')(db);
 const backupRouter       = require('./routes/backup')(db);
@@ -43,7 +45,23 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Login gate: every /api/* route requires a valid session cookie except the auth
+// routes themselves (they are what issues the cookie) and the health check. Mounted
+// before every other router in this file, including the ones added later inside the
+// server.listen callback below (Express checks middleware in registration order for
+// every request, regardless of when a later route was registered during startup), so
+// nothing under /api/* is reachable without logging in first. Non-API paths (the SPA
+// shell and static assets) are never gated here: the client itself shows the login
+// screen instead of the app when /api/auth/status says no session exists.
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.path.startsWith('/api/auth/')) return next();
+  if (req.path === '/api/health') return next();
+  return requireAuth(db)(req, res, next);
+});
+
 // API routes
+app.use('/api/auth',            authRouter);
 app.use('/api/printers',        printersRouter);
 app.use('/api/printers/:id/jobs', printerJobsRouter);
 app.use('/api/jobs',            jobsRouter);

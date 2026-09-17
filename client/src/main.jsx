@@ -2,10 +2,17 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import AuthGate from './components/AuthGate';
 
+// AuthGate wraps App rather than App wrapping AuthGate internally: App itself does not
+// mount (so its own effects, like fetching /api/settings for the sidebar name, don't
+// fire and fail with 401) until a valid session exists and the one-time setup guide has
+// run. See client/src/components/AuthGate.jsx.
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <AuthGate>
+      <App />
+    </AuthGate>
   </React.StrictMode>
 );
 
