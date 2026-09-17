@@ -194,6 +194,29 @@ CREATE TABLE IF NOT EXISTS printer_events (
 
 **Backfill migration:** on first server start after this table was introduced, any printer with `is_active = 0` and `decommissioned_at` set automatically receives a synthetic `decommission` event using the stored timestamp and note — idempotent across restarts.
 
+### erp_posting (embedded ERP)
+
+Operator-confirmed queue linking shopfloor jobs to ERP stock moves. Created by Set Ready / bridge; confirmed on `/erp/postings`. Does not touch `parts.completed_qty`.
+
+```sql
+CREATE TABLE IF NOT EXISTS erp_posting (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id INTEGER UNIQUE,
+  part_id INTEGER,
+  printer_id INTEGER,
+  erp_sku TEXT,
+  qty REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',  -- pending | posted | dismissed
+  created_at INTEGER NOT NULL,
+  posted_at INTEGER,
+  stock_move_id INTEGER,
+  note TEXT,
+  shortage_json TEXT
+);
+```
+
+Other ERP tables (`uom`, `warehouse`, `location`, `item`, `machine`, `bom`, `bom_line`, `stock_move`, `item_cost`, `mfg_component`, `work_order`, `wo_issue`, `wo_labor`, `pricing_config`, `sales_order`) are created by `server/erp/schema.js`. See [docs/erp/README.md](erp/README.md).
+
 ## Conventions
 
 - All IDs: `INTEGER PRIMARY KEY AUTOINCREMENT`

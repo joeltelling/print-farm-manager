@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>acres-erp — Sales · Sales Order</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="/ui/assets/nav.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Sales — Sales Order</h1>
+    <div class="stack-vertical">
+      <div class="card" aria-labelledby="search-title">
+        <div class="hstack space-between wrap">
+          <h2 id="search-title">Product Search</h2>
+          <div class="hstack wrap" style="gap:8px;">
+            <input id="search" class="input" type="search" placeholder="Search by SKU or name" />
+            <button class="btn" id="btnSearch" type="button">Search</button>
+            <button class="btn btn-reset" id="btnReload" type="button">Reload</button>
+            <span id="searchMsg" class="pill" aria-live="polite"></span>
+          </div>
+        </div>
+
+        <div class="table-responsive" style="margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>SKU</th>
+                <th>Sell price</th>
+                <th>Stock</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="itemsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" aria-labelledby="order-title">
+        <h2 id="order-title">Sales Order</h2>
+        <p class="muted">Create a sale that deducts stock from FIN_GOOD.</p>
+
+        <div class="form-grid-3">
+          <div>
+            <label for="sku">SKU</label>
+            <input class="input" id="sku" list="skuList" autocomplete="off" placeholder="Select from list or table" />
+            <datalist id="skuList"></datalist>
+          </div>
+          <div>
+            <label for="qty">Quantity</label>
+            <input class="input" id="qty" type="text" value="1" />
+          </div>
+          <div>
+            <label>Item name</label>
+            <div id="itemName" class="muted">—</div>
+          </div>
+        </div>
+
+        <div class="form-grid-3">
+          <div>
+            <label>Available stock</label>
+            <div id="available" class="muted">0.0000</div>
+          </div>
+          <div>
+            <label>Sell price (unit)</label>
+            <div id="unitPrice" class="muted">$0.0000</div>
+          </div>
+          <div>
+            <label>Total price</label>
+            <div id="totalPrice" class="muted">$0.0000</div>
+          </div>
+        </div>
+
+        <div class="hstack">
+          <button class="btn" id="btnSave" type="button">Save Sale</button>
+          <button class="btn btn-reset" id="btnClear" type="button">Clear</button>
+          <span id="orderMsg" class="pill" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initApi, apiGet, apiPost } from "/ui/js/api.js";
+    const $ = (id)=> document.getElementById(id);
+
+    let ITEMS = [];
+    const ITEM_BY_SKU = new Map();
+
+    function parseNum(raw){
+      let s = String(raw ?? "").trim().replace(/\s+/g, "");
+      if (!s) throw new Error("Quantity is required");
+      const hasComma = s.includes(","), hasDot = s.includes(".");
+      if (hasComma && !hasDot) s = s.replace(",", ".");
+      else if (hasComma && hasDot){
+        if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+        else s = s.replace(/,/g, "");
+      } else s = s.replace(/,/g, "");
+      const n = Number(s);
+      if (!Number.isFinite(n)) throw new Error("Invalid number");
+      return n;
+    }
+
+    function renderTable(list){
+      const body = [];
+      for (const it of list){
+        body.push(`<tr>
+          <td>${it.name}</td>
+          <td>${it.sku}</td>
+          <td class="num">$${Number(it.selling_price||0).toFixed(4)}</td>
+          <td class="num">${Number(it.available_qty||0).toFixed(4)}</td>
+          <td><button class="btn btn-reset" data-sku="${it.sku}">Load</button></td>
+        </tr>`);
+      }
+      $("itemsBody").innerHTML = body.join("");
+    }
+
+    function refreshDatalist(){
+      const dl = $("skuList"); dl.innerHTML = "";
+      for (const it of ITEMS){
+        const opt = document.createElement("option");
+        opt.value = it.sku; dl.appendChild(opt);
+      }
+    }
+
+    function selectSku(sku){
+      $("sku").value = sku;
+      recalc();
+    }
+
+    function recalc(){
+      const sku = $("sku").value.trim();
+      const item = ITEM_BY_SKU.get(sku);
+      const avail = item ? Number(item.available_qty || 0) : 0;
+      $("itemName").textContent = item ? item.name : "—";
+      $("available").textContent = avail.toFixed(4);
+
+      let qty = 0; let total = 0; const unit = item ? Number(item.selling_price || 0) : 0;
+      try { qty = parseNum($("qty").value); } catch { qty = 0; }
+      total = unit * qty;
+
+      $("unitPrice").textContent = `$${unit.toFixed(4)}`;
+      $("totalPrice").textContent = `$${total.toFixed(4)}`;
+    }
+
+    async function loadItems(query=""){
+      $("searchMsg").textContent = "loading...";
+      try{
+        const params = query ? { search: query } : undefined;
+        const data = await apiGet("/sales/order/items", params);
+        ITEMS = data || [];
+        ITEM_BY_SKU.clear();
+        for (const it of ITEMS) ITEM_BY_SKU.set(it.sku, it);
+        renderTable(ITEMS);
+        refreshDatalist();
+        $("searchMsg").textContent = `${ITEMS.length} items`;
+      }catch(e){
+        console.error(e);
+        $("searchMsg").textContent = "error";
+        alert("Error loading items: " + (e.message||e));
+      }
+    }
+
+    async function saveOrder(){
+      const msg = $("orderMsg"); msg.textContent = "saving...";
+      try{
+        const sku = $("sku").value.trim();
+        const item = ITEM_BY_SKU.get(sku);
+        if (!item) throw new Error("Select a valid SKU from FIN_GOOD");
+        const qty = parseNum($("qty").value);
+        if (qty <= 0) throw new Error("Quantity must be > 0");
+        if (qty > Number(item.available_qty || 0) + 1e-6) throw new Error("Insufficient stock");
+
+        const res = await apiPost("/sales/orders", { sku, qty });
+        msg.textContent = "saved";
+        item.available_qty = res.remaining_qty;
+        recalc();
+        await loadItems($("search").value.trim());
+      }catch(e){
+        console.error(e);
+        msg.textContent = e.message || "error";
+      }
+    }
+
+    function clearForm(){
+      $("sku").value = "";
+      $("qty").value = "1";
+      $("orderMsg").textContent = "";
+      recalc();
+    }
+
+    document.addEventListener("click", (ev)=>{
+      const btn = ev.target;
+      if (btn instanceof HTMLElement && btn.dataset.sku){
+        selectSku(btn.dataset.sku);
+      }
+    });
+
+    $("sku").addEventListener("change", recalc);
+    $("qty").addEventListener("input", recalc);
+    $("btnSave").addEventListener("click", saveOrder);
+    $("btnClear").addEventListener("click", clearForm);
+    $("btnSearch").addEventListener("click", ()=> loadItems($("search").value.trim()));
+    $("btnReload").addEventListener("click", ()=> loadItems(""));
+    $("search").addEventListener("keypress", (e)=>{ if (e.key === "Enter") { e.preventDefault(); loadItems($("search").value.trim()); } });
+
+    (async function init(){
+      await initApi();
+      await loadItems("");
+      recalc();
+    })();
+  </script>
+
+  <script type="module" src="/ui/assets/nav.js"></script>
+</body>
+</html>

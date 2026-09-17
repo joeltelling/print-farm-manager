@@ -903,6 +903,8 @@ export default function Projects() {
   // New project form
   const [showNewForm, setShowNewForm]     = useState(false);
   const [newName, setNewName]             = useState('');
+  const [newSourcing, setNewSourcing]     = useState('manufactured');
+  const [newPartSourcing, setNewPartSourcing] = useState('manufactured');
   const [newDesc, setNewDesc]             = useState('');
 
   // Add part form
@@ -1019,15 +1021,26 @@ export default function Projects() {
 
   async function createProject() {
     if (!newName.trim()) return;
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || undefined }),
-    });
-    if (res.ok) {
-      setNewName(''); setNewDesc(''); setShowNewForm(false);
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc.trim() || undefined,
+          sourcing: newSourcing,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(`Project creation failed: ${body.error || res.status}`, 'error');
+        return;
+      }
+      setNewName(''); setNewDesc(''); setNewSourcing('manufactured'); setShowNewForm(false);
       await fetchProjects();
-      showToast('Project created');
+      showToast('Project created (ERP product linked)');
+    } catch (err) {
+      showToast(`Project creation failed: ${err.message}`, 'error');
     }
   }
 
@@ -1182,18 +1195,33 @@ export default function Projects() {
   async function addPart() {
     if (!newPartName.trim() || !newPartQty) return;
     setAddingPart(true);
-    await fetch('/api/parts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: selectedId, name: newPartName.trim(), target_qty: parseInt(newPartQty, 10) }),
-    });
-    setNewPartName(''); setNewPartQty('');
-    setAddingPart(false);
-    // Adding a part can flip the parent project from completed back to active (server-side):
-    // refresh the list too, same as every other status-changing action, so the cached
-    // projects array doesn't keep showing "Completed" until some unrelated refresh happens.
-    await Promise.all([fetchDetail(selectedId), fetchProjects()]);
-    showToast('Part added');
+    try {
+      const res = await fetch('/api/parts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: selectedId,
+          name: newPartName.trim(),
+          target_qty: parseInt(newPartQty, 10),
+          sourcing: newPartSourcing,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(`Part creation failed: ${body.error || res.status}`, 'error');
+        return;
+      }
+      setNewPartName(''); setNewPartQty(''); setNewPartSourcing('manufactured');
+      // Adding a part can flip the parent project from completed back to active (server-side):
+      // refresh the list too, same as every other status-changing action, so the cached
+      // projects array doesn't keep showing "Completed" until some unrelated refresh happens.
+      await Promise.all([fetchDetail(selectedId), fetchProjects()]);
+      showToast('Part added (ERP component linked)');
+    } catch (err) {
+      showToast(`Part creation failed: ${err.message}`, 'error');
+    } finally {
+      setAddingPart(false);
+    }
   }
 
   function togglePanel(partId) {
@@ -1386,6 +1414,17 @@ export default function Projects() {
                 style={{ ...inputSx, width: 280 }}
               />
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ color: '#94a3b8', fontSize: 12 }}>ERP sourcing *</label>
+              <select
+                value={newSourcing}
+                onChange={(e) => setNewSourcing(e.target.value)}
+                style={{ ...inputSx, width: 160 }}
+              >
+                <option value="manufactured">Manufactured</option>
+                <option value="outsource">Outsource</option>
+              </select>
+            </div>
             <button
               onClick={createProject}
               style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
@@ -1393,7 +1432,7 @@ export default function Projects() {
               Create
             </button>
             <button
-              onClick={() => { setShowNewForm(false); setNewName(''); setNewDesc(''); }}
+              onClick={() => { setShowNewForm(false); setNewName(''); setNewDesc(''); setNewSourcing('manufactured'); }}
               style={{ background: '#1f2937', color: '#9ca3af', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, cursor: 'pointer' }}
             >
               Cancel
@@ -1788,6 +1827,17 @@ export default function Projects() {
               onKeyDown={(e) => e.key === 'Enter' && addPart()}
               style={{ ...inputSx, width: 100 }}
             />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ color: '#64748b', fontSize: 12 }}>ERP sourcing *</label>
+            <select
+              value={newPartSourcing}
+              onChange={(e) => setNewPartSourcing(e.target.value)}
+              style={{ ...inputSx, width: 150 }}
+            >
+              <option value="manufactured">Manufactured</option>
+              <option value="outsource">Outsource</option>
+            </select>
           </div>
           <button
             onClick={addPart}

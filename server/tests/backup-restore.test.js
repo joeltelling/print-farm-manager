@@ -20,6 +20,7 @@ const Database = require('better-sqlite3');
 const path     = require('path');
 const fs       = require('fs');
 const os       = require('os');
+const { ensureErpSchema } = require('../erp/schema');
 
 let db;
 let app;
@@ -74,7 +75,8 @@ beforeEach(() => {
       updated_at          INTEGER NOT NULL,
       sort_order          INTEGER NOT NULL DEFAULT 0,
       print_time_seconds  INTEGER,
-      material_grams      REAL
+      material_grams      REAL,
+      erp_sku             TEXT
     );
     CREATE TABLE gcodes (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,6 +133,7 @@ beforeEach(() => {
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
+  ensureErpSchema(db);
 
   const now = Date.now();
 
@@ -172,6 +175,97 @@ beforeEach(() => {
   db.prepare(`INSERT INTO filament_colors (type_id, name, hex_color) VALUES (2, 'Signal Red', '#cc0000')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('farm_name', 'Test Farm')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('dispatch_batch_size', '5')`).run();
+
+  const rawWh = db.prepare("SELECT id FROM warehouse WHERE code = 'raw'").get();
+  const compWh = db.prepare("SELECT id FROM warehouse WHERE code = 'comp'").get();
+  const finWh = db.prepare("SELECT id FROM warehouse WHERE code = 'fin_good'").get();
+  const location = db.prepare('INSERT INTO location (warehouse_id, code) VALUES (?, ?)')
+    .run(rawWh.id, '01A01');
+  const rawItem = db.prepare(`
+    INSERT INTO item
+      (sku, name, warehouse_id, dimension, display_uom_code, purchase_uom_code,
+       item_role, sourcing, needs_erp_data)
+    VALUES ('RAW-PLA', 'PLA Black', ?, 'WEIGHT', 'G', 'KG', 'raw', 'outsource', 0)
+  `).run(rawWh.id);
+  const componentItem = db.prepare(`
+    INSERT INTO item
+      (sku, name, warehouse_id, dimension, display_uom_code, purchase_uom_code,
+       item_role, sourcing, part_id, project_id, needs_erp_data)
+    VALUES ('COMP-BRACKET', 'Bracket component', ?, 'COUNT', 'EA', 'EA',
+            'component', 'manufactured', 1, 1, 0)
+  `).run(compWh.id);
+  db.prepare("UPDATE parts SET erp_sku = 'COMP-BRACKET' WHERE id = 1").run();
+  const finishedItem = db.prepare(`
+    INSERT INTO item
+      (sku, name, warehouse_id, dimension, display_uom_code, purchase_uom_code,
+       custom_margin, item_role, sourcing, project_id, needs_erp_data)
+    VALUES ('FG-BRACKET', 'Bracket', ?, 'COUNT', 'EA', 'EA', 35,
+            'product', 'manufactured', 1, 0)
+  `).run(finWh.id);
+  db.prepare(`
+    INSERT INTO machine
+      (machine, hourly_rate, is_active, created_at, printer_id, needs_erp_data)
+    VALUES ('Bambu_01', 32.5, 1, '2026-09-17T10:00:00.000Z', 1, 0)
+  `).run();
+  db.prepare(`
+    INSERT INTO mfg_component
+      (sku, name, machine, std_minutes, raw_item_id, raw_qty_per_unit, scrap_pct,
+       is_active, created_at)
+    VALUES ('COMP-BRACKET', 'Bracket component', 'Bambu_01', 30, ?, 100, 5, 1,
+            '2026-09-17T10:00:00.000Z')
+  `).run(rawItem.lastInsertRowid);
+  const bom = db.prepare(`
+    INSERT INTO bom (item_id, name, labor_hours_per_unit)
+    VALUES (?, 'Bracket BOM', 0.25)
+  `).run(finishedItem.lastInsertRowid);
+  db.prepare('INSERT INTO bom_line (bom_id, component_item_id, qty, scrap_pct) VALUES (?, ?, 2, 1)')
+    .run(bom.lastInsertRowid, componentItem.lastInsertRowid);
+  const wo = db.prepare(`
+    INSERT INTO work_order
+      (code, kind, status, qty, qty_planned, qty_completed, item_id, target_item_id,
+       warehouse_to, bom_id, created_at, completed_at, notes)
+    VALUES ('WO-ERP-1', 'FG', 'closed', 3, 3, 3, ?, ?, ?, ?,
+            '2026-09-17T10:00:00.000Z', '2026-09-17T11:00:00.000Z', 'backup test')
+  `).run(finishedItem.lastInsertRowid, finishedItem.lastInsertRowid, finWh.id, bom.lastInsertRowid);
+  db.prepare(`
+    INSERT INTO stock_move
+      (item_id, warehouse_id, location_id, wo_id, qty, unit_cost, note, created_at,
+       trans_date, idem_key)
+    VALUES (?, ?, ?, NULL, 5, 20, 'PO-ERP', '2026-09-17T09:00:00.000Z',
+            '2026-09-17', 'backup-raw-receipt')
+  `).run(rawItem.lastInsertRowid, rawWh.id, location.lastInsertRowid);
+  db.prepare(`
+    INSERT INTO stock_move
+      (item_id, warehouse_id, wo_id, qty, unit_cost, note, created_at, trans_date,
+       idem_key)
+    VALUES (?, ?, ?, 3, 7.5, 'WO receipt', '2026-09-17T11:00:00.000Z',
+            '2026-09-17', 'backup-wo-receipt')
+  `).run(finishedItem.lastInsertRowid, finWh.id, wo.lastInsertRowid);
+  db.prepare(`
+    INSERT INTO item_cost (item_id, warehouse_id, wac, qty_on_hand, created_at, updated_at)
+    VALUES (?, ?, 20, 5, '2026-09-17T09:00:00.000Z', '2026-09-17T09:00:00.000Z')
+  `).run(rawItem.lastInsertRowid, rawWh.id);
+  db.prepare(`
+    INSERT INTO wo_issue (wo_id, item_id, qty, unit_cost, trans_date)
+    VALUES (?, ?, 0.315, 20, '2026-09-17')
+  `).run(wo.lastInsertRowid, rawItem.lastInsertRowid);
+  db.prepare(`
+    INSERT INTO wo_labor (wo_id, hours, hourly_rate, cost, resource, notes)
+    VALUES (?, 1.5, 32.5, 48.75, 'Bambu_01', 'backup test')
+  `).run(wo.lastInsertRowid);
+  db.prepare("UPDATE pricing_config SET value = 18 WHERE code = 'MARGIN_DEF'").run();
+  db.prepare(`
+    INSERT INTO sales_order
+      (item_id, sku, item_name, qty, unit_price, total_price, unit_margin, unit_cost,
+       sale_date, created_at)
+    VALUES (?, 'FG-BRACKET', 'Bracket', 1, 15, 15, 7.5, 7.5,
+            '2026-09-17', '2026-09-17T12:00:00.000Z')
+  `).run(finishedItem.lastInsertRowid);
+  db.prepare(`
+    INSERT INTO erp_posting
+      (job_id, part_id, printer_id, erp_sku, qty, status, created_at, note)
+    VALUES (1, 1, 1, 'COMP-BRACKET', 1, 'pending', ?, 'backup seed')
+  `).run(Date.now());
 
   // server/routes/backup.js declares its Express router at module scope, like every
   // route file in this codebase. Node's require() cache means a second require() in the
@@ -304,6 +398,120 @@ describe('Backup export/restore — column round-trip regression', () => {
 
       const part = db.prepare('SELECT * FROM parts WHERE id = 1').get();
       expect(part.sort_order).toBe(0); // schema DEFAULT, not a thrown NOT NULL violation
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+});
+
+describe('Backup export/restore: embedded ERP domain', () => {
+  const erpTables = [
+    'uom', 'warehouse', 'location', 'item', 'machine', 'bom', 'bom_line',
+    'stock_move', 'item_cost', 'mfg_component', 'work_order', 'wo_issue',
+    'wo_labor', 'pricing_config', 'sales_order', 'erp_posting',
+  ];
+
+  test('export includes every ERP table and the shopfloor ERP link', async () => {
+    const res = await request(app).get('/api/backup');
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body.erp).sort()).toEqual([...erpTables].sort());
+    for (const table of erpTables) expect(res.body.erp[table].length).toBeGreaterThan(0);
+    expect(res.body.parts[0].erp_sku).toBe('COMP-BRACKET');
+    expect(res.body.erp.sales_order[0]).toMatchObject({
+      sku: 'FG-BRACKET', qty: 1, total_price: 15,
+    });
+  });
+
+  test('restore round-trips inventory, costing, BOM, WO, machine, pricing, and sales data', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    expect(exportRes.status).toBe(200);
+    const expectedCounts = Object.fromEntries(
+      erpTables.map(table => [table, exportRes.body.erp[table].length])
+    );
+    const backupFile = writeTempBackupFile(exportRes.body);
+
+    try {
+      db.exec(`
+        DELETE FROM erp_posting;
+        DELETE FROM sales_order;
+        DELETE FROM wo_labor;
+        DELETE FROM wo_issue;
+        DELETE FROM stock_move;
+        DELETE FROM work_order;
+        DELETE FROM bom_line;
+        DELETE FROM bom;
+        DELETE FROM mfg_component;
+        DELETE FROM item_cost;
+        DELETE FROM machine;
+        DELETE FROM item;
+        DELETE FROM location;
+        DELETE FROM warehouse;
+        DELETE FROM uom;
+        DELETE FROM pricing_config;
+      `);
+      db.prepare("UPDATE parts SET erp_sku = NULL WHERE id = 1").run();
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.ok).toBe(true);
+      expect(restoreRes.body.erp).toEqual(expectedCounts);
+
+      for (const [table, count] of Object.entries(expectedCounts)) {
+        expect(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n).toBe(count);
+      }
+      expect(db.prepare('SELECT erp_sku FROM parts WHERE id = 1').get().erp_sku).toBe('COMP-BRACKET');
+      expect(db.prepare("SELECT hourly_rate, printer_id FROM machine WHERE machine = 'Bambu_01'").get())
+        .toMatchObject({ hourly_rate: 32.5, printer_id: 1 });
+      expect(db.prepare("SELECT qty, unit_cost FROM stock_move WHERE idem_key = 'backup-raw-receipt'").get())
+        .toMatchObject({ qty: 5, unit_cost: 20 });
+      expect(db.prepare("SELECT qty_completed, status FROM work_order WHERE code = 'WO-ERP-1'").get())
+        .toMatchObject({ qty_completed: 3, status: 'closed' });
+      expect(db.prepare(`
+        SELECT i.sku AS product_sku, c.sku AS component_sku, bl.qty
+        FROM bom b
+        JOIN item i ON i.id = b.item_id
+        JOIN bom_line bl ON bl.bom_id = b.id
+        JOIN item c ON c.id = bl.component_item_id
+        WHERE b.name = 'Bracket BOM'
+      `).get()).toMatchObject({ product_sku: 'FG-BRACKET', component_sku: 'COMP-BRACKET', qty: 2 });
+      expect(db.prepare("SELECT value FROM pricing_config WHERE code = 'MARGIN_DEF'").get().value).toBe(18);
+      expect(db.prepare("SELECT total_price FROM sales_order WHERE sku = 'FG-BRACKET'").get().total_price).toBe(15);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('older shopfloor-only backup preserves the current ERP domain', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    const backup = exportRes.body;
+    delete backup.erp;
+    db.prepare("UPDATE machine SET hourly_rate = 77 WHERE machine = 'Bambu_01'").run();
+    const beforeSales = db.prepare('SELECT COUNT(*) AS n FROM sales_order').get().n;
+    const backupFile = writeTempBackupFile(backup);
+
+    try {
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.erp).toBeNull();
+      expect(db.prepare("SELECT hourly_rate FROM machine WHERE machine = 'Bambu_01'").get().hourly_rate).toBe(77);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM sales_order').get().n).toBe(beforeSales);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('rejects a partial ERP section before changing the database', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    const backup = exportRes.body;
+    delete backup.erp.sales_order;
+    const before = db.prepare('SELECT COUNT(*) AS n FROM sales_order').get().n;
+    const backupFile = writeTempBackupFile(backup);
+
+    try {
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(400);
+      expect(restoreRes.body.error).toMatch(/missing table arrays/);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM sales_order').get().n).toBe(before);
     } finally {
       fs.unlinkSync(backupFile);
     }

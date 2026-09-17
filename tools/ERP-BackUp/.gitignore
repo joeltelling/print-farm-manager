@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.vscode/
+.cursor/
+data/*.db
+data/*.bak
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.db-journal

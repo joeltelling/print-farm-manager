@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>acres-erp — Locations</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="/ui/assets/nav.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Locations</h1>
+
+    <div class="card">
+      <h2>New location</h2>
+
+      <div class="form-grid-2">
+        <div>
+          <label for="loc_code">Code (##A##)</label>
+          <input class="input" id="loc_code" placeholder="01A01" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="hstack">
+        <button class="btn" id="btnCreate">Create</button>
+        <span id="msg" class="pill" aria-live="polite"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hstack space-between">
+        <h2>List (all)</h2>
+        <div class="hstack">
+          <input class="input" id="q" placeholder="Filter by code (optional)"/>
+          <button class="btn" id="refresh">Refresh</button>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Code</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initApi, apiGet, apiPost } from "./js/api.js";
+    const $ = (id)=>document.getElementById(id);
+
+    function isValidCode(code){
+      return /^[0-9]{2}[A-Z][0-9]{2}$/.test(code);
+    }
+
+    async function loadList(){
+      const q = $("q").value.trim().toUpperCase();
+      const list = await apiGet("/locations");
+      const filtered = q ? list.filter(x => (x.code||"").toUpperCase().includes(q)) : list;
+      $("rows").innerHTML = filtered
+        .sort((a,b)=> (a.code||"").localeCompare(b.code||""))
+        .map(l => `<tr><td>${l.id}</td><td>${l.code}</td></tr>`).join("");
+    }
+
+    $("btnCreate").onclick = async ()=>{
+      const msg = $("msg");
+      try{
+        let code = $("loc_code").value.trim().toUpperCase();
+        if(!code) throw new Error("Code requerido");
+        if(!isValidCode(code)) throw new Error("Invalid format (use ##A##, e.g. 01A01)");
+        msg.textContent = "saving...";
+        await apiPost("/locations", { code });
+        $("loc_code").value = "";
+        msg.textContent = "ok";
+        await loadList();
+      }catch(e){
+        alert("Error: " + (e.message||e));
+        msg.textContent = "error";
+      }finally{
+        setTimeout(()=> msg.textContent="", 1500);
+      }
+    };
+
+    $("refresh").onclick = loadList;
+
+    await initApi();
+    await loadList();
+  </script>
+
+  <script type="module" src="/ui/assets/nav.js"></script>
+</body>
+</html>

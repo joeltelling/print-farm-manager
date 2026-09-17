@@ -21,9 +21,12 @@ usage() {
 Usage: ./start.sh [--with-simulator|--without-simulator] [--organic-data|--seed-data]
 
   --with-simulator     Start the local Virtual Klipper Printer too.
-  --without-simulator  Start only CoMa.
+  --without-simulator  Start only CoMa (Express API + Vite UI).
   --organic-data       Use organic-data.db (default).
   --seed-data          Use seed-data.db and default to DEMO_MODE=true.
+
+CoMa runs two processes: Express (shopfloor + embedded ERP API) and Vite.
+ERP lives in the same backend and React shell (no separate uvicorn).
 
 Without an option, an interactive terminal asks whether to start the simulator.
 Non-interactive runs default to CoMa only. The environment variable
@@ -77,7 +80,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   fail "start.sh is intended for Linux. Use the npm commands documented for your platform."
 fi
 
-for command_name in node npm python3 sha256sum; do
+for command_name in node npm setsid sha256sum; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Required command not found: $command_name"
 done
 
@@ -149,7 +152,7 @@ if [[ -f "$PID_FILE" ]]; then
   rm -f "$DATASET_FILE"
 fi
 
-node - "$api_port" "$vite_port" <<'NODE' || fail "PORT $api_port or VITE_PORT $vite_port is already in use. Stop the conflicting service or choose alternate ports."
+node - "$api_port" "$vite_port" <<'NODE' || fail "One of the required ports is already in use. Stop the conflicting service or choose alternate ports."
 const net = require('net');
 const ports = process.argv.slice(2).map(Number);
 
@@ -194,7 +197,7 @@ fi
 } >> "$LOG_FILE"
 
 cd "$PROJECT_DIR"
-python3 -c 'import os; os.setsid(); os.execvp("npm", ["npm", "run", "dev"])' >> "$LOG_FILE" 2>&1 < /dev/null &
+setsid npm run dev >> "$LOG_FILE" 2>&1 < /dev/null &
 dev_pid=$!
 printf '%s\n' "$dev_pid" > "$PID_FILE"
 printf '%s\n' "$database_choice" > "$DATASET_FILE"
@@ -229,7 +232,7 @@ fi
 trap - INT TERM
 
 printf 'CoMa development services are running.\n'
-printf 'Dataset: %s data (%s-data.db)\n' "$database_choice" "$database_choice"
+printf 'Dataset: %s data (%s-data.db) - shopfloor + ERP in one SQLite file\n' "$database_choice" "$database_choice"
 printf 'UI:  http://localhost:%s\nAPI: http://localhost:%s\nLog: %s\n' "$vite_port" "$api_port" "$LOG_FILE"
 [[ "$simulator_choice" == "yes" ]] && printf 'Virtual printer: http://localhost:7125\nVirtual webcam: http://localhost:8110\n'
 printf 'Stop them with: %s/stop.sh\n' "$PROJECT_DIR"

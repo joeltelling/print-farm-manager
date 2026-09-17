@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>acres-erp — QR Scanner</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="/ui/assets/nav.css">
+  <style>
+    .qr-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .qr-card { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 500px; width: 100%; }
+    .qr-status { text-align: center; margin-bottom: 20px; }
+    .qr-status h2 { margin: 0 0 8px 0; }
+    .qr-status p { color: var(--muted); margin: 0; }
+    .completion-form { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+    .form-group { display: flex; gap: 8px; }
+    .form-group input { flex: 1; }
+    .form-group button { flex: 0 0 auto; }
+    .btn { padding: 8px 16px; background: #2c3e50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+    .btn:hover { background: #34495e; }
+    .btn-secondary { background: #7f8c8d; }
+    .btn-secondary:hover { background: #95a5a6; }
+    .loading { display: none; text-align: center; }
+    .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2c3e50; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .error { color: #c0392b; margin-top: 12px; }
+    .success { color: #27ae60; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="qr-container">
+      <div class="qr-card">
+        <div class="qr-status">
+          <h2 id="woTitle">Loading...</h2>
+          <p id="woInfo"></p>
+        </div>
+
+        <div id="completionUI" style="display: none;">
+          <p>Select completion method:</p>
+          <div class="completion-form">
+            <button class="btn" id="btnAllFinish">✓ All Finished</button>
+            <div class="form-group">
+              <input type="number" id="qtyInput" placeholder="Enter quantity" min="0" step="1">
+              <button class="btn" id="btnCompleteQty">Complete</button>
+            </div>
+          </div>
+          <button class="btn btn-secondary" id="btnCancel">Cancel</button>
+        </div>
+
+        <div class="loading" id="loadingUI">
+          <p>Processing...</p>
+          <div class="spinner"></div>
+        </div>
+
+        <div id="resultUI" style="display: none;">
+          <p id="resultMsg"></p>
+          <button class="btn" id="btnReturn">Close</button>
+        </div>
+
+        <div id="errorUI" style="display: none;">
+          <p class="error" id="errorMsg"></p>
+          <button class="btn btn-secondary" id="btnRetry">Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initApi, apiGet, apiPost } from "./js/api.js";
+
+    const $ = (id) => document.getElementById(id);
+
+    let currentWO = null;
+    let currentItem = null;
+
+    async function loadWO() {
+      const params = new URLSearchParams(window.location.search);
+      const woId = params.get('wo');
+
+      if (!woId) {
+        showError('No WO ID provided in URL');
+        return;
+      }
+
+      try {
+        await initApi();
+        currentWO = await apiGet(`/wo/${woId}`);
+        
+        // Get item info
+        const items = await apiGet('/items', { limit: 1000 });
+        currentItem = items.find(i => i.id === currentWO.item_id) || items[0];
+
+        const itemName = currentItem?.sku || `Item ${currentWO.item_id}`;
+        const itemFullName = currentItem ? `${currentItem.sku} - ${currentItem.name}` : '';
+        
+        $('woTitle').textContent = `WO #${woId}`;
+        $('woInfo').textContent = `${itemFullName}\nQty Planned: ${currentWO.qty_planned}`;
+
+        showCompletionUI();
+      } catch (err) {
+        showError(err?.message || 'Failed to load WO');
+      }
+    }
+
+    function showCompletionUI() {
+      $('completionUI').style.display = 'block';
+      $('loadingUI').style.display = 'none';
+      $('resultUI').style.display = 'none';
+      $('errorUI').style.display = 'none';
+    }
+
+    function showLoading() {
+      $('completionUI').style.display = 'none';
+      $('loadingUI').style.display = 'block';
+      $('resultUI').style.display = 'none';
+      $('errorUI').style.display = 'none';
+    }
+
+    function showResult(msg) {
+      $('resultMsg').textContent = msg;
+      $('completionUI').style.display = 'none';
+      $('loadingUI').style.display = 'none';
+      $('resultUI').style.display = 'block';
+      $('errorUI').style.display = 'none';
+    }
+
+    function showError(msg) {
+      $('errorMsg').textContent = msg;
+      $('completionUI').style.display = 'none';
+      $('loadingUI').style.display = 'none';
+      $('resultUI').style.display = 'none';
+      $('errorUI').style.display = 'block';
+    }
+
+    async function completeWO(qtyVal) {
+      showLoading();
+      try {
+        const payload = qtyVal !== null ? { qty_completed: qtyVal } : {};
+        const result = await apiPost(`/wo/${currentWO.id}/complete`, payload);
+        showResult(`✓ WO #${currentWO.id} completed successfully!\nStatus: ${result.status}`);
+      } catch (err) {
+        showError(err?.message || 'Failed to complete WO');
+      }
+    }
+
+    // Event listeners
+    $('btnAllFinish').addEventListener('click', () => {
+      completeWO(null); // null = use qty_planned
+    });
+
+    $('btnCompleteQty').addEventListener('click', () => {
+      const qty = parseInt($('qtyInput').value) || 0;
+      if (qty <= 0) {
+        showError('Please enter a valid quantity');
+        setTimeout(showCompletionUI, 2000);
+        return;
+      }
+      completeWO(qty);
+    });
+
+    $('btnCancel').addEventListener('click', () => {
+      window.close();
+    });
+
+    $('btnRetry').addEventListener('click', () => {
+      showCompletionUI();
+    });
+
+    $('btnReturn').addEventListener('click', () => {
+      window.close();
+    });
+
+    // Load WO on page load
+    loadWO();
+  </script>
+</body>
+</html>

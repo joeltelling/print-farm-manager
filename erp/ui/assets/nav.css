@@ -1,0 +1,254 @@
+/* =========================================================
+   Theme variables
+   ========================================================= */
+:root{
+  /* Colores */
+  --bg:#121212;     /* Fondo general */
+  --panel:#1e1e1e;  /* Paneles / tarjetas / aside */
+  --br:#2a2a2a;     /* Bordes */
+  --txt:#e0e0e0;    /* Texto principal */
+  --muted:#9aa3b2;  /* Texto atenuado */
+  --btt:#0b44ad;    /* Botones primarios */
+
+  /* Escala de espacios (ritmo vertical) */
+  --space-1:4px;
+  --space-2:8px;
+  --space-3:12px;
+  --space-4:16px;
+  --space-5:20px;
+  --space-6:24px;
+
+  /* Radios */
+  --radius-1:10px;
+  --radius-2:12px;
+  --radius-3:16px;
+
+  /* Container width */
+  --container-w:900px;
+
+  /* Branding (logo + text) */
+  --brand-logo-size: 72px;       /* change logo size here */
+  --brand-font-size: 1.20rem;    /* change text size here */
+
+
+}
+
+/* =========================================================
+   Base
+   ========================================================= */
+*{ box-sizing:border-box }
+html,body{ height:100% }
+html{ background:var(--bg) }  /* avoid white flash */
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--txt);
+  font-family:system-ui,Segoe UI,Roboto,Arial,Helvetica,sans-serif;
+  line-height:1.35;
+}
+
+/* =========================================================
+   App shell (layout + nav)
+   ========================================================= */
+.ax-layout{
+  display:grid;
+  grid-template-columns:240px 1fr;
+  min-height:100vh;
+}
+.ax-aside{
+  background:var(--panel);
+  border-right:1px solid var(--br);
+  padding:var(--space-4);
+  position:sticky; top:0; height:100vh;
+}
+.ax-main{
+  padding: var(--space-3) var(--space-6) var(--space-6); /* less top spacing */
+}
+
+.ax-brand{
+  font-weight:700;
+  margin-bottom:var(--space-3);
+  text-transform:uppercase;      /* UPPERCASE */
+  letter-spacing:.6px;
+}
+
+/* Side navigation */
+.ax-nav a{
+  display:block;
+  padding:10px 12px;
+  border-radius:var(--radius-1);
+  color:#cbd5e1;
+  text-decoration:none;
+  border:1px solid transparent;
+}
+.ax-nav a:hover{ background:#2a2a2a }
+.ax-nav a.active{ background:#333; border-color:#444; color:#fff }
+
+/* Parent + caret */
+.ax-parent{ display:flex; align-items:center; margin-bottom:2px }
+.ax-parent > a[data-parent]{ display:flex; align-items:center; gap:6px; flex:1 }
+.ax-caret{
+  display:inline-block;
+  font-size:12px;
+  color:var(--muted);
+  transition:transform .2s ease;
+}
+.ax-parent.open .ax-caret{ transform:rotate(90deg) }
+
+/* Submenu */
+.ax-sub{
+  margin: var(--space-2) 0 var(--space-3) var(--space-2);
+  border-left:1px solid #2a2a2a;
+  padding-left:var(--space-2);
+}
+.ax-sub[hidden]{ display:none !important }
+
+/* =========================================================
+   Page primitives
+   ========================================================= */
+.container{
+  max-width:var(--container-w);
+  margin: var(--space-3) auto var(--space-6); /* less top spacing */
+  padding: var(--space-3);
+}
+
+/* More compact page titles */
+.container > h1{
+  margin: 0 0 var(--space-3);
+  line-height:1.25;
+}
+
+/* Cards */
+.card{
+  background:var(--panel);
+  border:1px solid var(--br);
+  border-radius:var(--radius-3);
+  padding: var(--space-4);
+}
+
+/* Uniform spacing between cards */
+.card + .card{
+  margin-top: var(--space-4);
+}
+
+/* More compact card titles */
+.card > h2{
+  margin: 2px 0 var(--space-3);
+}
+
+/* =========================================================
+   Form controls (buttons + inputs)
+   ========================================================= */
+.btn, button, input[type=button], input[type=submit]{
+  background:var(--btt);
+  border:1px solid var(--br);
+  border-radius:var(--radius-2);
+  padding:10px 14px;
+  color:var(--txt);
+  cursor:pointer;
+  text-decoration:none;
+  display:inline-block;
+  transition:background .2s, border-color .2s, transform .02s;
+}
+.btn:hover, button:hover, input[type=button]:hover, input[type=submit]:hover{
+  background:#0a3d9b;           /* darker primary tone */
+  border-color:#666;
+}
+.btn:active, button:active, input[type=button]:active, input[type=submit]:active{
+  transform:translateY(1px);
+}
+
+/* Universal inputs */
+.input,
+input[type=text], input[type=search], input[type=number],
+input[type=password], input[type=email], input[type=datetime-local],
+select, textarea{
+  background:#1b1b1b;
+  border:1px solid var(--br);
+  border-radius:var(--radius-2);
+  padding:8px 10px;
+  color:var(--txt);
+  font:inherit;
+  width:100%;
+  appearance:none;
+}
+.input::placeholder, input::placeholder, textarea::placeholder{ color:var(--muted) }
+.input:focus, input:focus, select:focus, textarea:focus{
+  outline:none; border-color:#666; background:#222;
+}
+.input--list, select[size]{
+  background:#141414; border:1px solid var(--br);
+  border-radius:var(--radius-2); padding:6px 8px; color:var(--txt)
+}
+
+/* =========================================================
+   Form grids
+   ========================================================= */
+.form-grid-2, .form-grid-3{ display:grid; gap: var(--space-3) }
+.form-grid-2{ grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)) }
+.form-grid-3{ grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)) }
+.form-grid-2 .input, .form-grid-3 .input{ width:100% }
+
+/* =========================================================
+   Tables
+   ========================================================= */
+table{ width:100%; border-collapse:collapse }
+th, td{ padding: var(--space-3); border-bottom:1px solid var(--br); text-align:left }
+thead th{ font-weight:600 }
+.num { text-align:right } /* utility for numeric columns */
+
+/* =========================================================
+   Utilities
+   ========================================================= */
+.stack-vertical{ display:flex; flex-direction:column; gap: var(--space-4) }
+.stack-vertical > .card{ width:100% }
+.hstack{ display:flex; gap: var(--space-3); align-items:center }
+.hstack.space-between{ justify-content:space-between }
+.muted{ color:var(--muted) }
+.pill{
+  margin-left: var(--space-3);
+  padding: 4px 8px;
+  border-radius:999px; border:1px solid var(--br);
+  background:#1b1b1b;
+}
+.pill.warning{ background: #4f4600; color: #ffeb3b; border-color:#806f00; }
+.pill.success{ background: #0b3d1b; color: #9dffb0; border-color:#0f5a29; }
+.text-danger{ color:#f87171 }
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+/* === Branding (logo + text) ============================================ */
+
+
+.ax-brand{
+  display:flex;
+  align-items:center;            /* vertically align logo and text */
+  gap:12px;
+  margin-bottom: var(--space-3);
+}
+
+.ax-logo{
+  width: var(--brand-logo-size);
+  height: var(--brand-logo-size);
+  border-radius:50%;             /* circle */
+  display:inline-block;
+  background:#fff;               /* white emblem background */
+  background-image: url('/ui/png/logoWB.png'); /* use your PNG (or switch to logo.svg) */
+  background-size: cover;
+  background-position: center;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25); /* subtle border */
+}
+
+.ax-brand-text{
+  font-size: var(--brand-font-size);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing:.6px;
+  line-height:1;                 /* evita que “salte” verticalmente */
+}
+
+
+
+
+/* =========================================================
+   Fin
+   ========================================================= */

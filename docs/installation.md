@@ -8,8 +8,9 @@ This guide covers this fork's supported bare-metal workflow on Linux. Docker rem
 - Node.js 22 or 23, with Node.js 22 LTS recommended
 - npm from the Node.js installation
 - Git
-- Python 3, `make`, and a C++ compiler for the native `better-sqlite3` package
+- Python 3, `make`, and a C++ compiler for installing the native `better-sqlite3` package (build time only)
 - `sha256sum` from GNU coreutils for dependency change detection
+- `setsid` from util-linux for isolated development process management
 
 Node.js 24 is intentionally rejected because the project declares `>=22 <24` in `package.json`.
 
@@ -19,13 +20,13 @@ Node.js 24 is intentionally rejected because the project declares `>=22 <24` in 
 
 ```bash
 sudo apt update
-sudo apt install -y git curl ca-certificates build-essential python3 coreutils iproute2
+sudo apt install -y git curl ca-certificates build-essential python3 coreutils util-linux iproute2
 ```
 
 ### Fedora and RHEL-compatible distributions
 
 ```bash
-sudo dnf install -y git curl ca-certificates gcc-c++ make python3 coreutils iproute
+sudo dnf install -y git curl ca-certificates gcc-c++ make python3 coreutils util-linux iproute
 ```
 
 Install Node.js 22 using your distribution's supported Node.js repository or a version manager such as `nvm`. After installation, verify the complete toolchain:
@@ -38,6 +39,7 @@ python3 --version
 make --version
 g++ --version
 sha256sum --version
+setsid --version
 ```
 
 The Node.js version must begin with `v22.` or `v23.`.
@@ -69,8 +71,10 @@ On the first run, or after either lockfile or the Node/npm version changes, the 
 The services start in the background:
 
 - Development UI with hot reload: `http://localhost:5173`
-- API and built UI: `http://localhost:3000`
+- API and built UI: `http://localhost:3000` (shopfloor + embedded `/api/erp` on the same SQLite file)
 - Combined log: `.run/dev.log`
+
+ERP screens live in the CoMa React app under `/erp`. `start.sh` launches only Express and Vite through `setsid`; there is no Python, uvicorn, Next.js, or Acres HTML process at runtime.
 
 Manage the environment with:
 

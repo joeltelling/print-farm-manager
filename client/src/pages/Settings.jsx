@@ -410,8 +410,8 @@ export default function Settings() {
     const file = restoreFileRef.current?.files[0];
     if (!file) return;
     const ok = await confirm({
-      title: 'Restore Shopfloor Data',
-      message: 'This will replace ALL current shopfloor data (printers, projects, jobs, settings) with the backup. This cannot be undone.',
+      title: 'Restore CoMa Data',
+      message: 'This replaces all CoMa data present in the backup, including shopfloor and embedded ERP records. This cannot be undone.',
       confirmLabel: 'Restore',
       danger: true,
     });
@@ -1314,14 +1314,13 @@ export default function Settings() {
       )}
 
 
-      {/* Shopfloor Backup / Restore */}
+      {/* CoMa Backup / Restore */}
       {tab === 'backup' && (
       <section style={sectionStyle}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Shopfloor Backup</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>CoMa Backup</h2>
         <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
-          Export a full snapshot of your printers, projects, parts, G-code files, and job history.
-          ERP data (when added) will use a separate backup. Use this file to restore on another
-          machine or recover from data loss.
+          Export one complete snapshot containing shopfloor, G-code files, settings, and all
+          embedded ERP data. Use this file to restore on another machine or recover from data loss.
         </p>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1339,7 +1338,7 @@ export default function Settings() {
               cursor: 'pointer',
             }}
           >
-            Export Shopfloor
+            Export CoMa
           </button>
 
           {/* Restore */}
@@ -1382,7 +1381,7 @@ export default function Settings() {
                 opacity: restoring ? 0.7 : 1,
               }}
             >
-              {restoring ? 'Restoring…' : 'Restore Shopfloor'}
+              {restoring ? 'Restoring...' : 'Restore CoMa'}
             </button>
           </form>
         </div>
@@ -1396,7 +1395,7 @@ export default function Settings() {
         {restoreResult && (
           <div style={{ marginTop: 14 }}>
             <div style={{ color: '#4ade80', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
-              Shopfloor restored successfully
+              CoMa data restored successfully
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <Chip color="#4ade80" label={`${restoreResult.printers} printers`} />
@@ -1408,6 +1407,12 @@ export default function Settings() {
               <Chip color="#4ade80" label={`${restoreResult.printer_groups ?? 0} groups`} />
               <Chip color="#4ade80" label={`${restoreResult.filament_types ?? 0} filament types`} />
               <Chip color="#4ade80" label={`${restoreResult.filament_colors ?? 0} filament colors`} />
+              <Chip
+                color="#4ade80"
+                label={restoreResult.erp
+                  ? `${Object.keys(restoreResult.erp).length} ERP tables`
+                  : 'existing ERP preserved'}
+              />
             </div>
           </div>
         )}

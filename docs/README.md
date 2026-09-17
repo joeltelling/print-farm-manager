@@ -27,7 +27,7 @@ Prefer Docker over a local Node.js install? `docker compose up --build print-far
 | [docs/multi-brand.md](multi-brand.md) | Phase 6 design — driver abstraction for non-Prusa brands (Elegoo Centauri Carbon) |
 | [docs/driver-authoring.md](driver-authoring.md) | Connector authoring guide for manufacturers and contributors: driver contract, canonical statuses, registration checklist, hardware test matrix |
 | [docs/filaments.md](filaments.md) | Filament Library — admin-managed type and color lists, API endpoints, client usage |
-| [docs/erp/README.md](erp/README.md) | ERP-first architecture: domain boundary vs shopfloor, planned modules, machine types |
+| [docs/erp/README.md](erp/README.md) | Embedded ERP in Express + CoMa React: one SQLite DB, shared machines/materials |
 | [docs/docker-publish.md](docker-publish.md) | CI workflow that builds and publishes multi-arch Docker images to GHCR |
 
 ## Project Structure
@@ -41,6 +41,7 @@ print-farm-manager/
 │   ├── scheduler.js      # Job dispatch engine (EventEmitter)
 │   ├── events.js         # Printer event log helper — insert(printerId, type, note)
 │   ├── notifications.js  # In-memory operator alert store
+│   ├── erp/              # Embedded ERP schema, API, sync, costing, and PDF reports
 │   └── routes/
 │       ├── printers.js   # CRUD + CSV import + decommission/recommission
 │       ├── events.js     # GET/POST /api/printers/:id/events
@@ -64,7 +65,9 @@ print-farm-manager/
 │   │       ├── Settings.jsx       # CSV import, add printer, printer models
 │   │       ├── Dashboard.jsx      # Fleet summary (TV mode)
 │   │       ├── Projects.jsx       # Project/Part/G-code management
-│   │       └── Jobs.jsx           # Job queue table
+│   │       ├── Jobs.jsx           # Job queue table
+│   │       ├── Erp.jsx            # ERP shell and module routing
+│   │       └── erp/               # CoMa ERP pages and local QR generator
 ├── docs/                 # This folder
 ├── .github/workflows/    # CI — see docs/docker-publish.md
 ├── ARCHITECTURE.md       # Full product spec and phase planning

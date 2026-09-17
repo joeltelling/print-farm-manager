@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ACRES-ERP — Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="/ui/assets/nav.css">
+</head>
+<body>
+  <div class="container">
+    <h1>ACRES-ERP</h1>
+    <div class="card" id="status">Checking backend...</div>
+  </div>
+
+  <script type="module">
+    import { initApi, apiGet, getApiBase } from "./js/api.js";
+
+    const el = document.getElementById("status");
+
+    (async () => {
+      await initApi();
+      try {
+        const h = await apiGet("/health");
+        const status = (h && (h.status || h.ok)) ? (h.status || "ok") : "unknown";
+        el.innerHTML = `<b>Backend</b>: ${status} <small style="opacity:.7">(${getApiBase()})</small>`;
+      } catch (e) {
+        el.innerHTML = `<b>Backend</b>: <span class="text-danger">offline</span>`;
+        console.error(e);
+      }
+    })();
+  </script>
+
+  <script type="module" src="/ui/assets/nav.js"></script>
+</body>
+</html>

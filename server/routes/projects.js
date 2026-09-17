@@ -22,13 +22,32 @@ module.exports = (db, scheduler = null) => {
   router.post('/', (req, res) => {
     const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
+    const sourcing = req.body?.sourcing;
+    if (sourcing !== undefined && sourcing !== 'manufactured' && sourcing !== 'outsource') {
+      return res.status(400).json({ error: 'sourcing must be manufactured or outsource' });
+    }
     const now = Date.now();
     const result = db.prepare(`
       INSERT INTO projects (name, description, created_at, updated_at)
       VALUES (?, ?, ?, ?)
     `).run(name, description || null, now, now);
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(project);
+    let erpProduct = null;
+    try {
+      require('../erp/sync').syncShopfloorToErp(db);
+      // Optional ERP extras on create (product = project)
+      if (sourcing === 'manufactured' || sourcing === 'outsource') {
+        db.prepare(
+          "UPDATE item SET sourcing = ?, needs_erp_data = 0 WHERE project_id = ?"
+        ).run(sourcing, project.id);
+      }
+      erpProduct = db.prepare(
+        'SELECT id, sku, sourcing, item_role FROM item WHERE project_id = ?'
+      ).get(project.id) || null;
+    } catch (_) {
+      // Standalone route tests and legacy embeddings may not mount the ERP schema.
+    }
+    res.status(201).json({ ...project, erp_product: erpProduct });
   });
 
   // PUT /reorder — set priority for an ordered list of project IDs.

@@ -582,6 +582,244 @@ Returns `400` for unknown keys or failed validation.
 
 ---
 
+## Shared masters (ERP + shopfloor)
+
+Same SQLite file. Read-only aggregates for CoMa UI.
+
+### `GET /api/shared/machines`
+
+```json
+{
+  "machines": [{
+    "id": 1,
+    "name": "LABOR",
+    "hourly_rate": 20,
+    "is_active": 1,
+    "printer_id": null,
+    "printer_name": null,
+    "printer_model": null,
+    "printer_status": null,
+    "kind": "rate"
+  }],
+  "printers": [{ "id": 3, "name": "MK4_01", "model": "MK4", "status": "IDLE", "is_active": 1, "kind": "printer" }],
+  "linked_printer_machines": 0,
+  "source": "shared-sqlite"
+}
+```
+
+`machines` are ERP rate centers (`machine` table). Acres only stored `name` + `hourly_rate` (USD/h). CoMa also links `printer_id` and, when joined, returns `printer_name` / `printer_model` / `printer_status` from the shopfloor fleet.
+
+### `GET /api/shared/materials`
+
+```json
+{
+  "items": [{ "id": 1, "sku": "PLA-BLK", "name": "PLA Black", "dimension": "mass", "kind": "item" }],
+  "filament_types": [],
+  "filament_colors": [{ "id": 1, "name": "Black", "hex": "#111111", "hex_color": "#111111", "type_id": 1 }],
+  "source": "shared-sqlite"
+}
+```
+
+Color responses expose both `hex` and `hex_color` aliases and accept either historical database column, so older local datasets remain readable.
+
+---
+
+## Bridge (shopfloor → ERP)
+
+### `POST /api/bridge/units-completed`
+
+Creates a pending `erp_posting` for operator confirmation. Does **not** change `parts.completed_qty`. Stock moves happen only after `POST /api/erp/postings/:id/confirm`.
+
+Body (required: `qty`):
+
+```json
+{ "sku": "BRACKET-L", "qty": 4, "machine_type": "3d_printer", "shopfloor_job_ref": 42 }
+```
+
+`201` (new) / `200` (idempotent same job):
+
+```json
+{
+  "ok": true,
+  "posting": { "id": 1, "job_id": 42, "erp_sku": "BRACKET-L", "qty": 4, "status": "pending" },
+  "created": true,
+  "linked_part": { "id": 3, "erp_sku": "BRACKET-L" },
+  "note": "Pending ERP posting created; confirm in /erp/postings to move stock"
+}
+```
+
+---
+
+## ERP (embedded)
+
+Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/README.md](erp/README.md).
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/erp/health` | `{ "status": "ok", "erp": "embedded" }` |
+| `GET` | `/api/erp/dashboard` | KPIs including `pending_postings`, shopfloor link, sync summary, needs_attention |
+| `POST` | `/api/erp/sync` | Soft-sync printers/projects/parts/filaments into ERP |
+| `GET` | `/api/erp/postings` | Posting queue; optional `?status=pending\|posted\|dismissed` |
+| `GET` | `/api/erp/postings/:id` | Preview shortage / unit cost for one posting |
+| `POST` | `/api/erp/postings/:id/confirm` | Apply stock moves; body `{ "acknowledge_shortage": true }` when 409 shortage |
+| `POST` | `/api/erp/postings/:id/dismiss` | Discard pending posting without stock moves |
+| `GET`/`POST` | `/api/erp/items`, `PUT /api/erp/items/:id` | SKU master (`item_role`: product/component/raw, `sourcing`: manufactured/outsource) |
+| `GET`/`POST` | `/api/erp/warehouses`, `/api/erp/locations` | WH + bins |
+| `GET`/`POST` | `/api/erp/mfg/machines` | Rate centers: `machine` + `hourly_rate` (USD/h). GET joins linked printer name/model/status when `printer_id` is set. Seeded `LABOR` row is the BOM labor rate. |
+| `GET`/`POST` | `/api/erp/mfg/components` | Manufacturing components |
+| `POST` | `/api/erp/mfg/calculate-component-cost` | Material + time estimate (includes scrap %) |
+| `GET` | `/api/erp/inventory/stock`, `/api/erp/inventory/dashboard` | On-hand + KPIs |
+| `POST` | `/api/erp/inventory/receive_by_sku` | Receive (WAC) |
+| `GET`/`POST`/`DELETE` | `/api/erp/bom`, lines, `calculate-cost` | BOM + UOM/MFG cost (`is_estimate` on lines) |
+| `GET`/`POST` | `/api/erp/wo`, `POST /api/erp/wo/:id/complete` | Work orders (`q` filtered in SQL) |
+| `GET`/`POST` | `/api/erp/sales/config` | Pricing defaults |
+| `GET`/`PATCH` | `/api/erp/sales/pricing`, `POST .../reset` | Per-item overrides |
+| `GET` | `/api/erp/sales/reports` | Price matrix |
+| `GET` | `/api/erp/sales/order/items` | Sellable FG + stock |
+| `POST` | `/api/erp/sales/orders` | Sale (depletes FIN_GOOD) |
+| `GET` | `/api/erp/sales/orders/report` | History; `format=csv\|pdf` |
+
+Parts may carry optional `erp_sku` (nullable) via `PUT /api/parts/:id`.
+Set Ready and set-ready-batch enqueue `erp_posting` rows; they never alter completed_qty beyond the existing shopfloor credit paths.
+
+### `POST /api/erp/sync`
+
+Creates only missing links. Existing rates, SKUs, sourcing choices, and stock are preserved.
+
+```json
+{
+  "ok": true,
+  "created": { "machines": 0, "products": 1, "components": 2, "raw_materials": 3 },
+  "needs_attention": [
+    { "kind": "machine", "id": 7, "name": "MK4_01", "fields": ["hourly_rate"] }
+  ]
+}
+```
+
+Returns `200`; unexpected schema/database errors return `500`.
+
+### `POST /api/erp/items`
+
+```json
+{
+  "sku": "FG-BRACKET",
+  "name": "Bracket",
+  "warehouse_id": 2,
+  "dimension": "COUNT",
+  "display_uom_code": "EA",
+  "purchase_uom_code": "EA",
+  "item_role": "product",
+  "sourcing": "manufactured"
+}
+```
+
+Required: `sku`, `name`, `dimension`, `display_uom_code`, `purchase_uom_code`. `item_role` is `product`, `component`, or `raw`; `sourcing` is `manufactured` or `outsource`. Returns `201`, `400` for validation, `409` for duplicate SKU. `PUT /api/erp/items/:id` is partial and returns `404` if absent.
+
+### `POST /api/erp/locations`
+
+```json
+{ "warehouse_id": 1, "code": "01A01" }
+```
+
+Codes use `##A##`. Returns `201`, `400` for format, `404` for warehouse, `409` for duplicate location in that warehouse.
+
+### `POST /api/erp/inventory/receive_by_sku`
+
+```json
+{
+  "sku": "RAW-PLA",
+  "warehouse_id": 3,
+  "location_id": 8,
+  "qty": 5,
+  "unit_cost": 20,
+  "note": "PO 1042",
+  "trans_date": "2026-09-17",
+  "idem_key": "receive-po-1042-line-1"
+}
+```
+
+`qty` and `unit_cost` use the purchasing UOM. Quantity must be positive and unit cost cannot be negative. A repeated `idem_key` returns the original `move_id` without receiving twice. The location must belong to the warehouse. Receiving a synced raw material clears its `Needs ERP data` reminder. Returns `200`, `400` for quantity, cost, or location mismatch, `404` for SKU/warehouse/location.
+
+### `POST /api/erp/mfg/components`
+
+Upserts by SKU and makes sure the matching component item exists.
+
+```json
+{
+  "sku": "COMP-BRACKET",
+  "name": "Printed bracket",
+  "machine": "MK4_01",
+  "std_minutes": 30,
+  "raw_item_id": 4,
+  "raw_qty_per_unit": 100,
+  "scrap_pct": 5,
+  "is_active": true
+}
+```
+
+Returns `201` for create, `200` for update, `400` for missing fields, `404` for raw item.
+
+### `POST /api/erp/mfg/calculate-component-cost`
+
+```json
+{ "raw_sku": "RAW-PLA", "raw_qty_per_unit": 100, "std_minutes": 30, "machine": "MK4_01" }
+```
+
+Returns source/display WAC, material cost, and time cost. Returns `400` for missing SKU and `404` for unknown SKU.
+
+### BOM routes
+
+Create/update a header with `POST /api/erp/bom`:
+
+```json
+{ "item_id": 10, "name": "Bracket BOM", "labor_hours_per_unit": 0.1 }
+```
+
+Upsert a line with `POST /api/erp/bom/:id/line`:
+
+```json
+{ "component_item_id": 9, "qty": 2 }
+```
+
+`GET /api/erp/bom/:id/calculate-cost` returns material, labor, and total. Delete a line with `DELETE /api/erp/bom/:id/line/:lineId`; delete the full BOM with `DELETE /api/erp/bom/:id`. Missing rows return `404`; missing IDs return `400`.
+
+### Work order routes
+
+```json
+{
+  "item_id": 10,
+  "qty_planned": 5,
+  "warehouse_code": "fin_good",
+  "location_code": "01A01"
+}
+```
+
+`POST /api/erp/wo` returns `201`. It requires a positive quantity, existing destination, a location belonging to that destination warehouse, and a BOM. Complete with:
+
+```json
+{ "qty_completed": 5 }
+```
+
+`POST /api/erp/wo/:id/complete` validates all material before a transaction issues raw/components, records labor, receives finished goods into the warehouse and location selected on the WO, and closes it. A closed WO returns unchanged, so a retry cannot double-consume stock. Returns `409` with `missing[]` for insufficient stock, `404` for missing WO/BOM/item, `422` for invalid quantity.
+
+### `POST /api/erp/sales/orders`
+
+```json
+{ "sku": "FG-BRACKET", "qty": 1 }
+```
+
+Atomically depletes `fin_good`, updates cached on-hand quantity, and records history. Returns `201`, `400` for invalid quantity/config, `404` for unknown finished SKU, `409` for insufficient stock.
+
+### `GET /api/erp/sales/orders/report`
+
+Query: `start_date=YYYY-MM-DD`, `end_date=YYYY-MM-DD`, `page`, `limit`, and optional `format=csv|pdf`. JSON is paginated but summary totals cover the full filtered range. CSV and PDF always export the full range; PDF adds pages as needed instead of truncating rows. Invalid dates or a reversed range return `400`.
+
+### Shopfloor create sourcing
+
+`POST /api/projects` and `POST /api/parts` accept optional `sourcing` (`manufactured` or `outsource`). Invalid sourcing returns `400` before creating the shopfloor row. The response retains all original shopfloor fields and adds `erp_product` or `erp_component` when the embedded ERP schema is available. Standalone route usage without ERP remains compatible and returns the shopfloor row with a null ERP link.
+
+---
+
 ## Dashboard
 
 ### `GET /api/dashboard`
@@ -663,17 +901,19 @@ All error responses use this shape:
 
 ### `GET /api/backup`
 
-Downloads a full shopfloor snapshot as `shopfloor-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). Older `farm-backup-*.json` files still restore. No request body.
+Downloads a complete CoMa snapshot as `shopfloor-backup-YYYY-MM-DD.json`. The stable filename is retained for compatibility. It includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, gcode file contents, and an `erp` object containing every embedded ERP table. Older `farm-backup-*.json` files still restore. No request body.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
 ### `POST /api/backup/restore`
 
-Replaces all farm data from a previously exported backup file. Clears the DB and rewrites all tables; gcode files are written to `server/gcode/`. Since `filepath` stores only the filename, no path rewriting is needed — the restored DB works correctly on any machine. Each `gcode_files` key must be a bare filename — any key that isn't (e.g. containing `/`, `\`, or equal to `.`/`..`) is rejected with `400` before anything is written to disk, since it would otherwise be able to resolve outside `server/gcode/`.
+Replaces all CoMa data represented by a previously exported backup file. Shopfloor tables, ERP inventory, costing, BOMs, work orders, pricing, and sales are restored in foreign-key-safe order. G-code files are written to `server/gcode/`. Since `filepath` stores only the filename, no path rewriting is needed. Each `gcode_files` key must be a bare filename; any unsafe key is rejected with `400` before anything is written.
 
 Each table's restore INSERT covers the columns the *live* schema currently has (derived from `PRAGMA table_info`) that are also present in the backup's data, rather than a hardcoded list: so printer `serial_number`/`loaded_material`/`loaded_color`, project `required_material`/`required_color`/`allowed_groups`, part `print_time_seconds`/`material_grams`, and gcode `ams_slot`/`material_grams`/`allowed_groups`/`required_material`/`required_color` all round-trip correctly, along with any future column a migration adds. A column present in the live schema but missing from every row of a given backup (e.g. an older backup that predates it) is omitted from the INSERT entirely so the column's own schema default applies, instead of failing on `NOT NULL` columns like `parts.sort_order`.
 
 `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, and `settings` are restored the same way, but each is only cleared and rewritten if that key is present in the uploaded file: restoring a backup taken before these were added to the export leaves the farm's current printer models, groups, filament library, and settings untouched rather than wiping them with nothing to restore.
+
+The ERP section is atomic: a current backup must contain arrays for all ERP tables or restore returns `400` before changing the database. A legacy backup with no `erp` key restores its shopfloor data and preserves the current embedded ERP domain.
 
 **Request:** `multipart/form-data` with field `file` — the `.json` backup file. Max 500 MB.
 
@@ -689,7 +929,16 @@ Each table's restore INSERT covers the columns the *live* schema currently has (
   "printer_models": 6,
   "printer_groups": 4,
   "filament_types": 3,
-  "filament_colors": 9
+  "filament_colors": 9,
+  "erp": {
+    "item": 42,
+    "stock_move": 180,
+    "bom": 12,
+    "work_order": 28,
+    "sales_order": 64
+  }
 }
 ```
-| `500` | Unhandled server error |
+The real response contains a count for all 15 ERP tables inside `erp`. For a legacy backup without an ERP section, `erp` is `null` to show that existing ERP data was preserved.
+
+Returns `400` for an invalid JSON bundle, unsafe G-code filename, or incomplete ERP section, and `500` for an unexpected restore failure.

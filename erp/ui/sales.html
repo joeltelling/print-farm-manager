@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ACRES-ERP — Sales</title>
+  <meta http-equiv="refresh" content="0; url=/ui/sales_dashboard.html" />
+</head>
+<body>
+  <script>window.location.replace('/ui/sales_dashboard.html');</script>
+  <div class="container">
+    <h1>Sales</h1>
+
+    <div class="hstack">
+      <button class="btn" data-tab="config">Config</button>
+      <button class="btn" data-tab="pricing">Pricing</button>
+      <button class="btn" data-tab="reports">Reports</button>
+    </div>
+
+    <div id="config" class="card" hidden>
+      <h2>Config</h2>
+      <div id="configRows" class="stack-vertical"></div>
+      <div class="hstack">
+        <button class="btn" id="saveConfig">Save Changes</button>
+        <span id="cfgMsg" class="pill" aria-live="polite"></span>
+      </div>
+    </div>
+
+    <div id="pricing" class="card" hidden>
+      <h2>Pricing</h2>
+      <div class="hstack">
+        <input id="prSearch" class="input" type="search" placeholder="Search by SKU/Name">
+        <button class="btn" id="prSearchBtn" type="button">Search</button>
+        <span id="prMsg" class="pill" aria-live="polite"></span>
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>SKU</th>
+              <th>Cost</th>
+              <th>Margin %</th>
+              <th>Margin $</th>
+              <th>Ads %</th>
+              <th>Fee %</th>
+              <th>Selling Price</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="prRows"></tbody>
+        </table>
+        <div class="hstack" style="margin-top:12px;">
+          <button class="btn" id="prPrev" type="button">Prev</button>
+          <span id="prPage" class="muted"></span>
+          <button class="btn" id="prNext" type="button">Next</button>
+          <span id="prStatus" class="pill" aria-live="polite"></span>
+          <button class="btn" id="prSave" type="button" disabled>Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="reports" class="card" hidden>
+      <h2>Reports</h2>
+      <div class="hstack wrap">
+        <input id="rpSearch" class="input" type="search" placeholder="Search Item or SKU">
+        <button class="btn" id="rpSearchBtn" type="button">Search</button>
+        <span id="rpMsg" class="pill" aria-live="polite"></span>
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <table class="reports-table">
+          <thead id="rpHead">
+            <tr>
+              <th>Item / SKU</th>
+              <th>Cost</th>
+              <th class="sortable" data-sort="margin_pct">Margin % <span class="sort-arrow" data-arrow="margin_pct">↕</span></th>
+              <th class="sortable" data-sort="margin_usd">Margin $ <span class="sort-arrow" data-arrow="margin_usd">↕</span></th>
+              <th>Fees $</th>
+              <th class="sortable" data-sort="selling_price">Selling Price <span class="sort-arrow" data-arrow="selling_price">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="rpRows"></tbody>
+        </table>
+        <div class="hstack" style="margin-top:12px;">
+          <button class="btn" id="rpPrev" type="button">Prev</button>
+          <span id="rpPage" class="muted"></span>
+          <button class="btn" id="rpNext" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initApi, apiGet, apiPost } from "./js/api.js";
+    const $ = (id)=>document.getElementById(id);
+    const msg = (t)=> $("cfgMsg").textContent = t || "";
+
+    // Pricing state
+    let PR_STATE = { items: [], page: 1, total: 0, limit: 20, search: "" };
+    let PR_DIRTY = new Map(); // item_id -> {field, value}
+    const prFieldMap = { margin_pct: "custom_margin", ads_pct: "custom_ads", fee_pct: "custom_fee" };
+
+    // Reports state
+    let RP_STATE = { items: [], page: 1, total: 0, limit: 20, sort_by: "item_name", order: "asc", search: "" };
+
+    const tabButtons = document.querySelectorAll("[data-tab]");
+    function showTab(name){
+      for (const btn of tabButtons){
+        const tab = $(btn.dataset.tab);
+        const isActive = btn.dataset.tab === name;
+        tab.hidden = !isActive;
+      }
+      if (name === "config") loadConfig();
+      if (name === "pricing") loadPricing(PR_STATE.page, PR_STATE.search);
+      if (name === "reports") loadReports(RP_STATE.page, { sort_by: RP_STATE.sort_by, order: RP_STATE.order, search: RP_STATE.search });
+      history.replaceState(null, "", `${location.pathname}#${name}`);
+    }
+    tabButtons.forEach(btn => btn.addEventListener("click", ()=> showTab(btn.dataset.tab)));
+
+    let CONFIGS = [];
+
+    function renderConfig(){
+      const container = $("configRows");
+      container.innerHTML = "";
+      for (const cfg of CONFIGS){
+        const wrap = document.createElement("div");
+        wrap.className = "form-grid-2";
+
+        const label = document.createElement("label");
+        label.textContent = cfg.name || cfg.code;
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.step = "any";
+        input.value = cfg.value ?? 0;
+        input.dataset.code = cfg.code;
+        input.className = "input";
+
+        wrap.appendChild(label);
+        wrap.appendChild(input);
+        container.appendChild(wrap);
+      }
+    }
+
+    async function loadConfig(){
+      msg("loading...");
+      try{
+        CONFIGS = await apiGet("/sales/config");
+        renderConfig();
+        msg("");
+      }catch(e){
+        console.error(e);
+        msg("error loading");
+      }
+    }
+
+    $("saveConfig").addEventListener("click", async ()=>{
+      const payload = [];
+      document.querySelectorAll("#configRows input[data-code]").forEach(inp=>{
+        payload.push({ code: inp.dataset.code, value: Number(inp.value || 0) });
+      });
+      msg("saving...");
+      try{
+        CONFIGS = await apiPost("/sales/config", payload);
+        renderConfig();
+        msg("saved");
+        setTimeout(()=> msg(""), 1500);
+      }catch(e){
+        console.error(e);
+        msg("error");
+      }
+    });
+
+    function fmt(n, digits=4){ return Number(n||0).toFixed(digits); }
+    const fmtMoney = (n)=> `$${Number(n || 0).toFixed(2)}`;
+    const fmtPct = (n)=> `${Number(n || 0).toFixed(2)}%`;
+    const marginBadgeClass = (pct)=>{
+      const val = Number(pct || 0);
+      if (val < 20) return "badge red";
+      if (val <= 40) return "badge orange";
+      return "badge green";
+    };
+
+    function renderPricing(){
+      const tbody = $("prRows");
+      tbody.innerHTML = "";
+      for (const r of PR_STATE.items){
+        const dirty = PR_DIRTY.get(r.item_id) || {};
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.name}</td>
+          <td>${r.sku}</td>
+          <td class="num">${fmt(r.cost,4)}</td>
+          <td class="num editable" data-field="margin_pct" data-id="${r.item_id}" data-dirty="${dirty.margin_pct!==undefined}">${fmt(dirty.margin_pct ?? r.margin_pct,4)}</td>
+          <td class="num">${fmt(r.margin_value,4)}</td>
+          <td class="num editable" data-field="ads_pct" data-id="${r.item_id}" data-dirty="${dirty.ads_pct!==undefined}">${fmt(dirty.ads_pct ?? r.ads_pct,4)}</td>
+          <td class="num editable" data-field="fee_pct" data-id="${r.item_id}" data-dirty="${dirty.fee_pct!==undefined}">${fmt(dirty.fee_pct ?? r.fee_pct,4)}</td>
+          <td class="num">${fmt(r.selling_price,4)}</td>
+          <td><button class="btn btn-reset" data-action="reset" data-id="${r.item_id}">Reset</button></td>
+        `;
+        tr.querySelectorAll('[data-dirty="true"]').forEach(td=> td.style.background = "#5a4a00");
+        tbody.appendChild(tr);
+      }
+      const totalPages = Math.max(1, Math.ceil(PR_STATE.total / PR_STATE.limit));
+      $("prPage").textContent = `Page ${PR_STATE.page} / ${totalPages}`;
+      $("prPrev").disabled = PR_STATE.page <= 1;
+      $("prNext").disabled = PR_STATE.page >= totalPages;
+      $("prSave").disabled = PR_DIRTY.size === 0;
+      if (PR_DIRTY.size > 0) {
+        $("prStatus").textContent = "Unsaved changes";
+        $("prStatus").classList.add("warning");
+        $("prStatus").classList.remove("success");
+      } else {
+        $("prStatus").textContent = "";
+        $("prStatus").classList.remove("warning","success");
+      }
+    }
+
+    async function loadPricing(page=1, search=""){
+      $("prMsg").textContent = "loading...";
+      try{
+        const data = await apiGet("/sales/pricing", { page, limit: 20, search: search || undefined });
+        PR_STATE = { ...data, search };
+        renderPricing();
+        $("prMsg").textContent = "";
+      }catch(e){
+        console.error(e);
+        $("prMsg").textContent = "error";
+      }
+    }
+
+    function markDirty(itemId, fieldKey, val){
+      const dirty = PR_DIRTY.get(itemId) || {};
+      dirty[fieldKey] = val;
+      PR_DIRTY.set(itemId, dirty);
+      renderPricing();
+    }
+
+    function makeEditable(td, row){
+      if (td.dataset.editing === "1") return;
+      const fieldKey = td.dataset.field;
+      const field = prFieldMap[fieldKey];
+      if (!field) return;
+      td.dataset.editing = "1";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "any";
+      input.value = td.textContent.trim();
+      td.textContent = "";
+      td.appendChild(input);
+      input.focus(); input.select();
+
+      const cancel = ()=>{ td.dataset.editing = ""; td.textContent = fmt(row[fieldKey],4); };
+      input.addEventListener("keydown", (e)=>{
+        if (e.key === "Escape") { cancel(); }
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      });
+      input.addEventListener("blur", async ()=>{
+        const val = Number(input.value || "0");
+        markDirty(row.item_id, fieldKey, val);
+        td.dataset.editing = "";
+      });
+    }
+
+    $("prRows").addEventListener("click", (e)=>{
+      if (e.target.closest("button[data-action='reset']")){
+        const id = Number(e.target.dataset.id);
+        resetRow(id);
+        return;
+      }
+      const td = e.target.closest("td.editable");
+      if (!td) return;
+      const id = Number(td.dataset.id);
+      const row = PR_STATE.items.find(x => x.item_id === id);
+      if (!row) return;
+      makeEditable(td, row);
+    });
+
+    async function resetRow(itemId){
+      $("prMsg").textContent = "resetting...";
+      try{
+        const url = new URL(`/sales/pricing/${itemId}/reset`, window.location.origin).toString();
+        const r = await fetch(url, { method: "POST", cache: "no-store" });
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        const updated = await r.json();
+        const idx = PR_STATE.items.findIndex(x => x.item_id === itemId);
+        if (idx >= 0) PR_STATE.items[idx] = updated;
+        PR_DIRTY.delete(itemId);
+        renderPricing();
+        $("prMsg").textContent = "reset";
+        setTimeout(()=> $("prMsg").textContent="", 1200);
+      }catch(err){
+        console.error(err);
+        $("prMsg").textContent = "error";
+        setTimeout(()=> $("prMsg").textContent="", 1500);
+      }
+    }
+
+    let searchTimer;
+    const doSearch = ()=>{
+      const term = $("prSearch").value.trim();
+      loadPricing(1, term);
+    };
+    $("prSearch").addEventListener("input", ()=>{
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(doSearch, 300);
+    });
+    $("prSearchBtn").addEventListener("click", doSearch);
+    $("prPrev").addEventListener("click", ()=> loadPricing(Math.max(1, PR_STATE.page-1), PR_STATE.search));
+    $("prNext").addEventListener("click", ()=>{
+      const totalPages = Math.max(1, Math.ceil(PR_STATE.total / PR_STATE.limit));
+      const next = Math.min(totalPages, PR_STATE.page+1);
+      loadPricing(next, PR_STATE.search);
+    });
+
+    async function saveAllDirty(){
+      if (PR_DIRTY.size === 0) return;
+      $("prMsg").textContent = "saving...";
+      try{
+        for (const [itemId, fields] of PR_DIRTY.entries()){
+          for (const [fieldKey, val] of Object.entries(fields)){
+            const field = prFieldMap[fieldKey];
+            if (!field) continue;
+            const body = { field, value: val };
+            const url = new URL(`/sales/pricing/${itemId}`, window.location.origin).toString();
+            const r = await fetch(url, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+              cache: "no-store",
+            });
+            if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+            const updated = await r.json();
+            const idx = PR_STATE.items.findIndex(x => x.item_id === itemId);
+            if (idx >= 0) PR_STATE.items[idx] = updated;
+          }
+        }
+        PR_DIRTY.clear();
+        renderPricing();
+        $("prMsg").textContent = "saved";
+        $("prStatus").textContent = "Saved";
+        $("prStatus").classList.remove("warning");
+        $("prStatus").classList.add("success");
+        setTimeout(()=> { $("prStatus").textContent=""; $("prStatus").classList.remove("success"); $("prMsg").textContent=""; }, 1500);
+      }catch(e){
+        console.error(e);
+        $("prMsg").textContent = "error";
+        setTimeout(()=> $("prMsg").textContent="", 1500);
+      }
+    }
+    $("prSave").addEventListener("click", saveAllDirty);
+
+    function renderReportSortArrows(){
+      document.querySelectorAll("[data-arrow]").forEach(span=>{
+        const field = span.dataset.arrow;
+        if (field === RP_STATE.sort_by){
+          span.textContent = RP_STATE.order === "asc" ? "▲" : "▼";
+          span.style.opacity = "1";
+        }else{
+          span.textContent = "↕";
+          span.style.opacity = "0.6";
+        }
+      });
+    }
+
+    function renderReports(){
+      const tbody = $("rpRows");
+      tbody.innerHTML = "";
+      for (const r of RP_STATE.items){
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>
+            <div class="stack-vertical">
+              <strong>${r.item_name}</strong>
+              <span class="muted">${r.sku}</span>
+            </div>
+          </td>
+          <td class="num">${fmtMoney(r.cost)}</td>
+          <td class="num"><span class="${marginBadgeClass(r.margin_pct)}">${fmtPct(r.margin_pct)}</span></td>
+          <td class="num">${fmtMoney(r.margin_usd)}</td>
+          <td class="num">${fmtMoney(r.fees_usd)}</td>
+          <td class="num">${fmtMoney(r.selling_price)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      const totalPages = Math.max(1, Math.ceil(RP_STATE.total / RP_STATE.limit));
+      $("rpPage").textContent = `Page ${RP_STATE.page} / ${totalPages}`;
+      $("rpPrev").disabled = RP_STATE.page <= 1;
+      $("rpNext").disabled = RP_STATE.page >= totalPages;
+      renderReportSortArrows();
+    }
+
+    async function loadReports(page=1, opts={}){
+      $("rpMsg").textContent = "loading...";
+      const sort_by = opts.sort_by ?? RP_STATE.sort_by;
+      const order = opts.order ?? RP_STATE.order;
+      const search = opts.search ?? RP_STATE.search;
+      try{
+        const data = await apiGet("/sales/reports", {
+          page,
+          limit: RP_STATE.limit,
+          sort_by,
+          order,
+          search: search || undefined,
+        });
+        RP_STATE = { ...RP_STATE, ...data, search: search || "" };
+        renderReports();
+        $("rpMsg").textContent = "";
+      }catch(e){
+        console.error(e);
+        $("rpMsg").textContent = "error";
+      }
+    }
+
+    let rpSearchTimer;
+    const doReportSearch = ()=>{
+      const term = $("rpSearch").value.trim();
+      loadReports(1, { search: term });
+    };
+    $("rpSearch").addEventListener("input", ()=>{
+      clearTimeout(rpSearchTimer);
+      rpSearchTimer = setTimeout(doReportSearch, 300);
+    });
+    $("rpSearchBtn").addEventListener("click", doReportSearch);
+    $("rpPrev").addEventListener("click", ()=> loadReports(Math.max(1, RP_STATE.page - 1)));
+    $("rpNext").addEventListener("click", ()=>{
+      const totalPages = Math.max(1, Math.ceil(RP_STATE.total / RP_STATE.limit));
+      const next = Math.min(totalPages, RP_STATE.page + 1);
+      loadReports(next);
+    });
+    $("rpHead").addEventListener("click", (e)=>{
+      const th = e.target.closest("th[data-sort]");
+      if (!th) return;
+      const field = th.dataset.sort;
+      let nextOrder = "asc";
+      if (RP_STATE.sort_by === field && RP_STATE.order === "asc") nextOrder = "desc";
+      loadReports(1, { sort_by: field, order: nextOrder });
+    });
+
+    await initApi();
+    const hash = (location.hash || "").replace("#","");
+    if (hash === "pricing") showTab("pricing");
+    else if (hash === "reports") showTab("reports");
+    else showTab("config");
+  </script>
+
+  <script type="module" src="/ui/assets/nav.js"></script>
+</body>
+</html>
+

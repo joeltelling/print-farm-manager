@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>acres-erp — Manufacturing · Components</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="/ui/assets/nav.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Manufacturing → Components</h1>
+
+    <!-- ===== Tarjeta: New / Update recipe ===== -->
+    <div class="card">
+      <h2>New / Update recipe</h2>
+
+      <div class="form-grid-3">
+        <div>
+          <label for="sku">SKU (componente manufacturable)</label>
+          <input class="input" id="sku" placeholder=" ">
+        </div>
+        <div>
+          <label for="name">Name</label>
+          <input class="input" id="name" placeholder=" ">
+        </div>
+      </div>
+
+      <div class="form-grid-3">
+        <div>
+          <label for="machine">Machine / Recurso</label>
+          <!-- Now: dynamic select sourced from /mfg/machines -->
+          <select class="input" id="machine"></select>
+        </div>
+        <div>
+          <label for="std_minutes">Std time (minutes per unit)</label>
+          <input class="input" id="std_minutes" type="number" step="0.001" value="0.000">
+        </div>
+      </div>
+
+      <div class="form-grid-3">
+        <div>
+          <label for="raw_sku">RAW_MAT (SKU)</label>
+          <select class="input" id="raw_sku"></select>
+        </div>
+        <div>
+          <label for="raw_qty_per_unit">RAW qty / unit (display UOM del RAW)</label>
+          <input class="input" id="raw_qty_per_unit" type="text" inputmode="decimal" pattern="^-?\\d*(\\.\\d+)?$" placeholder="0.00">
+        </div>
+      </div>
+
+      <div class="hstack">
+        <button class="btn" id="btnSave">Save</button>
+        <span id="msg" class="pill" aria-live="polite"></span>
+      </div>
+
+      <div class="pill" id="raw_info"></div>
+    </div>
+
+    <!-- ===== Tarjeta: List ===== -->
+    <div class="card">
+      <div class="hstack space-between">
+        <h2>List</h2>
+        <div class="hstack">
+          <input class="input" id="search" placeholder="Filter by SKU/Name">
+          <button class="btn" id="refresh">Refresh</button>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Name</th>
+            <th>Machine</th>
+            <th>Std min</th>
+            <th>RAW SKU</th>
+            <th>RAW qty/unit</th>
+            <th>Mat. $/unit</th>
+            <th>Time $/unit</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initApi, apiGet, apiPost } from "./js/api.js";
+
+    const $ = (id)=>document.getElementById(id);
+    const setMsg = (t)=> $("msg").textContent = t || "";
+    const norm = s => String(s ?? "").trim();
+    const normLower = s => norm(s).toLowerCase();
+    const asArray = maybe => Array.isArray(maybe) ? maybe : (maybe?.rows ?? []);
+    const fmt3 = (n)=> Number(n||0).toFixed(3);
+    const fmt4 = (n)=> Number(n||0).toFixed(4);
+    const USD  = (n)=> Number(n||0).toFixed(4);
+    let DECIMALS = 2; // configurable desde backend (/config/ui)
+
+    // ===== Caches =====
+    let UOM_BY_CODE = new Map();  // code -> {code, dimension, is_base, factor_to_base}
+    let ITEM_BY_ID  = new Map();  // id  -> item
+    let ITEM_BY_SKU = new Map();  // sku -> item
+    let MACHINES    = [];         // /mfg/machines
+    let WH_BY_ID    = new Map();  // id -> warehouse
+    let RAW_CODES   = new Set();  // RAW warehouse codes
+    let COST_BY_SKU = new Map();  // sku -> unit_cost (WAC) in source UOM (usually purchasing/base)
+    let LAST_ROWS = [];           // last fetched list for quick edit
+
+    // ===== Helpers de warehouses/stock =====
+    function looksLikeRaw(code){
+      const c = (code||"").toLowerCase();
+      return /^(raw(_?mat)?|rm|raw[-\s]?materials?|materia\s*prima|mp)$/.test(c) || c.startsWith("raw");
+    }
+    function getWarehouseCode(row){
+      if (row.warehouse_code) return normLower(row.warehouse_code);
+      if (typeof row.warehouse === "string"){
+        for (const sep of [" — ", " – ", " - "]) {
+          const i = row.warehouse.indexOf(sep);
+          if (i !== -1) return normLower(row.warehouse.slice(0, i));
+        }
+        return normLower(row.warehouse.replace(/\s*[—–-]\s*.*/, ""));
+      }
+      if (row.warehouse && typeof row.warehouse === "object" && row.warehouse.code){
+        return normLower(row.warehouse.code);
+      }
+      if (row.warehouse_id){
+        const w = WH_BY_ID.get(Number(row.warehouse_id));
+        if (w?.code) return normLower(w.code);
+      }
+      return "";
+    }
+
+    // ===== Loaders =====
+    async function loadUOMs(){
+      const list = asArray(await apiGet("/uom")) || [];
+      UOM_BY_CODE = new Map(list.map(u => [u.code, u]));
+    }
+
+    async function loadWarehouses(){
+      const list = asArray(await apiGet("/warehouses")) || [];
+      WH_BY_ID.clear();
+      for (const w of list) WH_BY_ID.set(Number(w.id), w);
+      RAW_CODES = new Set(list.map(w => w.code).filter(looksLikeRaw).map(c => c.toLowerCase()));
+    }
+
+    async function fetchAllItems(){
+      const out=[]; let offset=0, batch=[];
+      do {
+        batch = asArray(await apiGet("/items", { limit: 200, offset })) || [];
+        out.push(...batch); offset += batch.length;
+      } while (batch.length === 200);
+      return out;
+    }
+    async function loadItems(){
+      const items = await fetchAllItems();
+      ITEM_BY_ID  = new Map(items.map(i => [i.id,  i]));
+      ITEM_BY_SKU = new Map(items.map(i => [i.sku, i]));
+    }
+
+    async function loadMachines(){
+      try{
+        MACHINES = asArray(await apiGet("/mfg/machines", { limit: 1000, offset: 0 })) || [];
+      }catch{ MACHINES = []; }
+      const sel = $("machine"); sel.innerHTML = "";
+      const list = MACHINES.map(m => m.machine).filter(Boolean).sort((a,b)=>a.localeCompare(b));
+      if (!list.length){
+        const o=document.createElement("option");
+        o.value=""; o.textContent="(no machines defined)";
+        sel.appendChild(o);
+      }else{
+        for (const m of list){
+          const o=document.createElement("option");
+          o.value=m; o.textContent=m;
+          sel.appendChild(o);
+        }
+      }
+    }
+
+    // Carga inventario y llena select RAW
+    async function loadInventoryInfoAndFillRawSelect(){
+      const stockResp = await apiGet("/inventory/stock") || [];
+      const stock = asArray(stockResp);
+
+      const rows = stock.filter(r => {
+        const code = getWarehouseCode(r);
+        return RAW_CODES.size ? RAW_CODES.has(code) : looksLikeRaw(code);
+      });
+
+      // 1) selector RAW_SKU
+      const rawSkus = new Set(rows.map(r => norm(r.sku)).filter(Boolean));
+      const sel = $("raw_sku"); sel.innerHTML = "";
+      const skus = [...rawSkus].sort((a,b)=>a.localeCompare(b));
+      if (!skus.length){
+        const o=document.createElement("option");
+        o.value=""; o.textContent="(no SKUs in RAW warehouses)";
+        sel.appendChild(o);
+      }else{
+        for (const sku of skus){
+          const it = ITEM_BY_SKU.get(sku);
+          const o = document.createElement("option");
+          o.value = sku;
+          o.textContent = it
+            ? `${sku} — ${it.name||""}${it.display_uom_code ? " ("+it.display_uom_code+")" : ""}`
+            : sku;
+          sel.appendChild(o);
+        }
+      }
+
+      // info visible del RAW
+      setRawInfo($("raw_sku").value);
+    }
+
+    function setRawInfo(sku){
+      const it = ITEM_BY_SKU.get(sku);
+      $("raw_info").textContent = it ? (it.name + " — " + (it.display_uom_code || "")) : "";
+    }
+
+    async function computeCosts(rawSku, rawQtyPerUnit, stdMinutes, machine){
+      if (!rawSku) return { material_cost_per_unit: 0, time_cost_per_unit: 0 };
+      try{
+        return await apiPost("/mfg/calculate-component-cost", {
+          raw_sku: rawSku,
+          raw_qty_per_unit: Number(rawQtyPerUnit || 0),
+          std_minutes: Number(stdMinutes || 0),
+          machine: machine || null
+        });
+      }catch(e){
+        console.error("cost calc failed", e);
+        return { material_cost_per_unit: 0, time_cost_per_unit: 0 };
+      }
+    }
+
+    // ===== Listado + costos =====
+    async function refreshList(){
+      const q = $("search").value.trim() || undefined;
+      const data = asArray(await apiGet("/mfg/components", { q, limit: 200, offset: 0 })) || [];
+      LAST_ROWS = data;
+      const tbody = $("rows"); tbody.innerHTML = "";
+
+      for (const r of data){
+        const rawIt = ITEM_BY_ID.get(r.raw_item_id);
+        const rawSku = r.raw_sku || (rawIt ? rawIt.sku : null);
+
+        const stdMin = Number(r.std_minutes || 0);
+        const costResp = await computeCosts(rawSku, r.raw_qty_per_unit, stdMin, r.machine);
+        const matCost = Number(costResp.material_cost_per_unit || 0);
+        const timeCost = Number(costResp.time_cost_per_unit || 0);
+        const rawQty = r.raw_qty_per_unit;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.sku}</td>
+          <td>${r.name ?? ""}</td>
+          <td>${r.machine ?? ""}</td>
+          <td>${fmt3(stdMin)}</td>
+          <td>${rawSku ?? (rawIt ? rawIt.sku : ("#"+r.raw_item_id))}</td>
+          <td>${fmtQty(rawQty)}</td>
+          <td>${matCost ? USD(matCost) : "-"}</td>
+          <td>${timeCost ? USD(timeCost) : "-"}</td>
+        `;
+        tr.style.cursor = "pointer";
+        tr.addEventListener("click", ()=> fillFormFromRow(r));
+        tbody.appendChild(tr);
+      }
+    }
+
+    function fillFormFromRow(r){
+      $("sku").value = r.sku ?? "";
+      $("name").value = r.name ?? "";
+      $("machine").value = r.machine ?? "";
+      $("std_minutes").value = r.std_minutes != null ? String(r.std_minutes) : "";
+      $("raw_qty_per_unit").value = r.raw_qty_per_unit != null ? String(r.raw_qty_per_unit) : "";
+      setRawInfo(r.raw_sku || "");
+      setMsg("");
+    }
+
+    // ===== Eventos =====
+    $("raw_sku").addEventListener("change", (e)=> setRawInfo(e.target.value));
+    $("refresh").addEventListener("click", refreshList);
+
+    $("btnSave").addEventListener("click", async ()=>{
+      try{
+        setMsg("saving...");
+        const raw_sku = $("raw_sku").value.trim();
+        const it = ITEM_BY_SKU.get(raw_sku);
+        if(!raw_sku || !it) throw new Error("Invalid RAW_MAT SKU (not in Inventory)");
+
+        const rawQtyTxt = ($("raw_qty_per_unit").value || "").trim();
+        const rawQtyNum = Number(rawQtyTxt || "0");
+        if (!rawQtyTxt || !Number.isFinite(rawQtyNum)) throw new Error("Invalid RAW qty");
+
+        const body = {
+          sku: $("sku").value.trim(),
+          name: $("name").value.trim(),
+          machine: $("machine").value || null,  // from machine select
+          std_minutes: Number($("std_minutes").value || "0"),
+          raw_item_id: Number(it.id),
+          raw_qty_per_unit: rawQtyTxt  // preservar texto exacto (punto decimal)
+        };
+        if(!body.sku || !body.name) throw new Error("SKU and Name are required");
+
+        await apiPost("/mfg/components", body);
+        setMsg("ok");
+        await refreshList();
+      }catch(e){
+        alert("Error: " + (e.message || e));
+        setMsg("error");
+      }finally{
+        setTimeout(()=> setMsg(""), 1500);
+      }
+    });
+
+    async function loadUiConfig(){
+      try{
+        const cfg = await apiGet("/config/ui");
+        const d = Number(cfg?.decimals_display);
+        DECIMALS = Number.isFinite(d) && d >= 0 ? d : 2;
+      }catch{
+        DECIMALS = 2;
+      }
+    }
+
+    function fmtQty(value){
+      if (value === null || value === undefined || value === "") return "";
+      const num = Number(value);
+      if (!Number.isFinite(num)) return String(value);
+      if (DECIMALS === 0) return num.toString();
+      return num.toFixed(DECIMALS);
+    }
+
+    // ===== init =====
+    await initApi();
+    await loadUiConfig();
+    await loadUOMs();                      // 🔸 ahora cargamos UOMs para poder convertir costos
+    await loadWarehouses();                // detectar RAW_CODES
+    await loadItems();                     // para nombres/UOM
+    await loadMachines();                  // llena select y RATE_BY_MACHINE
+    await loadInventoryInfoAndFillRawSelect(); // llena combo RAW + WAC
+    await refreshList();
+  </script>
+
+  <script type="module" src="/ui/assets/nav.js"></script>
+</body>
+</html>

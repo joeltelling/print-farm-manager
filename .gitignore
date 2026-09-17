@@ -10,3 +10,10 @@ dist/
 !.claude/skills/
 *.docx
 server/data/backups/
+erp/.venv/
+erp/venv/
+erp/**/__pycache__/
+erp/**/*.pyc
+erp/.env
+tools/ERP-BackUp/.venv/
+tools/ERP-BackUp/venv/

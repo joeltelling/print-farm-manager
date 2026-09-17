@@ -1,0 +1,281 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap');
+
+@property --coma-boot-fill {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+.coma-boot {
+  --bg: #07070a;
+  --surface: #121218;
+  --ink: #f4f4f5;
+  --muted: #a1a1aa;
+  --line: #23232e;
+  --resin: #7c3aed;
+  --crema: #a3e635;
+  --cup: #18181f;
+  --saucer: #2e2e3a;
+  --acc: #8b5cf6;
+  --ok: #a3e635;
+  --shadow: rgba(0, 0, 0, 0.55);
+  --dur: 2.8s;
+  --serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: clamp(1.25rem, 5vw, 4rem);
+  background:
+    radial-gradient(90% 55% at 50% 0%, rgba(139, 92, 246, 0.22), transparent 58%),
+    radial-gradient(70% 45% at 80% 100%, rgba(163, 230, 53, 0.08), transparent 50%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  opacity: 1;
+  transition: opacity 0.45s ease;
+}
+
+.coma-boot.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.coma-boot,
+.coma-boot *,
+.coma-boot *::before,
+.coma-boot *::after {
+  box-sizing: border-box;
+}
+
+.coma-boot__card {
+  position: relative;
+  inline-size: min(22.5rem, 100%);
+  padding: 1.9rem 1.5rem 1.4rem;
+  display: grid;
+  justify-items: center;
+  gap: 1.15rem;
+  text-align: center;
+  border-radius: 1.6rem;
+  background: linear-gradient(160deg, #121218 0%, #18181f 100%);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 36px 62px -36px var(--shadow);
+}
+
+.coma-boot__stage {
+  position: relative;
+  inline-size: 9rem;
+  block-size: 9.5rem;
+  display: grid;
+  place-items: end center;
+}
+
+.coma-boot__head {
+  position: absolute;
+  inset-block-start: 0;
+  inline-size: 3.4rem;
+  block-size: 1.1rem;
+  border-radius: 0.3rem 0.3rem 0.5rem 0.5rem;
+  background: linear-gradient(180deg, #3f3f46, #18181b);
+  display: flex;
+  justify-content: center;
+  gap: 0.9rem;
+  align-items: flex-end;
+}
+
+.coma-boot__head i {
+  inline-size: 0.3rem;
+  block-size: 0.28rem;
+  border-radius: 0 0 999px 999px;
+  background: #09090b;
+}
+
+.coma-boot__pour {
+  position: absolute;
+  inset-block-start: 1.1rem;
+  inline-size: 0.26rem;
+  block-size: 2.5rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #c4b5fd, var(--resin));
+  transform-origin: 50% 0;
+  scale: 1 0;
+  animation: coma-boot-pour var(--dur) cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes coma-boot-pour {
+  0% { scale: 1 0; }
+  10%, 60% { scale: 1 1; }
+  72%, 100% { scale: 1 0; }
+}
+
+.coma-boot__cup {
+  position: relative;
+  inline-size: 5rem;
+  block-size: 4rem;
+  margin-block-end: 0.75rem;
+  overflow: hidden;
+  border-radius: 0.5rem 0.5rem 2.2rem 2.2rem / 0.5rem 0.5rem 1.8rem 1.8rem;
+  background: linear-gradient(180deg, #22222b, var(--cup));
+  box-shadow: 0 12px 22px -14px rgba(0, 0, 0, 0.7), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.coma-boot__liquid {
+  position: absolute;
+  inset: 0.28rem 0.3rem 0.1rem;
+  border-radius: 0.3rem 0.3rem 2rem 2rem / 0.3rem 0.3rem 1.6rem 1.6rem;
+  background: linear-gradient(
+    to top,
+    var(--resin) 0 var(--coma-boot-fill, 62%),
+    var(--crema) var(--coma-boot-fill, 62%),
+    transparent calc(var(--coma-boot-fill, 62%) + 7%)
+  );
+  animation: coma-boot-fill var(--dur) ease-in-out infinite;
+}
+
+@keyframes coma-boot-fill {
+  0% { --coma-boot-fill: 4%; }
+  66%, 88% { --coma-boot-fill: 88%; }
+  100% { --coma-boot-fill: 4%; }
+}
+
+.coma-boot__handle {
+  position: absolute;
+  inset-inline-end: -1.35rem;
+  inset-block-start: 0.7rem;
+  inline-size: 1.5rem;
+  block-size: 1.7rem;
+  border: 0.34rem solid #2a2a33;
+  border-inline-start-color: transparent;
+  border-radius: 0 999px 999px 0;
+}
+
+.coma-boot__saucer {
+  position: absolute;
+  inset-block-end: 0;
+  inline-size: 6.8rem;
+  block-size: 0.55rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #3f3f46, var(--saucer));
+}
+
+.coma-boot__steam {
+  position: absolute;
+  inset-block-end: 5.1rem;
+  inline-size: 0.7rem;
+  block-size: 1rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(196, 181, 253, 0.55), transparent);
+  filter: blur(4px);
+  opacity: 0;
+  animation: coma-boot-steam 3s ease-out infinite;
+  animation-delay: var(--d);
+}
+
+@keyframes coma-boot-steam {
+  0% { opacity: 0; translate: 0 0; scale: 0.6 0.5; }
+  32% { opacity: 0.55; }
+  100% { opacity: 0; translate: var(--dx) -3.2rem; scale: 1.6 2.4; }
+}
+
+.coma-boot__copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.coma-boot__label {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.55rem;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+.coma-boot__ready {
+  display: none;
+}
+
+.coma-boot__meta {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.coma-boot__track {
+  inline-size: 100%;
+  block-size: 0.35rem;
+  border-radius: 999px;
+  background: rgba(244, 244, 245, 0.08);
+  overflow: hidden;
+}
+
+.coma-boot__fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  inline-size: var(--coma-boot-fill, 62%);
+  background: linear-gradient(90deg, var(--acc), var(--crema));
+  animation: coma-boot-fill var(--dur) ease-in-out infinite;
+}
+
+.coma-boot.is-ready .coma-boot__pour,
+.coma-boot.is-ready .coma-boot__liquid,
+.coma-boot.is-ready .coma-boot__fill {
+  animation: none;
+}
+
+.coma-boot.is-ready .coma-boot__pour {
+  scale: 1 0;
+}
+
+.coma-boot.is-ready .coma-boot__liquid {
+  --coma-boot-fill: 88%;
+}
+
+.coma-boot.is-ready .coma-boot__fill {
+  inline-size: 100%;
+  background: var(--ok);
+  box-shadow: 0 0 18px rgba(163, 230, 53, 0.35);
+}
+
+.coma-boot.is-ready .coma-boot__load {
+  display: none;
+}
+
+.coma-boot.is-ready .coma-boot__ready {
+  display: inline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coma-boot * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .coma-boot__liquid {
+    --coma-boot-fill: 72%;
+  }
+
+  .coma-boot__pour {
+    scale: 1 1;
+  }
+
+  .coma-boot__steam {
+    opacity: 0.3;
+    translate: var(--dx) -1.6rem;
+    scale: 1.2 1.6;
+  }
+
+  .coma-boot.is-leaving {
+    transition: none;
+  }
+}

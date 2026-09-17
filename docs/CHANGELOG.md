@@ -2,6 +2,97 @@
 
 ---
 
+## 2026-09-17: Machine rates show USD/h plus linked printer fields
+
+Acres machine masters only store a name and an hourly rate (USD/h), plus active flag. CoMa already had that and the seeded LABOR rate. The rates UI looked thin because linked printers only showed a numeric `printer_id`. GET `/api/erp/mfg/machines` (and shared machines) now join the shopfloor printer so the Machine Rates page and Manufacturing dashboard show USD/h prominently along with printer name, model, and status. Form labels match Acres (`Hourly rate (USD/h)`), with a datalist of known machine names.
+
+### Changes
+- `server/erp/index.js`: machine list/upsert returns `printer_name`, `printer_model`, `printer_status`, `printer_is_active`.
+- `server/routes/shared.js`: shared machines join the same printer fields.
+- `client/src/pages/erp/modules.jsx`: Machine Rates and Manufacturing dashboard highlight USD/h and linked printer data.
+- `docs/api.md`, `server/tests/erp-embedded.test.js`: contract and sync+rate enrichment coverage.
+
+## 2026-09-17: ERP UI parity, manufacturing/sales dashboards, operator posting queue
+
+Closed the remaining Acres UI gaps inside CoMa styling: inventory warehouse charts, numeric display helpers matching Acres `us.js`, restored catalog/WO/component columns, BOM inline qty with three-line cost footer and estimate markers, sales margin badges, header sort, Enter/Escape pricing edits, and live sales-order totals. Navigation is grouped (Dashboard, Inventory, Manufacturing, Sales).
+
+Acres never finished manufacturing or sales dashboards; CoMa now ships both as native pages that cross ERP costing with shopfloor utilization and finished-goods stock.
+
+The shopfloor-to-ERP bridge is no longer a stub. Set Ready and `POST /api/bridge/units-completed` enqueue an idempotent `erp_posting` row (unique `job_id`). Operators confirm stock moves on `/erp/postings`. Shortage can be acknowledged explicitly because the plastic was already used on the printer. **No posting path changes `parts.completed_qty`.** `GET /wo` now filters `q` in SQL before LIMIT. Component cost estimates keep CoMa's scrap multiplier (documented as a deliberate improvement over Acres).
+
+### Changes
+- `server/erp/postings.js`, `server/erp/schema.js`, `server/erp/index.js`, `server/erp/costing.js`: posting queue, WO SQL filter, BOM `is_estimate`, dashboard `pending_postings`.
+- `server/index.js`, `server/routes/bridge.js`: Set Ready / batch / bridge enqueue pending postings only.
+- `server/routes/backup.js`, `server/tests/backup-restore.test.js`: include `erp_posting` in export/restore.
+- `client/src/pages/erp/*`, `App.jsx`: grouped nav, charts, dashboards, postings UI, format helpers, sales polish.
+- `server/tests/erp-postings.test.js`, `server/tests/erp-embedded.test.js`: posting idempotency, confirm/dismiss/shortage, WO filter, bridge pending row.
+- `docs/erp/README.md`, `docs/api.md`, `docs/database.md`, `docs/web-app.md`: contracts and operator flow.
+
+## 2026-09-17: Close embedded ERP parity and E2E workflow
+
+Completed the Acres reference audit and closed the remaining Express/React gaps without adding a runtime dependency or a Python process. The verified workflow now covers shopfloor sync, raw receipt, manufacturing component cost, BOM, transactional WO completion, finished-good sale, and complete CSV/PDF reporting. Existing shopfloor route behavior remains available when routes are mounted without the ERP schema, and no bridge or ERP path changes `parts.completed_qty`.
+
+The real seed-database check exposed an older-schema sync failure because `filament_colors.hex` was selected even though it was unused. Sync now works with those databases and keeps raw-material reminders visible across later runs. PDF reports add pages instead of dropping rows after the first 55. Printable pick lists generate their QR locally, avoiding the Acres behavior that sent an internal completion URL to a third-party QR service.
+
+A final no-regression audit found that the JSON backup still exported only the original shopfloor tables. Restoring it would therefore lose the embedded ERP domain even though both systems use the same SQLite file. Export and restore now round-trip all 15 ERP tables, validate the ERP section before mutation, preserve ERP when loading a legacy shopfloor-only backup, and expose that coverage in Settings. The same audit found a remaining `filament_colors.hex` assumption in the shared materials route; it now reads both historical `hex` and current `hex_color` schemas without returning 500.
+
+The closing destination audit found that a work order displayed its selected warehouse and location but completion always received the finished stock into `fin_good`. Completion now honors both selected fields and rejects a location from another warehouse. A successful raw-material receipt also clears its stale `Needs ERP data` reminder, including after later syncs.
+
+### Changes
+- `server/erp/index.js`, `server/erp/pdf.js`, `server/erp/sync.js`: stronger validation, pagination parity, complete CSV/PDF exports, old-filament-schema sync, and persistent needs-data entries.
+- `server/routes/projects.js`, `server/routes/parts.js`: preserve standalone shopfloor route compatibility while returning optional ERP links.
+- `client/src/pages/erp/modules.jsx`, `sales.jsx`, `shared.jsx`, `qr.js`: complete CoMa ERP workflows, local QR/pick list, responsive tables/forms, toasts, and destructive confirmations.
+- `start.sh`: replace the Python process wrapper with Linux `setsid`; runtime remains Express+Vite only.
+- `server/routes/backup.js`, `client/src/pages/Settings.jsx`: one complete CoMa backup for shopfloor and ERP, with backward-compatible restore behavior.
+- `server/routes/shared.js`: make shared filament colors compatible with both historical and current color column names.
+- `server/erp/index.js`, `server/erp/sync.js`: honor WO receipt destinations, validate location ownership and nonnegative receive costs, and resolve received raw-material reminders.
+- `server/routes/projects.js`, `server/routes/parts.js`, `client/src/pages/Projects.jsx`: reject invalid sourcing before creating shopfloor records, retain standalone route compatibility, and surface create failures instead of showing false success.
+- `server/tests/erp-embedded.test.js`, `server/tests/backup-restore.test.js`: ERP workflow, receipt idempotency/location checks, old-schema sync, multipage PDF, and full ERP backup round-trip regression coverage.
+- `docs/erp/README.md`, `docs/api.md`, `docs/web-app.md`, `docs/installation.md`: parity matrix, endpoint contracts, UI workflows, and Node-only runtime details.
+
+## 2026-09-16: ERP dashboard + shopfloor master sync (product/project, component/part)
+
+Replaced ERP Overview with a live Dashboard. Printers, projects, parts, and filaments auto-link into ERP machines/products/components/raw. Each product and component is manufactured or outsource. Shopfloor create forms ask for ERP sourcing.
+
+### Changes
+- `server/erp/sync.js`, `server/erp/schema.js`, `server/erp/index.js`: dashboard, sync, item_role/sourcing links.
+- `server/routes/shared.js`, `projects.js`, `parts.js`: shared masters + create-time sync/sourcing.
+- `client/src/pages/erp/*`, `App.jsx`, `Projects.jsx`: Dashboard UI, product/component labels, sourcing fields.
+- `server/tests/erp-embedded.test.js`, `docs/erp/README.md`, `docs/web-app.md`, `docs/api.md`: coverage.
+
+## 2026-09-16: Full Acres ERP parity in CoMa (Node + React only)
+
+Operator ERP is complete in Express and CoMa React: manufacturing components, component cost estimate, advanced BOM cost (UOM + MFG fallback), locations, inventory dashboard, work-order location/QR complete, sales pricing reset, sales orders with stock depletion, and sales history CSV/PDF. No Python runtime.
+
+
+### Changes
+- `server/erp/index.js`, `server/erp/costing.js`, `server/erp/pdf.js`: full `/api/erp` surface.
+- `client/src/pages/Erp.jsx`, `client/src/pages/erp/*`, `client/src/App.jsx`: CoMa UI for every ERP module.
+- `server/tests/erp-embedded.test.js`: parity smoke (components, WO, sales, CSV/PDF).
+- `docs/erp/README.md`, `docs/api.md`, `docs/web-app.md`: full module map.
+
+## 2026-09-16: Embedded Acres ERP in CoMa (one DB, two processes)
+
+Acres ERP runs inside the CoMa Express process against the same SQLite dataset as shopfloor. React ERP screens use the CoMa dark theme (no Acres HTML UI). Dev still uses only Express + Vite. Existing shopfloor data is preserved; ERP tables are created additively.
+
+### Changes
+- `server/erp/schema.js`, `server/erp/index.js`: ERP schema + REST under `/api/erp`.
+- `server/db.js`, `server/routes/parts.js`, `server/routes/shared.js`, `server/routes/bridge.js`: shared DB hooks, `parts.erp_sku`, bridge stub.
+- `server/index.js`: mount embedded ERP (uvicorn proxy removed).
+- `client/src/pages/Erp.jsx`, `client/src/App.jsx`: CoMa-styled ERP modules and nav.
+- `start.sh`, `stop.sh`: no separate ERP process.
+- `docs/erp/README.md`, `docs/web-app.md`, `docs/README.md`, `docs/installation.md`, `docs/api.md`: architecture and endpoint notes.
+- `erp/`: Acres source kept as reference only.
+
+## 2026-09-16: Session boot splash
+
+First entry into a browser tab session shows a full-screen CoMa boot animation (shopfloor copy, violet/lime resin pour on the dark CoMa palette). SPA navigations do not remount it; `sessionStorage` skips repeats for the same tab. Demo theme/done chrome from the source animation is omitted.
+
+### Changes
+- `client/src/components/BootSplash.jsx`, `client/src/components/BootSplash.css`: session splash.
+- `client/src/App.jsx`: mount splash once per session.
+- `docs/web-app.md`: boot splash note.
+
 ## 2026-09-16: Retire operator-facing "Farm" wording
 
 Operator UI and surface docs now say shopfloor / manufacturing / site instead of "Farm", matching the ERP-first product shape. Internal setting key `farm_name` is unchanged. Backup download filename is `shopfloor-backup-YYYY-MM-DD.json` (older `farm-backup-*.json` files still restore).

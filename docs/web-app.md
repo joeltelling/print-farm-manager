@@ -4,7 +4,7 @@
 
 The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The production build is installable as a PWA (manifest + service worker). The app provides:
 
-- **ERP Overview:** placeholder for the production ERP (catalog, inventory, costing, invoices). Architecture lives in [erp/README.md](erp/README.md). No ERP API yet.
+- **ERP Dashboard:** CoMa ERP command center at `/erp` (KPIs, shopfloor sync, needs-data queue, pending postings). Modules: Products & components (product=project, component=part; manufactured/outsource), Locations, Inventory (charts), Manufacturing dashboard, Machines, Mfg Components, BOM, Work Orders, QR complete, Postings queue, Sales dashboard. Full `/api/erp` on the same Express process and SQLite file. Legacy Acres HTML is not served.
 - **Dashboard:** CoMa command center: KPI cards, utilization donut, parts-per-hour bars, clickable fleet grid, active projects, and a Needs Attention queue
 - **Fleet page** — live grid of all active printers with status, filterable and searchable
 - **Printers page** — searchable directory of all printers (active and decommissioned); click any row to open the detail view
@@ -13,7 +13,11 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 
-Nav is grouped into **ERP** (Overview) and **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs), with Settings below.
+Nav is grouped into **ERP** (Dashboard and ERP modules) and **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs), with Settings below.
+
+**Boot splash:** on the first entry of a browser tab session, a full-screen CoMa boot animation covers the shell (`BootSplash`, keyed by `sessionStorage` `coma.boot.done`). React Router moves do not remount App, so in-app navigation never re-shows it. A reload in the same tab skips it; a new tab shows it again.
+
+**Shared ERP DB:** Express embeds `/api/erp/*` and `/api/shared/*` on the same dataset SQLite file. React ERP pages use the CoMa theme.
 
 ## Key Files
 
@@ -21,7 +25,12 @@ Nav is grouped into **ERP** (Overview) and **Shopfloor** (Dashboard, Fleet, Prin
 |---|---|
 | `client/src/main.jsx` | React root — mounts `<App />` into `#root` |
 | `client/src/App.jsx` | Layout shell, sectioned sidebar/topbar nav (ERP / Shopfloor), `<Routes>` |
-| `client/src/pages/Erp.jsx` | ERP Overview placeholder (architecture pointer, planned modules) |
+| `client/src/pages/Erp.jsx` | ERP route exports; `/erp` renders the live ERP Dashboard |
+| `client/src/pages/erp/modules.jsx` | Dashboard, postings, manufacturing dashboard, products/components, locations, inventory charts, machines, MFG components, BOM, WO, QR |
+| `client/src/pages/erp/sales.jsx` | Sales dashboard, defaults, pricing (Enter/Escape), order entry with live totals, matrix badges/sort, history exports |
+| `client/src/pages/erp/format.js` | Acres-compatible numeric display helpers |
+| `client/src/pages/erp/qr.js` | Dependency-free local QR SVG generator for printable WO pick lists |
+| `client/src/components/BootSplash.jsx` | Session boot splash (once per tab session; not on in-app navigation) |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
 | `client/src/theme.js` | Shared navy palette and card/input tokens |
@@ -234,7 +243,29 @@ Tabbed layout (`?tab=`): General, Hardware, Materials, Alerts, Backup, About. Mu
 
 **Alerts:** in-memory scheduler notifications (`GET /api/notifications`). Also mirrored by the shell alert bell.
 
-**Backup:** Shopfloor export/restore (printers, projects, jobs, settings). ERP will get its own backup later. See [api.md](api.md).
+**Backup:** one JSON export/restore covers shopfloor, G-code files, settings, and every embedded ERP table in the shared SQLite dataset. Legacy shopfloor-only backups remain accepted and preserve current ERP records. See [api.md](api.md).
+
+## ERP Pages
+
+All ERP pages use the CoMa shell, `theme.js`, inline styles, `useToast`, and `useConfirm`. Tables scroll horizontally on narrow screens and forms use auto-fit grids, so every action remains available at 600 px.
+
+| Route | Operator workflow |
+|---|---|
+| `/erp` | KPIs, shopfloor sync, linked master counts, pending postings, and Needs ERP data reminders |
+| `/erp/postings` | Confirm or dismiss shopfloor postings (stock moves); acknowledge shortage when plastic already used |
+| `/erp/items` | Create/filter products, components, and raw materials; warehouse and UOM columns; set sourcing |
+| `/erp/locations` | Create warehouses and validated `##A##` locations |
+| `/erp/inventory` | Receive by SKU; value-by-warehouse charts; per-warehouse qty/value charts; on-hand total footer |
+| `/erp/manufacturing` | Utilization vs machine rates, open WOs, machines missing rates |
+| `/erp/machines` | Sync printers, filter/edit machine rates, and clear missing-rate reminders |
+| `/erp/components` | Upsert/edit manufacturing components; Mat $/unit and Time $/unit columns |
+| `/erp/bom` | Product+BOM, inline qty edit, three-line cost footer, estimate* marker, deletes |
+| `/erp/wo` | Create from BOM products, warehouse/name columns, complete qty, pick list with local QR |
+| `/erp/qr` | Mobile completion target used by pick-list QR codes |
+| `/erp/sales` | Sales dashboard (revenue, margin, FG stock) plus links to config/pricing/order/reports |
+| `/erp/sales/*` | Defaults, Enter/Escape pricing edits, live order totals, margin badges, header sort, CSV/PDF |
+
+WO completion, sales orders, pricing resets, BOM deletion, BOM-line deletion, and posting confirm/dismiss use the CoMa confirmation modal. User-triggered mutations surface success/error toasts. The QR SVG is generated inside the browser and never sends an internal URL or WO identifier to an external service.
 
 **About:** CoMa / mdwcoder fork credit with GitHub Sponsors CTA; upstream print-farm-manager (Joel) credit and donation links sit behind a collapsed "Original project" disclosure.
 

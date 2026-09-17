@@ -71,7 +71,7 @@ No cloud. No subscriptions. No vendor lock-in.
 
 ## Quick Start (Linux Development)
 
-Requires Linux, Git, Node.js 22 or 23, npm, Python 3, `make`, and a C++ compiler. The [Linux installation guide](docs/installation.md) includes commands for Debian, Ubuntu, Fedora, and RHEL-compatible systems.
+Requires Linux, Git, Node.js 22 or 23, npm, `setsid`, and the native-module build toolchain (Python 3, `make`, and a C++ compiler during dependency installation only). The [Linux installation guide](docs/installation.md) includes commands for Debian, Ubuntu, Fedora, and RHEL-compatible systems. CoMa runtime is Node only: Express serves shopfloor plus the embedded ERP, and Vite provides development hot reload.
 
 ```bash
 git clone https://github.com/mdwcoder/core-manufacturing.git

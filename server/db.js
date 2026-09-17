@@ -112,6 +112,11 @@ try { db.exec('ALTER TABLE gcodes ADD COLUMN required_color TEXT'); } catch (_) 
 try { db.exec('ALTER TABLE projects ADD COLUMN required_material TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE projects ADD COLUMN required_color TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE projects ADD COLUMN allowed_groups TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE parts ADD COLUMN erp_sku TEXT'); } catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_parts_erp_sku ON parts(erp_sku)'); } catch (_) {}
+
+const { ensureErpSchema } = require('./erp/schema');
+ensureErpSchema(db);
 
 // Printer models — source of truth for which models this farm supports.
 // New installs start empty; operator adds models in Settings.

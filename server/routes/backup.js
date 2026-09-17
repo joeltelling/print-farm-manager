@@ -6,6 +6,65 @@ const fs      = require('fs');
 const router   = express.Router();
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
+const ERP_TABLES = [
+  'uom',
+  'warehouse',
+  'location',
+  'item',
+  'machine',
+  'bom',
+  'bom_line',
+  'stock_move',
+  'item_cost',
+  'mfg_component',
+  'work_order',
+  'wo_issue',
+  'wo_labor',
+  'pricing_config',
+  'sales_order',
+  'erp_posting',
+];
+
+const ERP_DELETE_ORDER = [
+  'erp_posting',
+  'sales_order',
+  'wo_labor',
+  'wo_issue',
+  'stock_move',
+  'work_order',
+  'bom_line',
+  'bom',
+  'mfg_component',
+  'item_cost',
+  'machine',
+  'item',
+  'location',
+  'warehouse',
+  'uom',
+  'pricing_config',
+];
+
+const ERP_INSERT_ORDER = [
+  'uom',
+  'warehouse',
+  'location',
+  'item',
+  'machine',
+  'bom',
+  'bom_line',
+  'item_cost',
+  'mfg_component',
+  'work_order',
+  'stock_move',
+  'wo_issue',
+  'wo_labor',
+  'pricing_config',
+  'sales_order',
+  'erp_posting',
+];
+
+const ERP_SEQUENCE_TABLES = ERP_TABLES.filter(table => !['uom', 'item_cost'].includes(table));
+
 // Multer for restore uploads — write to data/ dir, clean up after processing
 const restoreUpload = multer({
   storage: multer.diskStorage({
@@ -60,8 +119,32 @@ function makeInserter(db, table, rows) {
   };
 }
 
+function exportErp(db) {
+  return Object.fromEntries(ERP_TABLES.map(table => [
+    table,
+    db.prepare(`SELECT * FROM ${table}`).all(),
+  ]));
+}
+
+function validateErpBackup(erp) {
+  if (erp === undefined) return null;
+  if (!erp || typeof erp !== 'object' || Array.isArray(erp)) {
+    return 'erp must be an object containing every ERP table';
+  }
+  const missing = ERP_TABLES.filter(table => !Array.isArray(erp[table]));
+  if (missing.length > 0) return `erp is missing table arrays: ${missing.join(', ')}`;
+  return null;
+}
+
+function syncSequence(db, table) {
+  db.prepare(`
+    INSERT OR REPLACE INTO sqlite_sequence (name, seq)
+    VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM ${table}))
+  `).run(table);
+}
+
 module.exports = (db) => {
-  // GET /api/backup — export full shopfloor snapshot as a downloadable JSON bundle
+  // GET /api/backup: export the complete CoMa SQLite domain as a JSON bundle.
   router.get('/', (req, res) => {
     const printers        = db.prepare('SELECT * FROM printers').all();
     const projects        = db.prepare('SELECT * FROM projects').all();
@@ -98,6 +181,7 @@ module.exports = (db) => {
       filament_types,
       filament_colors,
       settings,
+      erp: exportErp(db),
       gcode_files: gcodeFiles,
     };
 
@@ -107,7 +191,7 @@ module.exports = (db) => {
     res.json(backup);
   });
 
-  // POST /api/backup/restore — replace all shopfloor data from a backup JSON file
+  // POST /api/backup/restore: replace all data represented by a backup JSON file.
   router.post('/restore', async (req, res) => {
     let tmpPath = null;
     try {
@@ -125,6 +209,9 @@ module.exports = (db) => {
       if (!backup.version || !Array.isArray(backup.printers)) {
         return res.status(400).json({ error: 'Unrecognised backup format' });
       }
+
+      const erpValidationError = validateErpBackup(backup.erp);
+      if (erpValidationError) return res.status(400).json({ error: erpValidationError });
 
       // Write gcode files to disk before the DB transaction. Reject any key that isn't a
       // bare filename — a crafted key like `../../server/poller.js` would otherwise resolve
@@ -147,8 +234,15 @@ module.exports = (db) => {
       const hasFilamentTypes  = Array.isArray(backup.filament_types);
       const hasFilamentColors = Array.isArray(backup.filament_colors);
       const hasSettings       = Array.isArray(backup.settings);
+      const hasErp            = backup.erp !== undefined;
 
       const restore = db.transaction(() => {
+        // ERP rows are cleared only for backups that contain the complete ERP section.
+        // Older shopfloor-only backups leave existing ERP data untouched.
+        if (hasErp) {
+          for (const table of ERP_DELETE_ORDER) db.prepare(`DELETE FROM ${table}`).run();
+        }
+
         // Delete in FK dependency order
         db.prepare('DELETE FROM printer_events').run();
         db.prepare('DELETE FROM jobs').run();
@@ -179,6 +273,10 @@ module.exports = (db) => {
           setting:        makeInserter(db, 'settings', backup.settings || []),
         };
 
+        const erpStmts = hasErp
+          ? Object.fromEntries(ERP_TABLES.map(table => [table, makeInserter(db, table, backup.erp[table])]))
+          : null;
+
         // printer_models before printers — printers.model refers to it logically
         for (const m of (backup.printer_models || [])) stmts.printer_model.run(m);
         for (const g of (backup.printer_groups || [])) stmts.printer_group.run(g);
@@ -196,6 +294,12 @@ module.exports = (db) => {
         for (const c of (backup.filament_colors || [])) stmts.filament_color.run(c);
         for (const s of (backup.settings || [])) stmts.setting.run(s);
 
+        if (hasErp) {
+          for (const table of ERP_INSERT_ORDER) {
+            for (const row of backup.erp[table]) erpStmts[table].run(row);
+          }
+        }
+
         // Sync auto-increment counters so new inserts don't collide
         for (const [table, col] of [
           ['printers', 'printers'], ['projects', 'projects'],
@@ -208,11 +312,14 @@ module.exports = (db) => {
             VALUES (?, (SELECT COALESCE(MAX(id), 0) FROM ${table}))
           `).run(col);
         }
+        if (hasErp) {
+          for (const table of ERP_SEQUENCE_TABLES) syncSequence(db, table);
+        }
       });
 
       restore();
 
-      console.log(`[backup] Shopfloor restored: ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.printer_groups || []).length} groups, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors`);
+      console.log(`[backup] CoMa restored: ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ERP ${hasErp ? 'included' : 'preserved from current database'}`);
 
       res.json({
         ok: true,
@@ -226,6 +333,9 @@ module.exports = (db) => {
         printer_groups:  (backup.printer_groups  || []).length,
         filament_types:  (backup.filament_types  || []).length,
         filament_colors: (backup.filament_colors || []).length,
+        erp: hasErp
+          ? Object.fromEntries(ERP_TABLES.map(table => [table, backup.erp[table].length]))
+          : null,
       });
     } catch (err) {
       console.error('[backup] restore error:', err);

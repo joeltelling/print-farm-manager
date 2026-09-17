@@ -1,100 +1,119 @@
-# ERP architecture (CoMa / core-manufacturing)
+# ERP inside CoMa
 
-This document records the placement decision for the production ERP inside this repository. It is the product-level plan. Implementation of BOM, inventory ledgers, costing, and invoices comes later. The UI already reserves an **ERP** nav section and an `/erp` placeholder page.
+Acres ERP functionality runs entirely inside CoMa: Express (`/api/erp`) + React CoMa UI (`/erp/*`) + the same SQLite file as shopfloor. There is no Python/uvicorn process and no Acres HTML skin in the operator app.
 
-## Product shape
+Python sources under `erp/` are reference only (formulas / history). Runtime is Node: `server/erp/`.
 
-`core-manufacturing` is **ERP-first**. The existing Print Farm Manager code (poller, scheduler, Fleet, Projects, Jobs) is the first **shopfloor connector**: machine type `3d_printer`.
+## Two processes only
 
-Future machine types (laser, plotter, and others) are added by development, one connector at a time. They do not plug in autonomously: each type has different job files, status models, and operator flows.
+| Process | Role |
+|---|---|
+| Express (`PORT`, default 3000) | Shopfloor APIs + full `/api/erp/*` + production SPA |
+| Vite (`VITE_PORT`, default 5173, dev only) | React hot reload; proxies `/api` to Express |
 
-```
-ERP (definition + money)
-  articles, BOM / recipes, cost drivers, inventory, production orders, invoices
-        |
-        | production order releases work
-        v
-Shopfloor connectors (execution)
-  3d_printer (current CoMa farm) | laser (future) | plotter (future)
-        |
-        | units_completed (after operator confirmation)
-        v
-ERP inventory + cost accumulation + invoicing inputs
-```
+Production: one process (`node server/index.js` serving `client/dist`).
 
-## Domain boundary (non-negotiable)
+## Modules (API + UI)
 
-| Domain | Owner | Owns |
+| Module | API | React route |
 |---|---|---|
-| Definition and money | ERP | SKU / article, BOM lines (qty or %), bought parts, packaging (box, protectors), shipping, advertising %, sales-platform %, electricity €/h, plastic €/kg, manufacturing time, stock ledger, invoices |
-| Machine execution | Shopfloor | printer/machine status, dispatch, G-code (or type-specific job files), holds, Set Ready, farm `parts.completed_qty` |
-| Bridge | Typed events | OP creates or updates farm Projects/Parts; shopfloor emits `units_completed` only after a real confirmed outcome; ERP posts inventory and rolls cost |
+| Dashboard (KPIs + sync + needs data + pending postings) | `/api/erp/dashboard`, `POST /sync` | `/erp` |
+| Shopfloor postings queue | `/postings`, `/postings/:id/confirm`, `/postings/:id/dismiss` | `/erp/postings` |
+| Products & components | `/items` (`item_role`, `sourcing`) | `/erp/items` |
+| Warehouses + locations | `/warehouses`, `/locations` | `/erp/locations` |
+| Inventory receive + stock + charts | `/inventory/*` | `/erp/inventory` |
+| Manufacturing dashboard | dashboard + shared machines + open WOs | `/erp/manufacturing` |
+| Machine rates (printer-linked) | `/mfg/machines` | `/erp/machines` (USD/h + linked printer name/model/status) |
+| Manufacturing components + cost estimate | `/mfg/components`, `/mfg/calculate-component-cost` | `/erp/components` |
+| BOM (lines, cost with WAC/MFG fallback, delete) | `/bom/*` | `/erp/bom` |
+| Work orders + complete (UOM-aware issues) | `/wo/*` | `/erp/wo`, `/erp/qr` |
+| Sales dashboard | reports + stock summary | `/erp/sales` |
+| Sales config / pricing / reset | `/sales/config`, `/sales/pricing`, `/sales/pricing/:id/reset` | `/erp/sales/*` |
+| Sales orders + history CSV/PDF | `/sales/order/items`, `/sales/orders`, `/sales/orders/report` | `/erp/sales/order`, `/erp/sales/reports` |
 
-Rules:
+Navigation lives in the CoMa sidebar only (Dashboard, Inventory, Manufacturing, Sales modules). ERP pages use `ErpShell` for the page title; there is no second in-page module nav.
 
-- The farm **does not** compute margins or issue invoices.
-- The ERP **does not** speak MQTT, Moonraker, PrusaLink, or SDCP.
-- Do **not** add advertising %, IVA, stock, or invoice columns onto `parts` / `projects`.
-- Do **not** let `scheduler.js` write inventory or `invoice_lines`.
-- Farm backup/restore stays fleet-only. ERP backup is a separate domain when it exists.
+## Acres parity audit
 
-## Why not inside the current farm schema
+Audit source: `erp/backend/app` and every `erp/ui/*.html` file. The Python and HTML trees remain reference-only and are not served.
 
-The farm SQLite schema and scheduler exist to run a print fleet safely. `parts.completed_qty` is sacred: every increment must map to one real-world event and must not double-fire across restarts. Mixing invoices, stock ledgers, and multi-machine costing into that same schema would blur the boundary and make a later real production ERP harder to attach.
+| Reference capability | Status | CoMa implementation |
+|---|---|---|
+| Health and UI config | IMPLEMENTED | `/api/erp/health`, `/api/erp/config/ui` (decimals_display drives Mfg Components qty format) |
+| Item, UOM, warehouse, and location masters | IMPLEMENTED | Express CRUD/list routes plus `/erp/items` and `/erp/locations` (warehouse + consumption/purchase UOM columns) |
+| Inventory receipt, WAC, snapshot, warehouse charts | IMPLEMENTED | `/inventory/*`; value-by-warehouse donut/bars and per-warehouse dual qty/value charts; on-hand total footer |
+| Machine rates and component cost estimate | IMPLEMENTED | `/mfg/machines`, `/mfg/components`, `/mfg/calculate-component-cost` (Mat $/unit and Time $/unit columns; scrap applied in CoMa cost estimate) |
+| BOM create/update, inline qty, cost footer, estimate* | IMPLEMENTED | `/bom/*`; React supports product+BOM creation, inline qty edit, three-line cost footer, `*` when unit cost falls back to MFG recipe |
+| WO create/list/get, shortage check, UOM issue, labor, destination receipt | IMPLEMENTED | `/wo/*`; warehouse + name columns; `q` filtered in SQL before LIMIT |
+| Pick list and QR completion | IMPLEMENTED | Local QR for `/erp/qr?wo=ID` |
+| Sales config / pricing / reports / orders | IMPLEMENTED | Margin badges, header-click sort, Enter/Escape pricing edits, live sales-order totals |
+| Manufacturing and sales dashboards | IMPLEMENTED | Native CoMa dashboards at `/erp/manufacturing` and `/erp/sales` (Acres left these unfinished) |
+| Shopfloor to ERP stock bridge | IMPLEMENTED | Operator-confirmed posting queue (see below) |
 
-Short term the ERP may share the same Node process and UI shell. It must still use a **separate logical schema** (planned: `data/erp.sqlite` or equivalent), never the printers/jobs tables.
+Deliberate CoMa improvement vs Acres: `POST /mfg/calculate-component-cost` multiplies material by `(1 + scrap_pct/100)`. Acres ignored scrap on that estimate endpoint.
 
-## Planned ERP concepts (not built yet)
+## Shopfloor compatibility
 
-- **Article (SKU):** `raw` | `buy` | `make` | `packaging` | `service`
-- **BOM / recipe:** lines with quantity or percentage (material share, advertising, platform fee, scrap)
-- **Cost drivers:** €/h electricity, €/kg material, manufacturing time, shipping, packaging
-- **Inventory ledger:** movements only (no silent stock edits), same philosophy as farm part counts
-- **Production order (OP):** target qty for a `make` article; releasing it creates shopfloor work
-- **Invoice:** commercial document with numbering and PDF; independent of any single printer job
+| Shopfloor | ERP |
+|---|---|
+| Project | Product (`item_role=product`) |
+| Part (pieza) | Component (`item_role=component`) |
+| Printer | Machine (`machine.printer_id`) |
+| Filament type/color | Raw material (`item_role=raw`, sourcing outsource) |
 
-Estimated unit cost = sum of recipe drivers. That math lives in the ERP, not in Fleet or Projects.
+Every product/component has sourcing: **manufactured** or **outsource**. Sync creates stubs; operators complete ERP-only fields (rates, sourcing confirmation, receive costs). Creating a project or part from shopfloor also syncs and accepts optional `sourcing`.
 
-## Machine types
+Machine rows created from printers stay in Dashboard `Needs ERP data` until their hourly rate is greater than zero. Filament raw-material reminders survive later syncs until stock is received, then remain resolved. Both historical `filament_colors.hex` and current `hex_color` databases are supported.
 
-Follow the spirit of [driver-authoring.md](../driver-authoring.md): a documented contract, then one implementation per type.
+## Shopfloor posting queue (operator-confirmed)
 
-- ERP only sees `machine_type`, `capabilities[]`, and progress/completion events.
-- `3d_printer` is today's drivers under `server/drivers/` plus poller/scheduler.
-- Laser / plotter / etc. are separate deliverables when needed.
+Set Ready (and `POST /api/bridge/units-completed`) create a pending row in `erp_posting` keyed by `job_id` (unique, survives restarts). **No path in this queue changes `parts.completed_qty`.**
 
-## Repo evolution (later)
+1. Operator confirms quality on the printer (Set Ready) as today.
+2. CoMa enqueues `erp_posting` with qty and linked `erp_sku`.
+3. Operator opens `/erp/postings` and confirms. That consumes raw (via `mfg_component` recipe when present) and receives the component into the `comp` warehouse inside a transaction.
+4. If stock is short, the API returns 409 with `acknowledge_required`. The plastic was already used on the printer, so the operator may confirm with `acknowledge_shortage: true` (qty_on_hand may go negative). Dismiss abandons the posting without stock moves.
 
-When the ERP has real screens and APIs:
+Double confirm of a posted row returns 409. Stock moves use `idem_key` values derived from the posting id.
 
+## Single database
+
+Shopfloor and ERP tables share `server/data/{organic|seed}-data.db`. Schema is additive only.
+
+The Settings JSON backup includes the complete shared domain: shopfloor, uploaded G-code, ERP masters, inventory, costing, BOMs, work orders, pricing, sales, and `erp_posting`. Restore validates that the ERP section is complete before changing data. Legacy shopfloor-only backups preserve the ERP records already in the target database.
+
+## Shared masters
+
+- Machines: `machine` + `printers` via `GET /api/shared/machines`
+- Materials: `item` via `GET /api/shared/materials`
+- Parts link with nullable `parts.erp_sku`
+
+## Ops
+
+```bash
+./start.sh    # Express + Vite only (ERP included)
+./stop.sh
 ```
-core-manufacturing/
-  apps/erp/              # ERP API + UI
-  apps/shopfloor-3d/     # current server/ + client farm surfaces
-  packages/machine-contract/
-  docs/erp/              # this folder
+
+Development runtime is Node only. `start.sh` uses Linux `setsid` to manage the Express+Vite process group. Python can be installed as a build tool for native npm modules, but no Python process runs CoMa or the ERP.
+
+## Verified E2E flow
+
+Use the seed dataset so organic operator data is untouched:
+
+```bash
+./start.sh --seed-data --with-simulator
 ```
 
-Until then: keep the farm tree where it is, document here, and expose the ERP entry in the shell nav only.
+Open `/erp`, then run this workflow:
 
-## Bridge event (documented stub)
+1. Sync shopfloor from Dashboard.
+2. Receive a raw SKU in Inventory (charts update).
+3. Define a machine rate and manufacturing component.
+4. Create a product+BOM and add the component line.
+5. Create and complete a WO. Confirm the inventory warning because completion issues raw/component stock and receives finished stock.
+6. Place a sales order. Confirm the warning because the sale depletes finished stock.
+7. Open Sales Reports, filter the history, and download CSV/PDF.
+8. After Set Ready on the Virtual Klipper (or any held printer), open `/erp/postings` and confirm the pending row.
 
-Intended event (not wired yet):
-
-- Name: `shopfloor.units_completed`
-- Fired when: operator confirms a good outcome (e.g. Set Ready with confirmed qty), never from a heuristic time window
-- Payload (sketch): `{ op_id?, article_id?, qty, machine_type, shopfloor_job_ref, at }`
-- ERP handler: inventory receipt for `make` articles, cost accumulation; no-op until ledgers exist
-
-## UI today
-
-- Nav sections: **ERP** and **Shopfloor**, plus Settings
-- Route `/erp`: placeholder describing this plan
-- Shopfloor routes unchanged: Dashboard, Fleet, Printers, Projects, Jobs
-
-## Out of scope for the architecture doc phase
-
-- ERP routes under `/api/erp`
-- `erp.sqlite` and migrations
-- Real BOM / costing / invoice UI
-- Moving folders into `apps/`
+Automated coverage: `server/tests/erp-embedded.test.js` and `server/tests/erp-postings.test.js`.

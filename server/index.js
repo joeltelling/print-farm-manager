@@ -29,6 +29,10 @@ const modelsRouter       = require('./routes/models')(db);
 const groupsRouter       = require('./routes/groups')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
+const sharedRouter       = require('./routes/shared')(db);
+const bridgeRouter       = require('./routes/bridge')(db);
+const { mountErp }       = require('./erp');
+const { recordFromSetReady } = require('./erp/postings');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +49,11 @@ app.use('/api/settings',        settingsRouter);
 app.use('/api/models',          modelsRouter);
 app.use('/api/groups',          groupsRouter);
 app.use('/api/filaments',       filamentsRouter);
+app.use('/api/shared',          sharedRouter);
+app.use('/api/bridge',          bridgeRouter);
+
+// Acres ERP embedded in Express (same process, same SQLite DB)
+app.use('/api/erp', mountErp(db));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -130,6 +139,21 @@ const server = app.listen(PORT, () => {
     const placeholders = ids.map(() => '?').join(',');
     db.prepare(`UPDATE printers SET is_held = 0 WHERE id IN (${placeholders})`).run(...ids);
     const printers = db.prepare(`SELECT * FROM printers WHERE id IN (${placeholders}) AND is_active = 1`).all(...ids);
+    // Enqueue ERP postings for the latest finished job on each printer (qty already credited).
+    for (const p of printers) {
+      const finishedJob = db.prepare(`
+        SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
+        ORDER BY finished_at DESC LIMIT 1
+      `).get(p.id);
+      if (finishedJob) {
+        recordFromSetReady(db, {
+          printer_id: p.id,
+          job: finishedJob,
+          qty: finishedJob.parts_per_plate,
+          note: 'set-ready-batch',
+        });
+      }
+    }
     const batchSetting = db.prepare("SELECT value FROM settings WHERE key = 'dispatch_batch_size'").get();
     const batchSize = batchSetting ? parseInt(batchSetting.value, 10) : 10;
     console.log(`[server] Batch set-ready: ${printers.length} printer(s), target concurrency ${batchSize}`);
@@ -212,6 +236,7 @@ const server = app.listen(PORT, () => {
 
     if (finishedJob) {
       // Normal case: apply confirmed_qty delta if the operator adjusted the count.
+      let postingQty = finishedJob.parts_per_plate;
       if (confirmed_qty != null) {
         const confirmedQty = parseInt(confirmed_qty, 10);
         if (!isNaN(confirmedQty) && confirmedQty !== finishedJob.parts_per_plate) {
@@ -228,8 +253,17 @@ const server = app.listen(PORT, () => {
             db.prepare(`UPDATE parts SET status = 'closed', updated_at = ? WHERE id = ?`).run(now, part.id);
           }
           console.log(`[server] ${printer.name} confirmed ${confirmedQty}/${finishedJob.parts_per_plate} good (delta ${delta > 0 ? '+' : ''}${delta})`);
+          postingQty = confirmedQty;
+        } else if (!isNaN(confirmedQty)) {
+          postingQty = confirmedQty;
         }
       }
+      recordFromSetReady(db, {
+        printer_id: printer.id,
+        job: finishedJob,
+        qty: postingQty,
+        note: 'set-ready finished',
+      });
     } else {
       // Missed-finish case: job never got resolved because the server was down.
       // The operator clicking Set Ready is the success confirmation — credit qty now.
@@ -279,6 +313,13 @@ const server = app.listen(PORT, () => {
           UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?
         `).run(creditQty, now, activeJob.part_id);
 
+        recordFromSetReady(db, {
+          printer_id: printer.id,
+          job: activeJob,
+          qty: creditQty,
+          note: 'set-ready missed-finish',
+        });
+
         const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(activeJob.part_id);
         const label = printingJob ? 'missed-finish' : activeJob.status === 'cancelled' ? 'cancelled-confirmed-good' : 'MQTT-recovered finish';
         console.log(`[server] ${printer.name} ${label} confirmed good — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
@@ -315,6 +356,12 @@ const server = app.listen(PORT, () => {
               .run(now, now, uploadingJob.id);
             db.prepare("UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?")
               .run(creditQty, now, uploadingJob.part_id);
+            recordFromSetReady(db, {
+              printer_id: printer.id,
+              job: uploadingJob,
+              qty: creditQty,
+              note: 'set-ready upload-stalled',
+            });
             const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(uploadingJob.part_id);
             console.log(`[server] ${printer.name} upload-stalled job ${uploadingJob.id} confirmed finished — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
             if (part.completed_qty >= part.target_qty) {

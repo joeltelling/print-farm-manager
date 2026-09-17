@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Fleet from './pages/Fleet';
@@ -8,8 +8,25 @@ import Projects from './pages/Projects';
 import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
-import Erp from './pages/Erp';
+import Erp, {
+  ItemsPage as ErpItems,
+  LocationsPage as ErpLocations,
+  MachinesPage as ErpMachines,
+  InventoryPage as ErpInventory,
+  ComponentsPage as ErpComponents,
+  BomPage as ErpBom,
+  WoPage as ErpWo,
+  QrCompletePage as ErpQr,
+  ManufacturingDashboard as ErpMfgDash,
+  PostingsPage as ErpPostings,
+  SalesHubPage as ErpSales,
+  SalesConfigPage as ErpSalesConfig,
+  SalesPricingPage as ErpSalesPricing,
+  SalesOrderPage as ErpSalesOrder,
+  SalesReportsPage as ErpSalesReports,
+} from './pages/Erp';
 import AlertBell from './components/AlertBell';
+import BootSplash, { shouldShowBootSplash } from './components/BootSplash';
 import { theme } from './theme';
 
 const NAV_SECTIONS = [
@@ -17,7 +34,21 @@ const NAV_SECTIONS = [
     id: 'erp',
     label: 'ERP',
     items: [
-      { to: '/erp', label: 'Overview' },
+      { to: '/erp', label: 'Dashboard', end: true },
+      { to: '/erp/postings', label: 'Postings' },
+      { to: '/erp/inventory', label: 'Inventory' },
+      { to: '/erp/items', label: 'Products' },
+      { to: '/erp/locations', label: 'Locations' },
+      { to: '/erp/manufacturing', label: 'Manufacturing' },
+      { to: '/erp/machines', label: 'Machines' },
+      { to: '/erp/components', label: 'Components' },
+      { to: '/erp/bom', label: 'BOM' },
+      { to: '/erp/wo', label: 'Work Orders' },
+      { to: '/erp/sales', label: 'Sales', end: true },
+      { to: '/erp/sales/order', label: 'Sales Order' },
+      { to: '/erp/sales/config', label: 'Sales Config' },
+      { to: '/erp/sales/pricing', label: 'Pricing' },
+      { to: '/erp/sales/reports', label: 'Sales Reports' },
     ],
   },
   {
@@ -91,6 +122,9 @@ function NavSections({ linkStyle, compact }) {
 
 export default function App() {
   const [farmName, setFarmName] = useState('CoMa');
+  const [showBoot, setShowBoot] = useState(shouldShowBootSplash);
+  const dismissBoot = useCallback(() => setShowBoot(false), []);
+
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.json())
@@ -104,6 +138,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      {showBoot && <BootSplash siteName={farmName} onDone={dismissBoot} />}
       <style>{`
         #layout { display: flex; min-height: 100vh; height: 100vh; background: ${theme.page}; overflow: hidden; }
         #sidebar { width: 280px; flex-shrink: 0; background: ${theme.sidebar}; border-right: 1px solid ${theme.border}; display: flex; flex-direction: column; padding: 18px 14px; gap: 4px; height: 100%; box-sizing: border-box; }
@@ -188,6 +223,21 @@ export default function App() {
           <Routes>
             <Route path="/"                element={<Dashboard />} />
             <Route path="/erp"             element={<Erp />} />
+            <Route path="/erp/postings"    element={<ErpPostings />} />
+            <Route path="/erp/items"       element={<ErpItems />} />
+            <Route path="/erp/locations"   element={<ErpLocations />} />
+            <Route path="/erp/machines"    element={<ErpMachines />} />
+            <Route path="/erp/inventory"   element={<ErpInventory />} />
+            <Route path="/erp/manufacturing" element={<ErpMfgDash />} />
+            <Route path="/erp/components"  element={<ErpComponents />} />
+            <Route path="/erp/bom"         element={<ErpBom />} />
+            <Route path="/erp/wo"          element={<ErpWo />} />
+            <Route path="/erp/qr"          element={<ErpQr />} />
+            <Route path="/erp/sales"       element={<ErpSales />} />
+            <Route path="/erp/sales/config"   element={<ErpSalesConfig />} />
+            <Route path="/erp/sales/pricing"  element={<ErpSalesPricing />} />
+            <Route path="/erp/sales/order"    element={<ErpSalesOrder />} />
+            <Route path="/erp/sales/reports"  element={<ErpSalesReports />} />
             <Route path="/fleet"           element={<Fleet />} />
             <Route path="/printers"        element={<Printers />} />
             <Route path="/printers/:id"    element={<PrinterDetail />} />

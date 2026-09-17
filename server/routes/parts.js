@@ -8,6 +8,7 @@ const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 // scheduler is optional, only needed at runtime for sweepIdlePrinters when adding a part
 // reactivates a completed project. Tests pass null so there is no live scheduler dependency.
 module.exports = (db, scheduler = null) => {
+  const hasErpSku = db.prepare('PRAGMA table_info(parts)').all().some(c => c.name === 'erp_sku');
   const ACTIVE_QTY_SQL = `
     COALESCE((
       SELECT SUM(j.parts_per_plate) FROM jobs j
@@ -130,6 +131,10 @@ module.exports = (db, scheduler = null) => {
     if (!project_id || !name || !target_qty) {
       return res.status(400).json({ error: 'project_id, name, and target_qty are required' });
     }
+    const sourcing = req.body?.sourcing;
+    if (sourcing !== undefined && sourcing !== 'manufactured' && sourcing !== 'outsource') {
+      return res.status(400).json({ error: 'sourcing must be manufactured or outsource' });
+    }
     const now = Date.now();
     // Place the new part at the end of the project's sort order so it gets the lowest
     // dispatch priority. The operator can drag it up if they want it printed sooner.
@@ -155,7 +160,22 @@ module.exports = (db, scheduler = null) => {
       if (scheduler) scheduler.sweepIdlePrinters();
     }
 
-    res.status(201).json(db.prepare('SELECT * FROM parts WHERE id = ?').get(result.lastInsertRowid));
+    let erpComponent = null;
+    try {
+      require('../erp/sync').syncShopfloorToErp(db);
+      if (sourcing === 'manufactured' || sourcing === 'outsource') {
+        db.prepare(
+          "UPDATE item SET sourcing = ?, needs_erp_data = 0 WHERE part_id = ?"
+        ).run(sourcing, result.lastInsertRowid);
+      }
+      erpComponent = db.prepare(
+        'SELECT id, sku, sourcing, item_role FROM item WHERE part_id = ?'
+      ).get(result.lastInsertRowid) || null;
+    } catch (_) {
+      // Standalone route tests and legacy embeddings may not mount the ERP schema.
+    }
+    const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(result.lastInsertRowid);
+    res.status(201).json({ ...part, erp_component: erpComponent });
   });
 
   // PUT /api/parts/reorder — set sort_order for a list of part IDs
@@ -178,7 +198,7 @@ module.exports = (db, scheduler = null) => {
     const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(req.params.id);
     if (!part) return res.status(404).json({ error: 'Part not found' });
 
-    const { name, target_qty, completed_qty, status } = req.body;
+    const { name, target_qty, completed_qty, status, erp_sku } = req.body;
 
     // Auto-calculate status when completed_qty is explicitly provided
     let resolvedStatus = part.status;
@@ -190,22 +210,39 @@ module.exports = (db, scheduler = null) => {
     }
 
     const now = Date.now();
-    db.prepare(`
-      UPDATE parts
-      SET name          = COALESCE(?, name),
-          target_qty    = COALESCE(?, target_qty),
-          completed_qty = COALESCE(?, completed_qty),
-          status        = ?,
-          updated_at    = ?
-      WHERE id = ?
-    `).run(
+    const baseArgs = [
       name,
       target_qty !== undefined ? parseInt(target_qty, 10) : null,
       completed_qty !== undefined ? parseInt(completed_qty, 10) : null,
       resolvedStatus,
-      now,
-      req.params.id
-    );
+    ];
+    if (hasErpSku) {
+      db.prepare(`
+        UPDATE parts
+        SET name          = COALESCE(?, name),
+            target_qty    = COALESCE(?, target_qty),
+            completed_qty = COALESCE(?, completed_qty),
+            status        = ?,
+            erp_sku       = COALESCE(?, erp_sku),
+            updated_at    = ?
+        WHERE id = ?
+      `).run(
+        ...baseArgs,
+        erp_sku !== undefined ? (erp_sku || null) : null,
+        now,
+        req.params.id
+      );
+    } else {
+      db.prepare(`
+        UPDATE parts
+        SET name          = COALESCE(?, name),
+            target_qty    = COALESCE(?, target_qty),
+            completed_qty = COALESCE(?, completed_qty),
+            status        = ?,
+            updated_at    = ?
+        WHERE id = ?
+      `).run(...baseArgs, now, req.params.id);
+    }
 
     // If this update reopened a closed part, also reopen the project if it was
     // completed. This happens when the operator raises target_qty via the UI
