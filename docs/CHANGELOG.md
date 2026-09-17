@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-09-17: Sidebar modules, groups, and accordion screens
+
+The left nav grew into a long flat list once ERP modules landed. Operators need to collapse by module (ERP / Shopfloor) and, inside ERP, by subgroup (Resumen, Inventario, Fabricacion, Ventas). Shopfloor stays a flat list under its module. Accordion state (one module and one ERP group open) persists in `localStorage` and re-opens from the active route. Module and group headers render as bordered cards with larger type so the hierarchy is easy to scan.
+
+### Changes
+- `client/src/components/NavTree.jsx`: three-level nav tree, card accordion, `coma.nav.accordion` persistence, route sync.
+- `client/src/App.jsx`: shell uses NavTree for sidebar and compact topbar; Settings sits in a matching card.
+- `docs/web-app.md`: nav hierarchy and layout notes.
+
 ## 2026-09-17: Dual machine rate modes (manual or calculated energy)
 
 Acres only stored a single blended USD/h. Operators asked for a clearer split: either type the rate by hand, or derive it from maintenance USD/h plus approximate power draw (kW) times a site electricity price (USD/kWh). Each machine chooses its mode. Changing the electricity price recalculates every calculated-mode machine and updates the stored effective `hourly_rate` used by BOM/component costing.

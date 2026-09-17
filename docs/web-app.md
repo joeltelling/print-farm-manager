@@ -13,7 +13,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 
-Nav is grouped into **ERP** (Dashboard and ERP modules) and **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs), with Settings below.
+Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ERP: Resumen, Inventario, Fabricacion, Ventas), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor is a flat list under its module. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
 
 **Boot splash:** on the first entry of a browser tab session, a full-screen CoMa boot animation covers the shell (`BootSplash`, keyed by `sessionStorage` `coma.boot.done`). React Router moves do not remount App, so in-app navigation never re-shows it. A reload in the same tab skips it; a new tab shows it again.
 
@@ -24,7 +24,8 @@ Nav is grouped into **ERP** (Dashboard and ERP modules) and **Shopfloor** (Dashb
 | File | Responsibility |
 |---|---|
 | `client/src/main.jsx` | React root — mounts `<App />` into `#root` |
-| `client/src/App.jsx` | Layout shell, sectioned sidebar/topbar nav (ERP / Shopfloor), `<Routes>` |
+| `client/src/App.jsx` | Layout shell, sidebar/topbar, `<Routes>` |
+| `client/src/components/NavTree.jsx` | Module / group / screen nav tree, accordion state, route sync |
 | `client/src/pages/Erp.jsx` | ERP route exports; `/erp` renders the live ERP Dashboard |
 | `client/src/pages/erp/modules.jsx` | Dashboard, postings, manufacturing dashboard, products/components, locations, inventory charts, machines, MFG components, BOM, WO, QR |
 | `client/src/pages/erp/sales.jsx` | Sales dashboard, defaults, pricing (Enter/Escape), order entry with live totals, matrix badges/sort, history exports |
@@ -72,19 +73,18 @@ Use the built client on port 3000 (or HTTPS) to install. Vite hot-reload on 5173
 │  CoMa / site name │                       │
 │  CoreManufacturing│  <Routes />           │
 │                   │                       │
-│  Dashboard        │                       │
-│  Fleet            │                       │
-│  Printers         │                       │
-│  Projects         │                       │
-│  Jobs             │                       │
+│  ERP (accordion)  │                       │
+│    Resumen / ...  │                       │
+│  Shopfloor        │                       │
+│    Dashboard ...  │                       │
 │  Settings         │                       │
 │  [alert bell]     │                       │
 └───────────────────┴───────────────────────┘
 ```
 
-**Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar. All page content is still fully accessible on mobile. Decommissioned printers stay reachable at `/decommissioned` and via the Printers page toggle.
+**Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar (flat links, no accordion). All page content is still fully accessible on mobile. Decommissioned printers stay reachable at `/decommissioned` and via the Printers page toggle.
 
-The sidebar shows the operator-configured site name (`farm_name`, default CoMa) with a CoreManufacturing subtitle. Active links use a rounded pill (`#1e40af`).
+The sidebar shows the operator-configured site name (`farm_name`, default CoMa) with a CoreManufacturing subtitle. Active links use a rounded lime pill.
 
 ## Dashboard Page
 
