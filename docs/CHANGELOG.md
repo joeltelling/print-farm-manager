@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-09-17: README gallery from live seed UI
+
+The README still showed two older slate-era PNGs while the product UI had moved to the CoMa dark token system (sidebar ERP/Shopfloor tree, ERP modules, eBay page). Fresh 1400x900 captures were taken against `./start.sh --seed-data` and the README was rewritten around that gallery so strangers cloning the repo see the app they will actually run.
+
+### Changes
+- `docs/images/dashboard.png`, `fleet.png`, `projects.png`, `erp-dashboard.png`, `erp-inventory.png`, `erp-sales.png`, `erp-ebay.png`, `settings.png`: new screenshots
+- `README.md`: screenshot gallery, eBay callout, structure updated for `server/ebay/`
+- `docs/CHANGELOG.md`: this entry
+
 ## 2026-09-17: eBay Sell APIs in embedded ERP
 
 Operators selling finished goods on eBay needed orders and stock to meet the same ERP ledger as manual sales, without a second process. This adds a first-class eBay module under `/api/erp/ebay` and `/erp/ebay`: OAuth refresh-token credentials (sandbox-first, env or DB), hybrid order import from the Fulfillment API (auto-post when SKU mapped and stock covers qty; otherwise operator queue with shortage acknowledge), inventory push of price/qty to existing offers only (`bulkUpdatePriceQuantity`), and read-only Analytics/Account probes. Credentials live in `ebay_credential` and are intentionally excluded from backup export.
