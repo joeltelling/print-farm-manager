@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-09-17: README gallery covers sales documents (Presupuesto / Albaran / Factura)
+
+The sales-documents module shipped earlier today (customers + quote/delivery/invoice chain with PDF) but the public README still only showed the legacy Sales dashboard and eBay. Gallery captures and feature copy now include Clientes, Presupuestos, Albaranes, and Facturas, and the operator map / ERP capability table name the dual sales flows and the Postings "Crear albaran" path.
+
+### Changes
+- `scripts/capture-readme-screenshots.js`: routes + `seedSalesDocsDemo` for non-empty Ventas shots
+- `docs/images/erp-customers.png`, `erp-quotes.png`, `erp-delivery-notes.png`, `erp-invoices.png`: new captures
+- `README.md`: screenshots, ERP table, operator map, intro line
+- `docs/user-guide.md`: section 4.8 documents both sales flows
+- `docs/CHANGELOG.md`: this entry
+
 ## 2026-09-17: Sales documents module (Presupuesto / Albaran / Factura)
 
 The embedded ERP only had a bare-bones Sales Order (no customer, no tax, no PDF chain). Some shops need real customer-facing paperwork: a quote that becomes a delivery note that becomes an invoice, each one numbered and downloadable as a PDF, with delivery notes able to pick up lines straight from confirmed shopfloor postings instead of being retyped. This adds a `Customer` master and a `sales_doc` / `sales_doc_line` chain next to (not instead of) the existing Sales Order flow, plus a `sales_doc_mode` setting so each install can pick which one is the default landing point without losing access to the other.

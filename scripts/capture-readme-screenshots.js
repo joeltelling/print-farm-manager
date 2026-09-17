@@ -29,6 +29,10 @@ const PAGES = [
   ['/erp', 'erp-dashboard.png'],
   ['/erp/inventory', 'erp-inventory.png'],
   ['/erp/sales', 'erp-sales.png'],
+  ['/erp/customers', 'erp-customers.png'],
+  ['/erp/quotes', 'erp-quotes.png'],
+  ['/erp/delivery-notes', 'erp-delivery-notes.png'],
+  ['/erp/invoices', 'erp-invoices.png'],
   ['/erp/ebay', 'erp-ebay.png'],
   ['/erp/postings', 'erp-postings.png'],
   ['/settings', 'settings.png'],
@@ -102,6 +106,88 @@ function seedWorkspaceDemo(db) {
     DELETE FROM notebook_pages
     WHERE title = 'Nota nueva' AND (body IS NULL OR body = '') AND trashed_at IS NULL
   `).run();
+}
+
+/** Seed customers + Presupuesto / Albaran / Factura so Ventas gallery shots are not empty. */
+function seedSalesDocsDemo(db) {
+  // Tables may be missing on a very old seed file until the server has migrated once.
+  const has = db.prepare(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'customer'"
+  ).get();
+  if (!has) return;
+
+  const now = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
+
+  let customer = db.prepare("SELECT id FROM customer WHERE name = 'Acme Prototipos SL'").get();
+  if (!customer) {
+    const r = db.prepare(`
+      INSERT INTO customer
+        (name, tax_id, email, phone, address, city, postal_code, country, notes, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run(
+      'Acme Prototipos SL', 'B12345678', 'compras@acme.example', '+34 600 000 000',
+      'Calle Industria 12', 'Madrid', '28001', 'ES', 'Cliente demo para capturas README',
+      now, now,
+    );
+    customer = { id: r.lastInsertRowid };
+  }
+
+  const docCount = db.prepare('SELECT COUNT(*) AS n FROM sales_doc').get().n;
+  if (docCount > 0) return;
+
+  // Ensure counters exist and start after the demo numbers we insert.
+  for (const t of ['quote', 'delivery', 'invoice']) {
+    const row = db.prepare('SELECT next_seq FROM doc_counter WHERE doc_type = ?').get(t);
+    if (!row) {
+      db.prepare('INSERT INTO doc_counter (doc_type, next_seq) VALUES (?, 2)').run(t);
+    } else if (row.next_seq < 2) {
+      db.prepare('UPDATE doc_counter SET next_seq = 2 WHERE doc_type = ?').run(t);
+    }
+  }
+
+  const insDoc = db.prepare(`
+    INSERT INTO sales_doc
+      (doc_type, doc_number, customer_id, status, issue_date, due_date, notes,
+       subtotal, tax_total, total, source_doc_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+  `);
+  const insLine = db.prepare(`
+    INSERT INTO sales_doc_line
+      (doc_id, item_id, sku, description, qty, unit_price, tax_rate, line_total, job_id, posting_id, created_at)
+    VALUES (?, NULL, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+  `);
+
+  function addDoc(docType, docNumber, status, lines, notes) {
+    const subtotal = lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
+    const tax_total = lines.reduce((s, l) => s + l.qty * l.unit_price * (l.tax_rate / 100), 0);
+    const total = subtotal + tax_total;
+    const r = insDoc.run(
+      docType, docNumber, customer.id, status, today, today, notes,
+      subtotal, tax_total, total, now, now,
+    );
+    const docId = r.lastInsertRowid;
+    lines.forEach((l, i) => {
+      insLine.run(
+        docId, l.sku || null, l.description, l.qty, l.unit_price, l.tax_rate,
+        l.qty * l.unit_price, now + i,
+      );
+    });
+  }
+
+  addDoc('quote', 'PRE-000001', 'confirmed', [
+    { sku: 'FG-BRACKET', description: 'Bracket x10 (Benchy Fleet)', qty: 10, unit_price: 4.5, tax_rate: 21 },
+    { sku: null, description: 'Envio peninsular', qty: 1, unit_price: 8, tax_rate: 21 },
+  ], 'Presupuesto confirmado demo');
+
+  addDoc('delivery', 'ALB-000001', 'confirmed', [
+    { sku: 'FG-BRACKET', description: 'Bracket x10 (Benchy Fleet)', qty: 10, unit_price: 4.5, tax_rate: 21 },
+  ], 'Albaran desde posting de shopfloor');
+
+  addDoc('invoice', 'FAC-000001', 'draft', [
+    { sku: 'FG-BRACKET', description: 'Bracket x10 (Benchy Fleet)', qty: 10, unit_price: 4.5, tax_rate: 21 },
+    { sku: null, description: 'Envio peninsular', qty: 1, unit_price: 8, tax_rate: 21 },
+  ], 'Factura borrador lista para confirmar');
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -236,6 +322,9 @@ async function main() {
   const db = new Database(DB);
   try {
     seedWorkspaceDemo(db);
+    try { seedSalesDocsDemo(db); } catch (err) {
+      console.warn('[capture] sales-docs seed skipped:', err.message);
+    }
   } catch (err) {
     console.warn('[capture] workspace seed skipped:', err.message);
   }

@@ -2,7 +2,7 @@
 
 **Self-hosted shopfloor + manufacturing ERP for a multi-brand 3D print farm.**
 
-One Node process. One SQLite file. Live fleet dispatch for Prusa, Bambu, Elegoo, Klipper, and OctoPrint, plus inventory, costing, work orders, sales, eBay Sell sync, timelapses, a planning calendar with production closures that actually stop new job dispatch, and a Workspace board + technical notebook for operator tasks.
+One Node process. One SQLite file. Live fleet dispatch for Prusa, Bambu, Elegoo, Klipper, and OctoPrint, plus inventory, costing, work orders, sales documents (Presupuesto / Albaran / Factura), eBay Sell sync, timelapses, a planning calendar with production closures that actually stop new job dispatch, and a Workspace board + technical notebook for operator tasks.
 
 Fork of [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager), tuned for Linux ops. Product name: **CoMa** (short) / **CoreManufacturing** (long).
 
@@ -90,13 +90,37 @@ On-hand by warehouse (donut + bars) and receive-by-SKU.
 
 ### Sales
 
-Revenue / margin snapshot and finished-goods pricing matrix.
+Revenue / margin snapshot and finished-goods pricing matrix. The older Sales Order flow still lives here.
 
 ![ERP sales dashboard](docs/images/erp-sales.png)
 
+### Customers
+
+Customer master for the Presupuesto / Albaran / Factura chain (tax ID, address, contact).
+
+![ERP customers list](docs/images/erp-customers.png)
+
+### Presupuestos
+
+Quotes with sequential `PRE-` numbers, per-line IVA, confirm, convert to delivery note, PDF download.
+
+![ERP quotes list](docs/images/erp-quotes.png)
+
+### Albaranes
+
+Delivery notes (`ALB-`). Can be created from a confirmed quote or from a posted shopfloor posting ("Crear albaran" on Postings) without touching `completed_qty`.
+
+![ERP delivery notes list](docs/images/erp-delivery-notes.png)
+
+### Facturas
+
+Invoices (`FAC-`) converted from a delivery note or created directly. PDF export for customer paperwork.
+
+![ERP invoices list](docs/images/erp-invoices.png)
+
 ### Postings
 
-Operator queue after Set Ready: confirm ERP stock moves without inventing part counts.
+Operator queue after Set Ready: confirm ERP stock moves without inventing part counts. Posted rows can spawn a delivery-note line.
 
 ![ERP postings queue](docs/images/erp-postings.png)
 
@@ -162,12 +186,15 @@ Neither surface touches printers or `completed_qty`. See [docs/workspace.md](doc
 | Linked masters | project↔product, part↔component, printer↔machine, filament↔raw |
 | Inventory | Warehouses, locations, receive-by-SKU, WAC |
 | Manufacturing | Machine rates, BOM, work orders, QR pick lists |
-| Sales | Pricing (including `EBAY_FEE`), orders, CSV/PDF history |
-| Postings | Queue after Set Ready; never invents `completed_qty` |
+| Sales (legacy) | Pricing (including `EBAY_FEE`), Sales Order, CSV/PDF history |
+| Sales documents | Customers + Presupuesto → Albaran → Factura chain, IVA lines, PDF export |
+| Postings | Queue after Set Ready; never invents `completed_qty`; can attach to an Albaran |
 | Analytics | Profitability, machine OEE, std vs actual variance |
 | eBay Sell | Import paid orders, push price+qty to existing offers, seller analytics |
 
-Guide: [docs/erp/ebay.md](docs/erp/ebay.md).
+Guide: [docs/erp/README.md](docs/erp/README.md) (sales documents) and [docs/erp/ebay.md](docs/erp/ebay.md).
+
+Settings → General picks the default sales landing (`legacy` Sales Order vs `quotes_flow` documents). Both flows stay available.
 
 ### Ops
 
@@ -288,9 +315,10 @@ npm start
 | Receive filament / raw | ERP → Inventory |
 | Machine USD/h or kW | ERP → Machines |
 | Confirm stock after Set Ready | ERP → Postings |
+| Customers / quotes / delivery / invoices | ERP → Ventas → Clientes / Presupuestos / Albaranes / Facturas |
 | OEE / margin / cost variance | ERP → Analytics |
 | eBay orders and inventory push | ERP → Ventas → eBay |
-| Backup / account | Settings |
+| Backup / account / sales flow default | Settings |
 
 ---
 

@@ -168,10 +168,22 @@ Receta por pieza: raw + qty + scrap % + minutos estandar + maquina. Sirve para e
 
 ### 4.8 Sales
 
+Hay dos flujos (ambos siempre visibles en la barra; Settings > General elige el aterrizaje por defecto):
+
+**Sales Order (legacy)**
 - Config: margenes / ads / fees por defecto
 - Pricing: precio de venta = f(coste BOM, margenes)
 - Sales order: vende FG y baja stock
 - Reports: historial CSV/PDF
+
+**Documentos (Presupuesto / Albaran / Factura)**
+- **Clientes** (`/erp/customers`): ficha con NIF/CIF, direccion, contacto
+- **Presupuestos** → confirmar → convertir a **Albaran** → convertir a **Factura**
+- Numeracion secuencial interna (`PRE-`, `ALB-`, `FAC-`), IVA por linea (defecto 21%), PDF descargable
+- Desde Postings, en una fila ya confirmada: **Crear albaran** (copia qty/descripcion; no toca `completed_qty` ni re-ejecuta el movimiento de stock)
+- No hay VeriFactu/SII ni garantia legal de correlacion; es papeleo interno/simple
+
+Detalle: [docs/erp/README.md](erp/README.md#sales-documents-presupuesto--albaran--factura).
 
 ---
 
@@ -284,7 +296,8 @@ Flujo E2E recomendado con seed (detalle tambien en [erp/README.md](erp/README.md
 | `/erp/analytics` | OEE, margen, desviacion de coste |
 | `/erp/inventory`, `/erp/items`, `/erp/locations` | Inventario y maestros |
 | `/erp/manufacturing`, `/erp/machines`, `/erp/components`, `/erp/bom`, `/erp/wo` | Fabricacion |
-| `/erp/sales`, `/erp/sales/*` | Ventas |
+| `/erp/sales`, `/erp/sales/*` | Ventas (legacy Sales Order / pricing) |
+| `/erp/customers`, `/erp/quotes`, `/erp/delivery-notes`, `/erp/invoices` | Clientes y documentos Presupuesto / Albaran / Factura |
 
 ---
 
