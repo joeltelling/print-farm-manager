@@ -16,7 +16,7 @@
 | `server/calendar-gate.js` | Shared `activeDispatchBlock(db)` used by scheduler and dispatch-status |
 | `server/ebay/` | eBay Sell APIs (orders, inventory push, analytics); see [docs/erp/ebay.md](erp/ebay.md) |
 | `server/notifications.js` | In-memory alert store for recoverable server errors |
-| `server/routes/` | One file per resource (printers, projects, parts, gcodes, jobs, calendar, backup) |
+| `server/routes/` | One file per resource (printers, projects, parts, gcodes, jobs, calendar, workspace, notebook, backup) |
 | `server/data/farm.db` | SQLite database file (auto-created, gitignored) |
 | `server/gcode/` | G-code file storage directory (auto-created, gitignored) |
 
@@ -56,6 +56,8 @@ DELETE /api/notifications/:id       → notifications.dismiss() (inline handler)
 *      /api/gcodes                  → server/routes/gcodes.js (mounted after scheduler exists, see below)
 *      /api/jobs                    → server/routes/jobs.js
 *      /api/calendar                → server/routes/calendar.js
+*      /api/workspace               → server/routes/workspace.js
+*      /api/notebook                → server/routes/notebook.js
 *      /api/backup                  → server/routes/backup.js
 *      /api/erp/ebay                → server/ebay (before /api/erp)
 *      /api/erp                     → server/erp

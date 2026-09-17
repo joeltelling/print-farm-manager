@@ -180,6 +180,32 @@ beforeEach(() => {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+    CREATE TABLE workspace_columns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      accent TEXT NOT NULL DEFAULT 'violet',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE workspace_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      column_id INTEGER NOT NULL REFERENCES workspace_columns(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE notebook_pages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      accent TEXT NOT NULL DEFAULT 'lime',
+      trashed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
   ensureErpSchema(db);
 
@@ -232,6 +258,19 @@ beforeEach(() => {
       1, NULL, ?, ?
     )
   `).run(now, now + 3 * 86400000, now, now);
+
+  db.prepare(`
+    INSERT INTO workspace_columns (title, accent, sort_order, created_at, updated_at)
+    VALUES ('Pendiente', 'amber', 0, ?, ?)
+  `).run(now, now);
+  db.prepare(`
+    INSERT INTO workspace_cards (column_id, title, body, sort_order, created_at, updated_at)
+    VALUES (1, 'Calibrate bed', 'MK4S_07', 0, ?, ?)
+  `).run(now, now);
+  db.prepare(`
+    INSERT INTO notebook_pages (title, body, accent, trashed_at, created_at, updated_at)
+    VALUES ('Ops checklist', '1. Sweep\n2. Filament', 'lime', NULL, ?, ?)
+  `).run(now, now);
 
   const rawWh = db.prepare("SELECT id FROM warehouse WHERE code = 'raw'").get();
   const compWh = db.prepare("SELECT id FROM warehouse WHERE code = 'comp'").get();
@@ -685,6 +724,21 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
         }),
       ])
     );
+    expect(res.body.workspace_columns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Pendiente', accent: 'amber' }),
+      ])
+    );
+    expect(res.body.workspace_cards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Calibrate bed', body: 'MK4S_07' }),
+      ])
+    );
+    expect(res.body.notebook_pages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Ops checklist', accent: 'lime' }),
+      ])
+    );
   });
 
   test('restore round-trips calendar_events', async () => {
@@ -728,6 +782,58 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
       const after = db.prepare('SELECT COUNT(*) AS n FROM calendar_events').get().n;
       expect(after).toBe(1);
       expect(db.prepare('SELECT title FROM calendar_events').get().title).toBe('Holiday shutdown');
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('restore round-trips workspace board and notebook pages', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    expect(exportRes.status).toBe(200);
+    const backupFile = writeTempBackupFile(exportRes.body);
+
+    try {
+      db.prepare("UPDATE workspace_columns SET title = 'Wiped'").run();
+      db.prepare("UPDATE workspace_cards SET title = 'Wiped'").run();
+      db.prepare("UPDATE notebook_pages SET title = 'Wiped'").run();
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.workspace_columns).toBe(1);
+      expect(restoreRes.body.workspace_cards).toBe(1);
+      expect(restoreRes.body.notebook_pages).toBe(1);
+
+      expect(db.prepare('SELECT title FROM workspace_columns').get().title).toBe('Pendiente');
+      expect(db.prepare('SELECT title, body FROM workspace_cards').get()).toMatchObject({
+        title: 'Calibrate bed',
+        body: 'MK4S_07',
+      });
+      expect(db.prepare('SELECT title FROM notebook_pages').get().title).toBe('Ops checklist');
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('older backup without workspace/notebook keys leaves current rows alone', async () => {
+    const exportRes = await request(app).get('/api/backup');
+    expect(exportRes.status).toBe(200);
+    const backup = { ...exportRes.body };
+    delete backup.workspace_columns;
+    delete backup.workspace_cards;
+    delete backup.notebook_pages;
+    const backupFile = writeTempBackupFile(backup);
+
+    try {
+      expect(db.prepare('SELECT COUNT(*) AS n FROM workspace_columns').get().n).toBe(1);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM workspace_cards').get().n).toBe(1);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM notebook_pages').get().n).toBe(1);
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+
+      expect(db.prepare('SELECT title FROM workspace_columns').get().title).toBe('Pendiente');
+      expect(db.prepare('SELECT title FROM workspace_cards').get().title).toBe('Calibrate bed');
+      expect(db.prepare('SELECT title FROM notebook_pages').get().title).toBe('Ops checklist');
     } finally {
       fs.unlinkSync(backupFile);
     }

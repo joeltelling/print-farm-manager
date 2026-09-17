@@ -10,6 +10,8 @@ import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
 import Timelapses from './pages/Timelapses';
 import Calendar from './pages/Calendar';
+import WorkspaceBoard from './pages/WorkspaceBoard';
+import Notebook from './pages/Notebook';
 import Erp, {
   ItemsPage as ErpItems,
   LocationsPage as ErpLocations,
@@ -177,6 +179,8 @@ export default function App() {
             <Route path="/jobs"            element={<Jobs />} />
             <Route path="/timelapses"      element={<Timelapses />} />
             <Route path="/calendar"        element={<Calendar />} />
+            <Route path="/workspace"       element={<WorkspaceBoard />} />
+            <Route path="/workspace/bloc"  element={<Notebook />} />
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
           </Routes>

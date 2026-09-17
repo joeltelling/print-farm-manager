@@ -65,6 +65,14 @@ export const NAV_SECTIONS = [
       { to: '/timelapses', label: 'Timelapses' },
     ],
   },
+  {
+    id: 'workspace',
+    label: 'Workspace',
+    items: [
+      { to: '/workspace', label: 'Tablero', end: true },
+      { to: '/workspace/bloc', label: 'Bloc' },
+    ],
+  },
 ];
 
 function pathMatches(pathname, item) {

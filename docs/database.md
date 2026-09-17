@@ -246,6 +246,58 @@ Index: `idx_calendar_events_range ON calendar_events(start_at, end_at)`.
 
 Only rows with `blocks_dispatch = 1` and `status = 'planned'` whose window contains "now" stop new job reservations (`server/calendar-gate.js`). See [docs/calendar.md](calendar.md).
 
+### workspace_columns
+
+Kanban columns for the single shared Workspace board. Seeded with four defaults when empty (see [docs/workspace.md](workspace.md)). Included in backup export/restore.
+
+```sql
+CREATE TABLE IF NOT EXISTS workspace_columns (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT NOT NULL,
+  accent      TEXT NOT NULL DEFAULT 'violet',
+              -- lime | violet | cyan | amber | red | indigo
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+```
+
+### workspace_cards
+
+Cards belonging to a workspace column. Cascaded on column delete.
+
+```sql
+CREATE TABLE IF NOT EXISTS workspace_cards (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  column_id   INTEGER NOT NULL REFERENCES workspace_columns(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+```
+
+Index: `idx_workspace_cards_column ON workspace_cards(column_id, sort_order)`.
+
+### notebook_pages
+
+Technical notebook pages. Soft-delete via `trashed_at` (NULL = live). Included in backup export/restore.
+
+```sql
+CREATE TABLE IF NOT EXISTS notebook_pages (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT NOT NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  accent      TEXT NOT NULL DEFAULT 'lime',
+  trashed_at  INTEGER,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+```
+
+Index: `idx_notebook_pages_trashed ON notebook_pages(trashed_at, updated_at DESC)`.
+
 ### printer_events
 
 Permanent audit log for each printer. Events are never deleted and survive printer deletion (no FK constraint on `printer_id`).

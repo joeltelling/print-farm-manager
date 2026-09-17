@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-09-17: Workspace module (tablero kanban + bloc tecnico)
+
+Operators needed a place for day-to-day tasks and freeform notes that is not Calendar (planned dates) and not printer incident notes. This adds a third nav module **Workspace** with a single shared CoMa-styled kanban (`/workspace`) and a dark graph-paper notebook (`/workspace/bloc`). Neither surface touches printers, dispatch, or `completed_qty`.
+
+The board seeds four default columns when empty (Pendiente, En curso, A revisar, Hecho) and re-seeds if the operator deletes the last column. Cards and columns reorder with native HTML5 drag (same pattern as Projects). Notebook pages autosave, soft-delete to trash, and support `.txt` export / print. All three tables (`workspace_columns`, `workspace_cards`, `notebook_pages`) are included in backup export/restore with older-backup compatibility.
+
+No printer protocol paths were changed. Coverage is route tests and backup round-trip only (not hardware-validated; not applicable).
+
+### Changes
+- `server/db.js`: additive `workspace_columns`, `workspace_cards`, `notebook_pages` + indexes
+- `server/routes/workspace.js`, `server/routes/notebook.js`: CRUD, reorder, trash/restore
+- `server/index.js`: mounts `/api/workspace` and `/api/notebook`
+- `server/routes/backup.js`: export + restore + sqlite_sequence for the three tables
+- `client/src/pages/WorkspaceBoard.jsx`, `Notebook.jsx`, `App.jsx`, `NavTree.jsx`: Workspace UI
+- `server/tests/workspace.test.js`, `notebook.test.js`; updates to `backup-restore.test.js`
+- `docs/workspace.md`, `docs/api.md`, `docs/database.md`, `docs/web-app.md`, `docs/server.md`, `docs/user-guide.md`, `docs/README.md`
+
 ## 2026-09-17: README gallery refresh (Calendar, Jobs, login, and more)
 
 The public README still stopped at eight screenshots from earlier today, before login and the Calendar module shipped. Fresh 1400x900 captures were taken against `./start.sh --seed-data`, including the pages that were missing from the gallery, and the README was rewritten so a stranger cloning the repo sees the product as it actually runs: why CoMa exists, the closure gate in plain language, operator map, and a documented way to re-capture the gallery.

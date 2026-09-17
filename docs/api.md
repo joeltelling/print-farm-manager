@@ -695,6 +695,90 @@ Returns `{ "ok": true }` or `404`.
 
 ---
 
+## Workspace
+
+Single shared kanban board for operator tasks and short notes. See [docs/workspace.md](workspace.md). Does not touch printers or `completed_qty`.
+
+### `GET /api/workspace`
+
+Returns `{ "columns": [ { id, title, accent, sort_order, cards: [...] }, ... ] }`. Seeds four default columns when the table is empty.
+
+### `POST /api/workspace/columns`
+
+Required: `title`. Optional: `accent` (`lime|violet|cyan|amber|red|indigo`, default `violet`). Returns `201` with the column row. `400` on validation failure.
+
+### `PUT /api/workspace/columns/reorder`
+
+Body: `{ "order": [id, ...] }` listing every column id exactly once. Returns the full board. `400` if the list is incomplete or unknown.
+
+### `PUT /api/workspace/columns/:id`
+
+Partial update of `title` and/or `accent`. `404` if missing.
+
+### `DELETE /api/workspace/columns/:id`
+
+Deletes the column and cascades its cards. Returns `{ "ok": true }` or `404`.
+
+### `POST /api/workspace/cards`
+
+Required: `column_id`, `title`. Optional: `body` (default `""`). Returns `201`. `404` if the column does not exist.
+
+### `PUT /api/workspace/cards/reorder`
+
+Body: `{ "cards": [ { "id", "column_id", "sort_order" }, ... ] }` in one transaction (move across columns and reorder). Returns the full board. `404` if a card or column is missing.
+
+### `PUT /api/workspace/cards/:id`
+
+Partial update of `title`, `body`, and/or `column_id`. `404` if missing.
+
+### `DELETE /api/workspace/cards/:id`
+
+Returns `{ "ok": true }` or `404`.
+
+---
+
+## Notebook
+
+Technical notepad pages (plain text). Soft-delete via `trashed_at`. See [docs/workspace.md](workspace.md).
+
+### `GET /api/notebook/pages?trashed=0|1&q=`
+
+Returns `{ "pages": [...] }`. `trashed=1` lists trash only. Optional `q` matches title or body (case-insensitive LIKE).
+
+### `POST /api/notebook/pages`
+
+Required: `title`. Optional: `body` (default `""`), `accent` (default `lime`). Returns `201`.
+
+```json
+{
+  "id": 1,
+  "title": "Ops checklist",
+  "body": "1. Sweep",
+  "accent": "lime",
+  "trashed_at": null,
+  "created_at": 1710000000000,
+  "updated_at": 1710000000000
+}
+```
+
+### `PUT /api/notebook/pages/:id`
+
+Partial update of `title`, `body`, `accent`. Empty `body` is allowed. `404` if missing.
+
+### `POST /api/notebook/pages/:id/trash`
+
+Sets `trashed_at`. `409` if already trashed. `404` if missing.
+
+### `POST /api/notebook/pages/:id/restore`
+
+Clears `trashed_at`. `409` if not in trash. `404` if missing.
+
+### `DELETE /api/notebook/pages/:id`
+
+Permanent delete. `409` if the page is still live (must trash first). `404` if missing.
+
+---
+
 ## Timelapses
 
 ### `GET /api/timelapses`

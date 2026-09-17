@@ -23,10 +23,11 @@ Al abrir CoMa por primera vez pide crear una cuenta de operador (usuario y contr
 - Desarrollo: UI en `http://localhost:5173` (API en `:3000`)
 - Produccion: todo en `http://localhost:3000` (o la IP LAN del servidor)
 
-La barra lateral tiene dos bloques:
+La barra lateral tiene tres bloques:
 
 1. **ERP** (Resumen, Inventario, Fabricacion, Ventas)
 2. **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs, Calendar, Timelapses)
+3. **Workspace** (Tablero, Bloc)
 
 Settings queda debajo. En movil (< 600 px) los enlaces salen en la barra superior.
 
@@ -98,7 +99,18 @@ Pagina Shopfloor `/calendar`: rejilla mensual de eventos planificados (llegada d
 
 Detalle tecnico: [docs/calendar.md](calendar.md).
 
-### 3.6 CSV de flota
+### 3.6 Workspace (tablero y bloc)
+
+Modulo **Workspace** aparte del shopfloor y del ERP:
+
+| Pantalla | Uso |
+|---|---|
+| **Tablero** (`/workspace`) | Un solo kanban compartido (Pendiente, En curso, A revisar, Hecho por defecto). Columnas y tarjetas editables, arrastre entre columnas, apuntes en cada tarjeta |
+| **Bloc** (`/workspace/bloc`) | Bloc de notas tecnico con papel cuadriculado oscuro CoMa, autosave, papelera, export `.txt` e imprimir |
+
+No despacha impresoras ni toca `completed_qty`. Detalle: [docs/workspace.md](workspace.md).
+
+### 3.7 CSV de flota
 
 En Settings, importa CSV con columnas: `name`, `ip`, `type`, `api_key` (si aplica), `serial_number` (Bambu / CC2), `group`, `model`. Detalle en el [README raiz](../README.md#csv-import-format).
 

@@ -184,6 +184,45 @@ try {
 } catch (_) {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_calendar_events_range ON calendar_events(start_at, end_at)'); } catch (_) {}
 
+// Workspace board: single shared kanban (columns + cards). Operator scratch space,
+// not tied to printers or ERP. Seeded empty; GET /api/workspace fills default columns.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS workspace_columns (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    accent      TEXT NOT NULL DEFAULT 'violet',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS workspace_cards (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    column_id   INTEGER NOT NULL REFERENCES workspace_columns(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_workspace_cards_column ON workspace_cards(column_id, sort_order)'); } catch (_) {}
+
+// Technical notebook pages. Soft-delete via trashed_at (NULL = live).
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS notebook_pages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL DEFAULT '',
+    accent      TEXT NOT NULL DEFAULT 'lime',
+    trashed_at  INTEGER,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_notebook_pages_trashed ON notebook_pages(trashed_at, updated_at DESC)'); } catch (_) {}
+
 const { ensureErpSchema } = require('./erp/schema');
 ensureErpSchema(db);
 

@@ -13,8 +13,10 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 - **Calendar page** - planned stock arrivals, shipments, deadlines, and production closures (closures block new job dispatch)
+- **Workspace Tablero** - single shared CoMa-styled kanban for operator tasks (`/workspace`)
+- **Workspace Bloc** - technical notepad with dark graph paper, trash, and autosave (`/workspace/bloc`)
 
-Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ERP: Resumen, Inventario, Fabricacion, Ventas), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor is a flat list under its module. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
+Nav is a three-level tree: **module** (ERP, Shopfloor, Workspace), **group** (only under ERP: Resumen, Inventario, Fabricacion, Ventas), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor and Workspace are flat lists under their modules. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
 
 **Boot splash:** on the first entry of a browser tab session, a full-screen CoMa boot animation covers the shell (`BootSplash`, keyed by `sessionStorage` `coma.boot.done`). React Router moves do not remount App, so in-app navigation never re-shows it. A reload in the same tab skips it; a new tab shows it again.
 
@@ -37,6 +39,8 @@ Nav is a three-level tree: **module** (ERP, Shopfloor), **group** (only under ER
 | `client/src/pages/erp/qr.js` | Dependency-free local QR SVG generator for printable WO pick lists |
 | `client/src/pages/Timelapses.jsx` | Timelapse gallery, manual start, video/frame preview |
 | `client/src/pages/Calendar.jsx` | Month grid of planned events + ERP/job history overlay; production-closure banner |
+| `client/src/pages/WorkspaceBoard.jsx` | Workspace kanban: columns, cards, HTML5 drag reorder |
+| `client/src/pages/Notebook.jsx` | Technical notebook: list + graph-paper editor, trash, autosave |
 | `client/src/pages/Settings.jsx` | Tabbed settings (site name, camera mode, timelapse interval/FPS/retention, models, CSV, backup, account) |
 | `client/src/components/BootSplash.jsx` | Session boot splash (once per tab session; not on in-app navigation) |
 | `client/src/components/AuthGate.jsx` | Wraps `<App />`; gates on account creation, login, and the one-time setup guide |
@@ -85,6 +89,8 @@ Use the built client on port 3000 (or HTTPS) to install. Vite hot-reload on 5173
 │    Resumen / ...  │                       │
 │  Shopfloor        │                       │
 │    Dashboard ...  │                       │
+│  Workspace        │                       │
+│    Tablero / Bloc │                       │
 │  Settings         │                       │
 │  [alert bell]     │                       │
 └───────────────────┴───────────────────────┘

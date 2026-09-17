@@ -190,6 +190,9 @@ module.exports = (db) => {
     const filament_colors = db.prepare('SELECT * FROM filament_colors').all();
     const settings        = db.prepare('SELECT * FROM settings').all();
     const calendar_events = db.prepare('SELECT * FROM calendar_events').all();
+    const workspace_columns = db.prepare('SELECT * FROM workspace_columns').all();
+    const workspace_cards = db.prepare('SELECT * FROM workspace_cards').all();
+    const notebook_pages = db.prepare('SELECT * FROM notebook_pages').all();
 
     // Embed gcode files as base64, keyed by their on-disk basename
     const gcodeFiles = {};
@@ -217,6 +220,9 @@ module.exports = (db) => {
       filament_colors,
       settings,
       calendar_events,
+      workspace_columns,
+      workspace_cards,
+      notebook_pages,
       erp: exportErp(db),
       gcode_files: gcodeFiles,
     };
@@ -271,6 +277,9 @@ module.exports = (db) => {
       const hasFilamentColors = Array.isArray(backup.filament_colors);
       const hasSettings       = Array.isArray(backup.settings);
       const hasCalendarEvents = Array.isArray(backup.calendar_events);
+      const hasWorkspaceColumns = Array.isArray(backup.workspace_columns);
+      const hasWorkspaceCards = Array.isArray(backup.workspace_cards);
+      const hasNotebookPages = Array.isArray(backup.notebook_pages);
       const hasErp            = backup.erp !== undefined;
 
       const restore = db.transaction(() => {
@@ -285,6 +294,11 @@ module.exports = (db) => {
         try { db.prepare('DELETE FROM printer_status_history').run(); } catch (_) {}
         try { db.prepare('DELETE FROM timelapses').run(); } catch (_) {}
         if (hasCalendarEvents) db.prepare('DELETE FROM calendar_events').run();
+        // Cards before columns (FK); restore only when both keys present so a partial
+        // older backup cannot orphan or wipe one side alone.
+        if (hasWorkspaceCards) db.prepare('DELETE FROM workspace_cards').run();
+        if (hasWorkspaceColumns) db.prepare('DELETE FROM workspace_columns').run();
+        if (hasNotebookPages) db.prepare('DELETE FROM notebook_pages').run();
         db.prepare('DELETE FROM jobs').run();
         db.prepare('DELETE FROM gcodes').run();
         db.prepare('DELETE FROM parts').run();
@@ -314,6 +328,9 @@ module.exports = (db) => {
           filament_color: makeInserter(db, 'filament_colors', backup.filament_colors || []),
           setting:        makeInserter(db, 'settings', backup.settings || []),
           calendar_event: makeInserter(db, 'calendar_events', backup.calendar_events || []),
+          workspace_column: makeInserter(db, 'workspace_columns', backup.workspace_columns || []),
+          workspace_card: makeInserter(db, 'workspace_cards', backup.workspace_cards || []),
+          notebook_page:  makeInserter(db, 'notebook_pages', backup.notebook_pages || []),
         };
 
         const erpStmts = hasErp
@@ -342,6 +359,10 @@ module.exports = (db) => {
         for (const c of (backup.filament_colors || [])) stmts.filament_color.run(c);
         for (const s of (backup.settings || [])) stmts.setting.run(s);
         for (const e of (backup.calendar_events || [])) stmts.calendar_event.run(e);
+        // columns before cards — FK on column_id
+        for (const c of (backup.workspace_columns || [])) stmts.workspace_column.run(c);
+        for (const c of (backup.workspace_cards || [])) stmts.workspace_card.run(c);
+        for (const p of (backup.notebook_pages || [])) stmts.notebook_page.run(p);
 
         if (hasErp) {
           for (const table of ERP_INSERT_ORDER) {
@@ -359,6 +380,9 @@ module.exports = (db) => {
           ['timelapses', 'timelapses'],
           ['filament_types', 'filament_types'], ['filament_colors', 'filament_colors'],
           ['calendar_events', 'calendar_events'],
+          ['workspace_columns', 'workspace_columns'],
+          ['workspace_cards', 'workspace_cards'],
+          ['notebook_pages', 'notebook_pages'],
         ]) {
           try {
             db.prepare(`
@@ -389,6 +413,9 @@ module.exports = (db) => {
         filament_types:  (backup.filament_types  || []).length,
         filament_colors: (backup.filament_colors || []).length,
         calendar_events: (backup.calendar_events || []).length,
+        workspace_columns: (backup.workspace_columns || []).length,
+        workspace_cards: (backup.workspace_cards || []).length,
+        notebook_pages:  (backup.notebook_pages  || []).length,
         erp: hasErp
           ? Object.fromEntries(ERP_TABLES.map(table => [
             table,
