@@ -27,7 +27,7 @@ La barra lateral tiene tres bloques:
 
 1. **ERP** (Overview, Inventory, Manufacturing, Sales)
 2. **Shopfloor** (Dashboard, Fleet, Printers, Projects, Jobs, Calendar, Timelapses)
-3. **Workspace** (Tablero, Bloc)
+3. **Workspace** (Board, Notebook)
 
 Settings queda debajo. En movil (< 600 px) los enlaces salen en la barra superior.
 
@@ -105,8 +105,8 @@ Modulo **Workspace** aparte del shopfloor y del ERP:
 
 | Pantalla | Uso |
 |---|---|
-| **Tablero** (`/workspace`) | Un solo kanban compartido (Pendiente, En curso, A revisar, Hecho por defecto). Columnas y tarjetas editables, arrastre entre columnas, apuntes en cada tarjeta |
-| **Bloc** (`/workspace/bloc`) | Bloc de notas tecnico con papel cuadriculado oscuro CoMa, autosave, papelera, export `.txt` e imprimir |
+| **Board** (`/workspace`) | Un solo kanban compartido (To Do, In Progress, Review, Done por defecto). Columnas y tarjetas editables, arrastre entre columnas, apuntes en cada tarjeta |
+| **Notebook** (`/workspace/bloc`) | Bloc de notas tecnico con papel cuadriculado oscuro CoMa, autosave, papelera, export `.txt` e imprimir |
 
 No despacha impresoras ni toca `completed_qty`. Detalle: [docs/workspace.md](workspace.md).
 

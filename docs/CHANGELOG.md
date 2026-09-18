@@ -2,6 +2,51 @@
 
 ---
 
+## 2026-09-18: Workspace board and notebook translated to English
+
+A documentation and Spanish-text sweep after the Acres import work found that the
+Workspace module (the shared kanban board and the technical notebook) had shipped
+entirely in Spanish: the default board columns seeded by `server/routes/workspace.js`,
+every toast, confirm dialog, button, and placeholder in `WorkspaceBoard.jsx` and
+`Notebook.jsx`, and the sidebar labels in `NavTree.jsx`. This was missed by the earlier
+"Sales documents UI in English" pass because Workspace shipped after it. Every other
+client page, plus the operator-facing product surface overall, is English-first; only
+`docs/user-guide.md` is intentionally Spanish (a walkthrough for Spanish-speaking
+operators) and was left as prose, with just its literal UI-label references updated to
+match the new English names.
+
+The default board columns are now `To Do`, `In Progress`, `Review`, `Done` (previously
+`Pendiente`, `En curso`, `A revisar`, `Hecho`); this only changes what a *fresh* install
+seeds, existing installs keep whatever titles an operator already has. `docs/workspace.md`
+and the relevant sections of `docs/web-app.md`, `docs/README.md`, and `README.md` (which
+had also drifted, still describing the old Spanish ERP nav group names Resumen /
+Inventario / Fabricacion / Ventas that were renamed to English earlier) were corrected to
+match. The two affected README screenshots (`workspace-board.png`, `workspace-notebook.png`)
+were recaptured with `scripts/capture-readme-screenshots.js` after updating its demo seed
+data (column titles, sample cards, and the notebook checklist) to English; the pre-existing
+`seed-data.db` also had leftover Spanish rows from earlier manual testing that had to be
+cleared for the new English seed to apply. No schema, route, or scheduler behavior
+changed.
+
+### Changes
+- `server/routes/workspace.js`: `DEFAULT_COLUMNS` titles changed to English.
+- `client/src/pages/WorkspaceBoard.jsx`: all toasts, confirm dialogs, buttons, labels, and
+  placeholders translated to English.
+- `client/src/pages/Notebook.jsx`: same translation pass, plus the date-format locale
+  changed from `es-ES` to `en-US` to match every other page.
+- `client/src/components/NavTree.jsx`: Workspace sidebar labels `Tablero`/`Bloc` renamed
+  to `Board`/`Notebook`.
+- `docs/workspace.md`, `docs/web-app.md`, `docs/README.md`, `README.md`: updated to the
+  English labels and default column names; `docs/web-app.md`'s ERP nav group names
+  (Resumen/Inventario/Fabricacion/Ventas) corrected to the current English names.
+- `docs/user-guide.md`: updated the literal Workspace/Board/Notebook and default-column
+  references; the surrounding Spanish prose is unchanged (intentional for this file).
+- `scripts/capture-readme-screenshots.js`: demo seed data (default columns, sample cards,
+  notebook checklist) translated to English so the gallery screenshots match the UI.
+- `docs/images/workspace-board.png`, `workspace-notebook.png`: recaptured.
+- `server/tests/workspace.test.js`, `server/tests/backup-restore.test.js`: fixture titles
+  updated to match the new English defaults.
+
 ## 2026-09-18: Import an original Acres database into CoMa's embedded ERP
 
 Operators who ran the standalone Acres ERP before adopting CoMa had no way to bring their

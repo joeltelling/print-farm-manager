@@ -261,7 +261,7 @@ beforeEach(() => {
 
   db.prepare(`
     INSERT INTO workspace_columns (title, accent, sort_order, created_at, updated_at)
-    VALUES ('Pendiente', 'amber', 0, ?, ?)
+    VALUES ('To Do', 'amber', 0, ?, ?)
   `).run(now, now);
   db.prepare(`
     INSERT INTO workspace_cards (column_id, title, body, sort_order, created_at, updated_at)
@@ -754,7 +754,7 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
     );
     expect(res.body.workspace_columns).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: 'Pendiente', accent: 'amber' }),
+        expect.objectContaining({ title: 'To Do', accent: 'amber' }),
       ])
     );
     expect(res.body.workspace_cards).toEqual(
@@ -831,7 +831,7 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
       expect(restoreRes.body.workspace_cards).toBe(1);
       expect(restoreRes.body.notebook_pages).toBe(1);
 
-      expect(db.prepare('SELECT title FROM workspace_columns').get().title).toBe('Pendiente');
+      expect(db.prepare('SELECT title FROM workspace_columns').get().title).toBe('To Do');
       expect(db.prepare('SELECT title, body FROM workspace_cards').get()).toMatchObject({
         title: 'Calibrate bed',
         body: 'MK4S_07',
@@ -859,7 +859,7 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
       const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
       expect(restoreRes.status).toBe(200);
 
-      expect(db.prepare('SELECT title FROM workspace_columns').get().title).toBe('Pendiente');
+      expect(db.prepare('SELECT title FROM workspace_columns').get().title).toBe('To Do');
       expect(db.prepare('SELECT title FROM workspace_cards').get().title).toBe('Calibrate bed');
       expect(db.prepare('SELECT title FROM notebook_pages').get().title).toBe('Ops checklist');
     } finally {

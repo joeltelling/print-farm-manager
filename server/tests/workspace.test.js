@@ -41,7 +41,7 @@ describe('Workspace API', () => {
     expect(res.status).toBe(200);
     expect(res.body.columns).toHaveLength(4);
     expect(res.body.columns.map(c => c.title)).toEqual([
-      'Pendiente', 'En curso', 'A revisar', 'Hecho',
+      'To Do', 'In Progress', 'Review', 'Done',
     ]);
     expect(res.body.columns.every(c => Array.isArray(c.cards) && c.cards.length === 0)).toBe(true);
   });
@@ -62,9 +62,9 @@ describe('Workspace API', () => {
   test('POST /columns creates a column and returns 201', async () => {
     const res = await request(app)
       .post('/api/workspace/columns')
-      .send({ title: 'Bloqueado', accent: 'red' });
+      .send({ title: 'Blocked', accent: 'red' });
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ title: 'Bloqueado', accent: 'red' });
+    expect(res.body).toMatchObject({ title: 'Blocked', accent: 'red' });
   });
 
   test('POST /columns 400 on empty title or bad accent', async () => {

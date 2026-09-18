@@ -64,13 +64,13 @@ Per-job JPEG frame captures; optional MP4 render when host `ffmpeg` is available
 
 ![Timelapse gallery](docs/images/timelapses.png)
 
-### Workspace tablero
+### Workspace board
 
 Single shared CoMa-styled kanban for operator tasks (not a Trello clone). Columns and cards drag to reorder; card bodies hold short notes.
 
-![Workspace board with Pendiente En curso A revisar Hecho columns](docs/images/workspace-board.png)
+![Workspace board with To Do In Progress Review Done columns](docs/images/workspace-board.png)
 
-### Workspace bloc
+### Workspace notebook
 
 Technical notepad with dark graph paper, accent tags, autosave, and trash.
 
@@ -174,8 +174,8 @@ That last point matters: a production closure is not a sticky note. While it is 
 
 | Capability | Detail |
 |---|---|
-| Tablero | Single shared CoMa kanban (columns + cards, drag reorder, card notes) |
-| Bloc | Technical notepad with dark graph paper, autosave, trash, `.txt` / print |
+| Board | Single shared CoMa kanban (columns + cards, drag reorder, card notes) |
+| Notebook | Technical notepad with dark graph paper, autosave, trash, `.txt` / print |
 
 Neither surface touches printers or `completed_qty`. See [docs/workspace.md](docs/workspace.md).
 
@@ -309,8 +309,8 @@ npm start
 | Job queue / cancel queued | Shopfloor → Jobs |
 | Plan arrivals / closures | Shopfloor → Calendar |
 | Timelapse gallery | Shopfloor → Timelapses |
-| Day-to-day tasks | Workspace → Tablero |
-| Operator scratch notes | Workspace → Bloc |
+| Day-to-day tasks | Workspace → Board |
+| Operator scratch notes | Workspace → Notebook |
 | Sync printers into ERP | ERP → Dashboard → Sync from shopfloor |
 | Receive filament / raw | ERP → Inventory |
 | Machine USD/h or kW | ERP → Machines |
@@ -386,7 +386,7 @@ core-manufacturing/
 | [docs/README.md](docs/README.md) | Technical index |
 | [docs/installation.md](docs/installation.md) | Linux install, scripts, systemd, simulator |
 | [docs/calendar.md](docs/calendar.md) | Planned events and production-closure gate |
-| [docs/workspace.md](docs/workspace.md) | Workspace tablero and technical notebook |
+| [docs/workspace.md](docs/workspace.md) | Workspace board and technical notebook |
 | [docs/erp/README.md](docs/erp/README.md) | Embedded ERP |
 | [docs/erp/ebay.md](docs/erp/ebay.md) | eBay Sell integration |
 | [docs/api.md](docs/api.md) | REST contracts |

@@ -73,8 +73,8 @@ export const NAV_SECTIONS = [
     id: 'workspace',
     label: 'Workspace',
     items: [
-      { to: '/workspace', label: 'Tablero', end: true },
-      { to: '/workspace/bloc', label: 'Bloc' },
+      { to: '/workspace', label: 'Board', end: true },
+      { to: '/workspace/bloc', label: 'Notebook' },
     ],
   },
 ];

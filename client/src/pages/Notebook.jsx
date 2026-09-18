@@ -32,7 +32,7 @@ function wordCount(text) {
 
 function formatDate(ms) {
   if (ms == null) return '';
-  return new Date(ms).toLocaleString('es-ES', {
+  return new Date(ms).toLocaleString('en-US', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -113,7 +113,7 @@ export default function Notebook() {
     });
     if (!res.ok) {
       setSaveState('dirty');
-      showToast('Guardar nota falló: ' + await readError(res), 'error');
+      showToast('Save note failed: ' + await readError(res), 'error');
       return;
     }
     const updated = await res.json();
@@ -155,10 +155,10 @@ export default function Notebook() {
     const res = await fetch('/api/notebook/pages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: 'Nota nueva', body: '', accent: 'lime' }),
+      body: JSON.stringify({ title: 'New note', body: '', accent: 'lime' }),
     });
     if (!res.ok) {
-      showToast('Crear nota falló: ' + await readError(res), 'error');
+      showToast('Create note failed: ' + await readError(res), 'error');
       return;
     }
     const page = await res.json();
@@ -171,15 +171,15 @@ export default function Notebook() {
   async function trashPage() {
     if (!selectedId) return;
     const ok = await confirm({
-      title: 'A la papelera',
-      message: `Se moverá "${title}" a la papelera.`,
-      confirmLabel: 'A la papelera',
+      title: 'Move to trash',
+      message: `"${title}" will be moved to the trash.`,
+      confirmLabel: 'Move to trash',
       danger: true,
     });
     if (!ok) return;
     const res = await fetch(`/api/notebook/pages/${selectedId}/trash`, { method: 'POST' });
     if (!res.ok) {
-      showToast('Papelera falló: ' + await readError(res), 'error');
+      showToast('Trash failed: ' + await readError(res), 'error');
       return;
     }
     setSelectedId(null);
@@ -187,17 +187,17 @@ export default function Notebook() {
     setBody('');
     const list = await loadPages();
     if (list[0]) selectPage(list[0]);
-    showToast('Nota en papelera');
+    showToast('Note moved to trash');
   }
 
   async function restorePage() {
     if (!selectedId) return;
     const res = await fetch(`/api/notebook/pages/${selectedId}/restore`, { method: 'POST' });
     if (!res.ok) {
-      showToast('Restaurar falló: ' + await readError(res), 'error');
+      showToast('Restore failed: ' + await readError(res), 'error');
       return;
     }
-    showToast('Nota restaurada');
+    showToast('Note restored');
     setSelectedId(null);
     setTab('notes');
     const list = await loadPages({ tab: 'notes' });
@@ -209,22 +209,22 @@ export default function Notebook() {
   async function permanentDelete() {
     if (!selectedId) return;
     const ok = await confirm({
-      title: 'Borrar definitivo',
-      message: `Se eliminará "${title}" de forma permanente. Esta acción no se puede deshacer.`,
-      confirmLabel: 'Borrar',
+      title: 'Delete permanently',
+      message: `"${title}" will be permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete',
       danger: true,
     });
     if (!ok) return;
     const res = await fetch(`/api/notebook/pages/${selectedId}`, { method: 'DELETE' });
     if (!res.ok) {
-      showToast('Borrar falló: ' + await readError(res), 'error');
+      showToast('Delete failed: ' + await readError(res), 'error');
       return;
     }
     setSelectedId(null);
     setTitle('');
     setBody('');
     await loadPages();
-    showToast('Nota eliminada');
+    showToast('Note deleted');
   }
 
   function exportTxt() {
@@ -232,7 +232,7 @@ export default function Notebook() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${(title || 'nota').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)}.txt`;
+    a.download = `${(title || 'note').replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -253,9 +253,9 @@ export default function Notebook() {
 
   const saveLabel = {
     idle: '',
-    dirty: 'Sin guardar',
-    saving: 'Guardando...',
-    saved: 'Guardado',
+    dirty: 'Unsaved',
+    saving: 'Saving...',
+    saved: 'Saved',
   }[saveState];
 
   return (
@@ -356,8 +356,8 @@ export default function Notebook() {
 
       <div className="nb-no-print">
         <PageHeader
-          title="Bloc técnico"
-          subtitle="Apuntes del operador con papel cuadriculado CoMa"
+          title="Technical notebook"
+          subtitle="Operator notes on CoMa graph paper"
           badge="WORKSPACE"
           badgeColor={theme.lime}
           actions={
@@ -368,7 +368,7 @@ export default function Notebook() {
                 style={{ ...BTN_SECONDARY, display: 'none' }}
                 onClick={() => setListOpen(o => !o)}
               >
-                {listOpen ? 'Papel' : 'Lista'}
+                {listOpen ? 'Paper' : 'List'}
               </button>
               <style>{`
                 @media (max-width: 600px) {
@@ -377,7 +377,7 @@ export default function Notebook() {
               `}</style>
               {tab === 'notes' && (
                 <button type="button" style={BTN_PRIMARY} onClick={createPage}>
-                  Nota nueva
+                  New note
                 </button>
               )}
             </>
@@ -391,15 +391,15 @@ export default function Notebook() {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Buscar notas..."
+              placeholder="Search notes..."
               style={{ ...INPUT_STYLE, fontSize: 12.5 }}
             />
           </form>
 
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
             {[
-              { id: 'notes', label: 'Notas' },
-              { id: 'trash', label: 'Papelera' },
+              { id: 'notes', label: 'Notes' },
+              { id: 'trash', label: 'Trash' },
             ].map(t => (
               <button
                 key={t.id}
@@ -424,11 +424,11 @@ export default function Notebook() {
 
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {loading ? (
-              <div style={{ color: theme.textMuted, fontSize: 12 }}>Cargando...</div>
+              <div style={{ color: theme.textMuted, fontSize: 12 }}>Loading...</div>
             ) : pages.length === 0 ? (
               <EmptyState
-                title={tab === 'trash' ? 'Papelera vacía' : 'Sin notas'}
-                hint={tab === 'trash' ? 'Las notas enviadas a papelera aparecen aquí.' : 'Pulsa Nota nueva para empezar.'}
+                title={tab === 'trash' ? 'Trash is empty' : 'No notes'}
+                hint={tab === 'trash' ? 'Notes you send to trash appear here.' : 'Click New note to get started.'}
               />
             ) : (
               pages.map(page => {
@@ -479,7 +479,7 @@ export default function Notebook() {
         <div className={`nb-paper nb-print-area${!listOpen || selectedId ? '' : ' is-hidden-mobile'}`}>
           {!selectedId ? (
             <div style={{ padding: 28, color: theme.textMuted }}>
-              Selecciona o crea una nota.
+              Select or create a note.
             </div>
           ) : (
             <>
@@ -510,19 +510,19 @@ export default function Notebook() {
                           .txt
                         </button>
                         <button type="button" style={{ ...BTN_SECONDARY, padding: '6px 10px', fontSize: 11 }} onClick={() => window.print()}>
-                          Imprimir
+                          Print
                         </button>
                         <button type="button" style={{ ...BTN_SECONDARY, padding: '6px 10px', fontSize: 11, color: theme.red }} onClick={trashPage}>
-                          A la papelera
+                          Move to trash
                         </button>
                       </>
                     ) : (
                       <>
                         <button type="button" style={{ ...BTN_PRIMARY, padding: '6px 10px', fontSize: 11 }} onClick={restorePage}>
-                          Restaurar
+                          Restore
                         </button>
                         <button type="button" style={{ ...BTN_SECONDARY, padding: '6px 10px', fontSize: 11, color: theme.red }} onClick={permanentDelete}>
-                          Borrar definitivo
+                          Delete permanently
                         </button>
                       </>
                     )}
@@ -543,7 +543,7 @@ export default function Notebook() {
                   value={body}
                   onChange={onBodyChange}
                   disabled={tab === 'trash'}
-                  placeholder="Escribe aquí..."
+                  placeholder="Start writing..."
                 />
               </div>
 
@@ -560,7 +560,7 @@ export default function Notebook() {
                 }}
               >
                 <span style={{ ...CHIP_STYLE }}>
-                  {words} palabras · {chars} caracteres
+                  {words} words · {chars} characters
                 </span>
                 {tab === 'notes' && saveLabel && (
                   <span style={{ ...CAPTION_STYLE, color: saveState === 'dirty' ? theme.amber : theme.lime }}>

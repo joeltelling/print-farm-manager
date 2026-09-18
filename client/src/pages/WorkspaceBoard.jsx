@@ -70,7 +70,7 @@ export default function WorkspaceBoard() {
       body: JSON.stringify({ column_id: columnId, title }),
     });
     if (!res.ok) {
-      showToast('Crear tarjeta falló: ' + await readError(res), 'error');
+      showToast('Create card failed: ' + await readError(res), 'error');
       return;
     }
     setNewCardTitle(t => ({ ...t, [columnId]: '' }));
@@ -87,7 +87,7 @@ export default function WorkspaceBoard() {
       body: JSON.stringify({ title, accent: newColumnAccent }),
     });
     if (!res.ok) {
-      showToast('Crear columna falló: ' + await readError(res), 'error');
+      showToast('Create column failed: ' + await readError(res), 'error');
       return;
     }
     setNewColumnTitle('');
@@ -107,7 +107,7 @@ export default function WorkspaceBoard() {
       body: JSON.stringify({ title }),
     });
     if (!res.ok) {
-      showToast('Renombrar columna falló: ' + await readError(res), 'error');
+      showToast('Rename column failed: ' + await readError(res), 'error');
       return;
     }
     setRenamingId(null);
@@ -116,18 +116,18 @@ export default function WorkspaceBoard() {
 
   async function deleteColumn(col) {
     const ok = await confirm({
-      title: 'Eliminar columna',
-      message: `Se eliminará "${col.title}" y todas sus tarjetas. Esta acción no se puede deshacer.`,
-      confirmLabel: 'Eliminar',
+      title: 'Delete column',
+      message: `"${col.title}" and all its cards will be deleted. This cannot be undone.`,
+      confirmLabel: 'Delete',
       danger: true,
     });
     if (!ok) return;
     const res = await fetch(`/api/workspace/columns/${col.id}`, { method: 'DELETE' });
     if (!res.ok) {
-      showToast('Eliminar columna falló: ' + await readError(res), 'error');
+      showToast('Delete column failed: ' + await readError(res), 'error');
       return;
     }
-    showToast('Columna eliminada');
+    showToast('Column deleted');
     await load();
   }
 
@@ -142,7 +142,7 @@ export default function WorkspaceBoard() {
     if (!editCard) return;
     const title = editTitle.trim();
     if (!title) {
-      showToast('El título es obligatorio', 'error');
+      showToast('Title is required', 'error');
       return;
     }
     setSaving(true);
@@ -153,7 +153,7 @@ export default function WorkspaceBoard() {
     });
     setSaving(false);
     if (!res.ok) {
-      showToast('Guardar tarjeta falló: ' + await readError(res), 'error');
+      showToast('Save card failed: ' + await readError(res), 'error');
       return;
     }
     setEditCard(null);
@@ -163,19 +163,19 @@ export default function WorkspaceBoard() {
   async function deleteCard() {
     if (!editCard) return;
     const ok = await confirm({
-      title: 'Eliminar tarjeta',
-      message: `Se eliminará "${editCard.title}". Esta acción no se puede deshacer.`,
-      confirmLabel: 'Eliminar',
+      title: 'Delete card',
+      message: `"${editCard.title}" will be deleted. This cannot be undone.`,
+      confirmLabel: 'Delete',
       danger: true,
     });
     if (!ok) return;
     const res = await fetch(`/api/workspace/cards/${editCard.id}`, { method: 'DELETE' });
     if (!res.ok) {
-      showToast('Eliminar tarjeta falló: ' + await readError(res), 'error');
+      showToast('Delete card failed: ' + await readError(res), 'error');
       return;
     }
     setEditCard(null);
-    showToast('Tarjeta eliminada');
+    showToast('Card deleted');
     await load();
   }
 
@@ -193,7 +193,7 @@ export default function WorkspaceBoard() {
       body: JSON.stringify({ cards }),
     });
     if (!res.ok) {
-      showToast('Reordenar falló: ' + await readError(res), 'error');
+      showToast('Reorder failed: ' + await readError(res), 'error');
       await load();
       return;
     }
@@ -208,7 +208,7 @@ export default function WorkspaceBoard() {
       body: JSON.stringify({ order: orderIds }),
     });
     if (!res.ok) {
-      showToast('Reordenar columnas falló: ' + await readError(res), 'error');
+      showToast('Reorder columns failed: ' + await readError(res), 'error');
       await load();
       return;
     }
@@ -318,14 +318,14 @@ export default function WorkspaceBoard() {
       `}</style>
 
       <PageHeader
-        title="Tablero"
-        subtitle="Flujo de tareas y apuntes del operador"
+        title="Board"
+        subtitle="Task flow and operator notes"
         badge="WORKSPACE"
         badgeColor={theme.violet}
         actions={
           !addingColumn ? (
             <button type="button" style={BTN_SECONDARY} onClick={() => setAddingColumn(true)}>
-              Nueva columna
+              New column
             </button>
           ) : null
         }
@@ -348,7 +348,7 @@ export default function WorkspaceBoard() {
             autoFocus
             value={newColumnTitle}
             onChange={e => setNewColumnTitle(e.target.value)}
-            placeholder="Nombre de columna"
+            placeholder="Column name"
             style={{ ...INPUT_STYLE, maxWidth: 220 }}
             maxLength={80}
           />
@@ -368,17 +368,17 @@ export default function WorkspaceBoard() {
               />
             ))}
           </div>
-          <button type="submit" style={BTN_PRIMARY}>Añadir</button>
+          <button type="submit" style={BTN_PRIMARY}>Add</button>
           <button type="button" style={BTN_SECONDARY} onClick={() => { setAddingColumn(false); setNewColumnTitle(''); }}>
-            Cancelar
+            Cancel
           </button>
         </form>
       )}
 
       {loading ? (
-        <div style={{ color: theme.textMuted, fontSize: 13 }}>Cargando tablero...</div>
+        <div style={{ color: theme.textMuted, fontSize: 13 }}>Loading board...</div>
       ) : columns.length === 0 ? (
-        <EmptyState title="Sin columnas" hint="Pulsa Nueva columna para empezar." />
+        <EmptyState title="No columns" hint="Click New column to get started." />
       ) : (
         <div className="ws-board-scroll">
           {columns.map(col => {
@@ -454,7 +454,7 @@ export default function WorkspaceBoard() {
                   <span style={{ ...CHIP_STYLE, color: accent }}>{col.cards.length}</span>
                   <button
                     type="button"
-                    title="Eliminar columna"
+                    title="Delete column"
                     onClick={() => deleteColumn(col)}
                     style={{
                       background: 'transparent', border: 'none', color: theme.textFaint,
@@ -535,7 +535,7 @@ export default function WorkspaceBoard() {
                     <input
                       value={newCardTitle[col.id] || ''}
                       onChange={e => setNewCardTitle(t => ({ ...t, [col.id]: e.target.value }))}
-                      placeholder="Nueva tarjeta"
+                      placeholder="New card"
                       style={{ ...INPUT_STYLE, flex: 1, padding: '6px 10px', fontSize: 12 }}
                       maxLength={120}
                     />
@@ -570,8 +570,8 @@ export default function WorkspaceBoard() {
               display: 'flex', flexDirection: 'column', gap: 12,
             }}
           >
-            <div style={{ ...CAPTION_STYLE, color: theme.violet }}>Tarjeta</div>
-            <label style={{ fontSize: 11, color: theme.textDim }}>Título</label>
+            <div style={{ ...CAPTION_STYLE, color: theme.violet }}>Card</div>
+            <label style={{ fontSize: 11, color: theme.textDim }}>Title</label>
             <input
               autoFocus
               value={editTitle}
@@ -580,21 +580,21 @@ export default function WorkspaceBoard() {
               maxLength={120}
               required
             />
-            <label style={{ fontSize: 11, color: theme.textDim }}>Apuntes</label>
+            <label style={{ fontSize: 11, color: theme.textDim }}>Notes</label>
             <textarea
               value={editBody}
               onChange={e => setEditBody(e.target.value)}
               style={{ ...INPUT_STYLE, minHeight: 120, resize: 'vertical', lineHeight: 1.45 }}
-              placeholder="Detalles, checklist corta, enlaces..."
+              placeholder="Details, a short checklist, links..."
             />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
               <button type="button" style={{ ...BTN_SECONDARY, color: theme.red, borderColor: theme.redDeep }} onClick={deleteCard}>
-                Eliminar
+                Delete
               </button>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" style={BTN_SECONDARY} onClick={() => setEditCard(null)}>Cancelar</button>
+                <button type="button" style={BTN_SECONDARY} onClick={() => setEditCard(null)}>Cancel</button>
                 <button type="submit" style={BTN_PRIMARY} disabled={saving}>
-                  {saving ? 'Guardando...' : 'Guardar'}
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>

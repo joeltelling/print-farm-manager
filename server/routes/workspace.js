@@ -3,10 +3,10 @@ const express = require('express');
 const ACCENTS = new Set(['lime', 'violet', 'cyan', 'amber', 'red', 'indigo']);
 
 const DEFAULT_COLUMNS = [
-  { title: 'Pendiente', accent: 'amber', sort_order: 0 },
-  { title: 'En curso', accent: 'violet', sort_order: 1 },
-  { title: 'A revisar', accent: 'cyan', sort_order: 2 },
-  { title: 'Hecho', accent: 'lime', sort_order: 3 },
+  { title: 'To Do', accent: 'amber', sort_order: 0 },
+  { title: 'In Progress', accent: 'violet', sort_order: 1 },
+  { title: 'Review', accent: 'cyan', sort_order: 2 },
+  { title: 'Done', accent: 'lime', sort_order: 3 },
 ];
 
 function seedDefaultColumns(db) {

@@ -13,10 +13,10 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
 - **Calendar page** - planned stock arrivals, shipments, deadlines, and production closures (closures block new job dispatch)
-- **Workspace Tablero** - single shared CoMa-styled kanban for operator tasks (`/workspace`)
-- **Workspace Bloc** - technical notepad with dark graph paper, trash, and autosave (`/workspace/bloc`)
+- **Workspace Board** - single shared CoMa-styled kanban for operator tasks (`/workspace`)
+- **Workspace Notebook** - technical notepad with dark graph paper, trash, and autosave (`/workspace/bloc`)
 
-Nav is a three-level tree: **module** (ERP, Shopfloor, Workspace), **group** (only under ERP: Resumen, Inventario, Fabricacion, Ventas), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor and Workspace are flat lists under their modules. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
+Nav is a three-level tree: **module** (ERP, Shopfloor, Workspace), **group** (only under ERP: Overview, Inventory, Manufacturing, Sales), and **screen**. Modules and ERP groups are accordion toggles (one open at a time); open state is stored in `localStorage` as `coma.nav.accordion` and re-opened from the active route. Shopfloor and Workspace are flat lists under their modules. Settings sits below. On mobile the top bar shows every link flat with module and group labels.
 
 **Boot splash:** on the first entry of a browser tab session, a full-screen CoMa boot animation covers the shell (`BootSplash`, keyed by `sessionStorage` `coma.boot.done`). React Router moves do not remount App, so in-app navigation never re-shows it. A reload in the same tab skips it; a new tab shows it again.
 
@@ -86,11 +86,11 @@ Use the built client on port 3000 (or HTTPS) to install. Vite hot-reload on 5173
 │  CoreManufacturing│  <Routes />           │
 │                   │                       │
 │  ERP (accordion)  │                       │
-│    Resumen / ...  │                       │
+│    Overview / ... │                       │
 │  Shopfloor        │                       │
 │    Dashboard ...  │                       │
 │  Workspace        │                       │
-│    Tablero / Bloc │                       │
+│    Board / Notebook │                     │
 │  Settings         │                       │
 │  [alert bell]     │                       │
 └───────────────────┴───────────────────────┘

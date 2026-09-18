@@ -48,10 +48,10 @@ function seedWorkspaceDemo(db) {
       VALUES (?, ?, ?, ?, ?)
     `);
     [
-      ['Pendiente', 'amber', 0],
-      ['En curso', 'violet', 1],
-      ['A revisar', 'cyan', 2],
-      ['Hecho', 'lime', 3],
+      ['To Do', 'amber', 0],
+      ['In Progress', 'violet', 1],
+      ['Review', 'cyan', 2],
+      ['Done', 'lime', 3],
     ].forEach(([title, accent, order]) => ins.run(title, accent, order, now, now));
   }
 
@@ -66,11 +66,11 @@ function seedWorkspaceDemo(db) {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     const samples = [
-      [byTitle.Pendiente, 'Recalibrar MK4S_07', 'Bed mesh off after nozzle change', 0],
-      [byTitle.Pendiente, 'Pedir PETG negro', 'SKU RAW-PETG-BLK, 5 kg', 1],
-      [byTitle['En curso'], 'Benchy Fleet plate 3', 'Waiting on sign-off for MK4S_03', 0],
-      [byTitle['A revisar'], 'Gridfinity bins QA', 'Check wall thickness on first plate', 0],
-      [byTitle.Hecho, 'Sync ERP from shopfloor', 'Done after morning sweep', 0],
+      [byTitle['To Do'], 'Recalibrate MK4S_07', 'Bed mesh off after nozzle change', 0],
+      [byTitle['To Do'], 'Order black PETG', 'SKU RAW-PETG-BLK, 5 kg', 1],
+      [byTitle['In Progress'], 'Benchy Fleet plate 3', 'Waiting on sign-off for MK4S_03', 0],
+      [byTitle.Review, 'Gridfinity bins QA', 'Check wall thickness on first plate', 0],
+      [byTitle.Done, 'Sync ERP from shopfloor', 'Done after morning sweep', 0],
     ];
     for (const [colId, title, body, order] of samples) {
       if (colId) insCard.run(colId, title, body, order, now, now);
@@ -78,33 +78,33 @@ function seedWorkspaceDemo(db) {
   }
 
   const checklist = db.prepare(
-    "SELECT id FROM notebook_pages WHERE title = 'Checklist de turno' AND trashed_at IS NULL"
+    "SELECT id FROM notebook_pages WHERE title = 'Shift checklist' AND trashed_at IS NULL"
   ).get();
   if (!checklist) {
     db.prepare(`
       INSERT INTO notebook_pages (title, body, accent, trashed_at, created_at, updated_at)
       VALUES (?, ?, 'lime', NULL, ?, ?)
     `).run(
-      'Checklist de turno',
+      'Shift checklist',
       [
         '1. Sweep Idle printers',
-        '2. Confirmar holds en Fleet (Set Ready / Bad Print)',
-        '3. Revisar Calendar por cierres activos',
-        '4. Sync ERP si hay piezas nuevas',
-        '5. Anotar incidencias en este bloc',
+        '2. Confirm holds on Fleet (Set Ready / Bad Print)',
+        '3. Check Calendar for active closures',
+        '4. Sync ERP if there are new parts',
+        '5. Log any issues in this notebook',
         '',
-        'Notas:',
-        '- Voron_02 camara: URL Moonraker ok',
+        'Notes:',
+        '- Voron_02 camera: Moonraker URL ok',
         '- AMS slot 2 = PETG Signal Red',
       ].join('\n'),
       now,
       now,
     );
   }
-  // Drop empty auto-created "Nota nueva" leftovers so the checklist is the first row.
+  // Drop empty auto-created "New note" leftovers so the checklist is the first row.
   db.prepare(`
     DELETE FROM notebook_pages
-    WHERE title = 'Nota nueva' AND (body IS NULL OR body = '') AND trashed_at IS NULL
+    WHERE title = 'New note' AND (body IS NULL OR body = '') AND trashed_at IS NULL
   `).run();
 }
 
@@ -369,7 +369,7 @@ async function main() {
         await pageWs.send('Runtime.evaluate', {
           expression: `(() => {
             const btn = [...document.querySelectorAll('button')]
-              .find(b => /Checklist de turno/.test(b.innerText));
+              .find(b => /Shift checklist/.test(b.innerText));
             if (btn) btn.click();
             return !!btn;
           })()`,
