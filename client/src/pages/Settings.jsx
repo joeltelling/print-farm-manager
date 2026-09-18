@@ -503,6 +503,14 @@ export default function Settings() {
   const [restoreError, setRestoreError] = useState(null);
   const restoreFileRef = useRef(null);
 
+  const [importingAcres, setImportingAcres] = useState(false);
+  const [acresResult, setAcresResult] = useState(null);
+  const [acresError, setAcresError] = useState(null);
+  const [acresFileName, setAcresFileName] = useState('');
+  const [acresOverwritePricing, setAcresOverwritePricing] = useState(false);
+  const [acresOverwriteItemCost, setAcresOverwriteItemCost] = useState(false);
+  const acresFileRef = useRef(null);
+
   const handleExport = useCallback(() => {
     window.location.href = '/api/backup';
   }, []);
@@ -550,6 +558,43 @@ export default function Settings() {
       setRestoring(false);
       if (restoreFileRef.current) restoreFileRef.current.value = '';
       setRestoreFileName('');
+    }
+  }
+
+  async function handleImportAcres(e) {
+    e.preventDefault();
+    const file = acresFileRef.current?.files[0];
+    if (!file) return;
+    const ok = await confirm({
+      title: 'Import original Acres database',
+      message: 'Merges masters, BOMs, work orders, stock, pricing, and sales history from this Acres .db file into CoMa\'s ERP. Existing pricing and stock quantities are kept unless the overwrite options below are checked. This cannot be undone.',
+      confirmLabel: 'Import',
+      danger: true,
+    });
+    if (!ok) return;
+
+    setImportingAcres(true);
+    setAcresResult(null);
+    setAcresError(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('overwrite_pricing_config', acresOverwritePricing ? 'true' : 'false');
+    formData.append('overwrite_item_cost', acresOverwriteItemCost ? 'true' : 'false');
+
+    try {
+      const res = await fetch('/api/erp/import-acres', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Import failed');
+      setAcresResult(data);
+      showToast('Acres data imported', 'success');
+    } catch (err) {
+      setAcresError(err.message);
+      showToast('Import failed: ' + err.message, 'error');
+    } finally {
+      setImportingAcres(false);
+      if (acresFileRef.current) acresFileRef.current.value = '';
+      setAcresFileName('');
     }
   }
 
@@ -1583,6 +1628,110 @@ export default function Settings() {
                   : 'existing ERP preserved'}
               />
             </div>
+          </div>
+        )}
+      </section>
+      )}
+
+      {/* Import original Acres database */}
+      {tab === 'backup' && (
+      <section style={{ ...sectionStyle, marginTop: 20 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Import original Acres database</h2>
+        <p style={{ color: '#71717a', fontSize: 13, marginBottom: 16 }}>
+          Acres was the standalone ERP that predated CoMa's embedded ERP. If you have an
+          original Acres <code>.db</code> file, merge its items, BOMs, machines, work orders,
+          stock, pricing, and sales history into this CoMa database. Masters that already
+          exist here (matched by SKU, code, or name) are never duplicated, and existing
+          pricing and stock quantities are kept unless the overwrite options below are checked.
+        </p>
+
+        <form onSubmit={handleImportAcres} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            ref={acresFileRef}
+            type="file"
+            accept=".db"
+            required
+            style={{ display: 'none' }}
+            onChange={e => setAcresFileName(e.target.files?.[0]?.name || '')}
+          />
+          <button
+            type="button"
+            onClick={() => acresFileRef.current?.click()}
+            style={{ ...filePickStyle, flex: '1 1 200px', color: acresFileName ? '#f4f4f5' : '#a1a1aa' }}
+          >
+            <span style={{
+              background: '#181a27', border: '1px solid #2d3146', borderRadius: 4,
+              padding: '2px 8px', fontSize: 12, color: '#a5b4fc', fontWeight: 600, flexShrink: 0,
+            }}>
+              Choose file
+            </span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {acresFileName || 'No file selected'}
+            </span>
+          </button>
+          <button
+            type="submit"
+            disabled={importingAcres}
+            style={{
+              background: importingAcres ? '#4c1d95' : '#5b21b6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 18px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: importingAcres ? 'not-allowed' : 'pointer',
+              opacity: importingAcres ? 0.7 : 1,
+            }}
+          >
+            {importingAcres ? 'Importing...' : 'Import Acres data'}
+          </button>
+        </form>
+
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#a1a1aa', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={acresOverwritePricing}
+              onChange={e => setAcresOverwritePricing(e.target.checked)}
+            />
+            Overwrite existing pricing config values
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#a1a1aa', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={acresOverwriteItemCost}
+              onChange={e => setAcresOverwriteItemCost(e.target.checked)}
+            />
+            Overwrite existing stock cost / quantity on hand
+          </label>
+        </div>
+
+        {acresError && (
+          <div style={{ marginTop: 14, background: '#7f1d1d', borderRadius: 6, padding: '10px 14px', color: '#fca5a5', fontSize: 13 }}>
+            {acresError}
+          </div>
+        )}
+
+        {acresResult && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ color: '#34d399', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+              Acres data imported
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {Object.entries(acresResult.tables || {}).map(([table, stat]) => (
+                <Chip
+                  key={table}
+                  color="#34d399"
+                  label={`${table}: ${stat.inserted} new, ${stat.matched} matched${stat.updated ? `, ${stat.updated} updated` : ''}${stat.skipped ? `, ${stat.skipped} skipped` : ''}`}
+                />
+              ))}
+            </div>
+            {acresResult.warnings?.length > 0 && (
+              <div style={{ marginTop: 10, color: '#fbbf24', fontSize: 12 }}>
+                {acresResult.warnings.map((w, i) => <div key={i}>{w}</div>)}
+              </div>
+            )}
           </div>
         )}
       </section>

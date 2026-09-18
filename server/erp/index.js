@@ -1,4 +1,8 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { importAcresDatabase } = require('./importAcres');
 const {
   num,
   round4,
@@ -274,6 +278,41 @@ function mountErp(db) {
   });
 
   router.get('/config/ui', (_req, res) => res.json({ decimals_display: 2 }));
+
+  // ---------- import original Acres .db ----------
+  // Merges an original Acres SQLite database into this one. See server/erp/importAcres.js
+  // for the matching/remapping rules; this route only handles the upload lifecycle.
+  const acresImportUpload = multer({
+    storage: multer.diskStorage({
+      destination: path.join(__dirname, '..', 'data'),
+      filename: (_req, _file, cb) => cb(null, `acres-import-${Date.now()}.db`),
+    }),
+    limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
+  });
+
+  router.post('/import-acres', (req, res) => {
+    acresImportUpload.single('file')(req, res, (uploadErr) => {
+      if (uploadErr) return res.status(400).json({ error: uploadErr.message });
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+      const tmpPath = req.file.path;
+      try {
+        const overwritePricingConfig = req.body?.overwrite_pricing_config === 'true';
+        const overwriteItemCost = req.body?.overwrite_item_cost === 'true';
+        const result = importAcresDatabase(db, tmpPath, {
+          overwritePricingConfig,
+          overwriteItemCost,
+        });
+        console.log('[erp] Acres import complete:', JSON.stringify(result.tables));
+        res.json({ ok: true, ...result });
+      } catch (e) {
+        console.error('[erp] Acres import error:', e);
+        res.status(400).json({ error: e.message });
+      } finally {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      }
+    });
+  });
 
   // ---------- uom ----------
   router.get('/uom', (req, res) => {

@@ -2,6 +2,39 @@
 
 ---
 
+## 2026-09-18: Import an original Acres database into CoMa's embedded ERP
+
+Operators who ran the standalone Acres ERP before adopting CoMa had no way to bring their
+real items, BOMs, machines, work orders, stock, pricing, and sales history into the
+embedded ERP: the only way in was one-by-one through the UI. Acres shared the exact same
+table and column names CoMa still creates in `server/erp/schema.js` (see the removed
+`erp/backend/app/models/*.py`), so a new importer merges an Acres `.db` file directly.
+
+The importer matches every table by natural key (SKU, code, or name) so it is safe to run
+against a database that already has CoMa's seeded defaults or shopfloor-synced masters: it
+never duplicates a `uom`, `warehouse`, `item`, `machine`, `bom`, or `mfg_component` that
+already exists, and it rewrites every foreign key from the source file's ids to this
+database's. `pricing_config` and `item_cost` rows already present are kept unless the
+operator explicitly opts into overwriting them. Re-running the same source file is
+idempotent: tables without a natural key (`stock_move`, `sales_order`) dedupe by matching
+every other column, and a matched work order's issue/labor children are not re-imported.
+Nothing shopfloor-side, and no path changes `parts.completed_qty`.
+
+### Changes
+- `server/erp/importAcres.js`: new merge importer (`importAcresDatabase`), natural-key
+  matching and id remapping for every ERP table, transactional.
+- `server/erp/index.js`: `POST /api/erp/import-acres` (multer upload of the `.db` file,
+  optional `overwrite_pricing_config` / `overwrite_item_cost` form fields).
+- `client/src/pages/Settings.jsx`: Backup tab gains an "Import original Acres database"
+  card (file picker, overwrite checkboxes, confirm gate, result chips).
+- `server/tests/erp-import-acres.test.js`: builds an Acres-shaped source `.db`, asserts
+  natural-key matching against seeded defaults, foreign-key remapping across every table,
+  overwrite-flag behavior, idempotent re-import, and the upload route's success/400 paths.
+- `docs/erp/README.md`, `docs/api.md`: endpoint contract and merge semantics.
+
+Implemented from the removed Acres SQLAlchemy models as the schema reference; not yet
+validated against a real production Acres `.db` file on hardware.
+
 ## 2026-09-17: Sales documents UI in English
 
 Sales documents shipped with Spanish chrome (Clientes, Presupuestos, Albaranes, Facturas, and matching form labels). The rest of CoMa is English, so operators hit a language mix on the quote/delivery/invoice screens and in the sidebar. All of that UI (plus PDF type labels, Postings "Create delivery note", Settings/onboarding mode labels, and README gallery headings) is now English. Document number prefixes (`PRE-` / `ALB-` / `FAC-`) are unchanged.

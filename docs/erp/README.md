@@ -102,6 +102,49 @@ Lifecycle:
 
 **Settings:** `sales_doc_mode` (`legacy` or `quotes_flow`, Settings > General) picks which sales flow is the default landing point. Both flows always stay available in the sidebar and share no exclusive data; switching the setting never deletes or hides existing documents. It is asked once during the first-run onboarding wizard (`client/src/components/AuthGate.jsx`) and can be changed later.
 
+## Importing an original Acres database
+
+The standalone Acres Python/HTML tree was removed from this repository (see the "Acres
+parity audit" above), but an operator who ran that Acres instance for real can still bring
+its data across. Acres shared the exact same table and column names CoMa still creates in
+`server/erp/schema.js` (`uom`, `warehouse`, `location`, `item`, `machine`, `bom`, `bom_line`,
+`mfg_component`, `work_order`, `wo_issue`, `wo_labor`, `stock_move`, `item_cost`,
+`pricing_config`, `sales_order`), so `server/erp/importAcres.js` merges an Acres `.db` file
+into the live CoMa database over `POST /api/erp/import-acres` (Settings > Backup >
+"Import original Acres database"), or by calling `importAcresDatabase(db, path)` directly
+from a script.
+
+This is a merge, not a replace:
+
+- Every table is matched by natural key first, so importing into a database that already
+  has seeded defaults (the `EA`/`KG`/`G` UOMs, `comp`/`fin_good`/`raw` warehouses, the four
+  `pricing_config` rows, the `LABOR` machine) or shopfloor-synced stubs (see "Shopfloor
+  compatibility" above) never duplicates them. Natural keys: `uom.code`, `warehouse.code`,
+  `item.sku`, `machine.machine`, `mfg_component.sku`, `pricing_config.code`,
+  `work_order.code` (when set).
+- Every foreign key (`warehouse_id`, `item_id`, `raw_item_id`, `component_item_id`,
+  `bom_id`, `location_id`, `wo_id`, `parent_wo_id`, ...) is rewritten from the source
+  file's ids to this database's ids while walking tables in dependency order, since a
+  fresh CoMa install's autoincrement ids never line up with an old Acres file's ids.
+- `pricing_config` and `item_cost` rows that already exist are left untouched by default:
+  the import never silently changes a margin/fee the operator already configured or a
+  stock quantity/WAC already tracked here. Pass `overwrite_pricing_config` /
+  `overwrite_item_cost` (checkboxes in Settings, or form fields on the API) to update them
+  from the source file instead.
+- `work_order` matches by `code` when the source row has one; a matched work order's
+  `wo_issue`/`wo_labor` children are not re-imported (they were already brought over the
+  first time). `stock_move` and `sales_order` have no natural key, so they dedupe by
+  matching every other column, keeping re-imports of the same source file idempotent.
+- Nothing shopfloor-side (`printers`, `projects`, `parts`, `jobs`) and never
+  `parts.completed_qty`. CoMa-only additions Acres never had (`customer`, `sales_doc`,
+  `sales_doc_line`, `doc_counter`, `erp_posting`, `ebay_*`) are simply absent from an Acres
+  file and are left alone.
+- The whole import runs inside one transaction: any failure rolls back completely, so a
+  partially-merged database is never left behind.
+
+API contract: [docs/api.md](../api.md) `POST /api/erp/import-acres`. Automated coverage:
+`server/tests/erp-import-acres.test.js`.
+
 ## Single database
 
 Shopfloor and ERP tables share `server/data/{organic|seed}-data.db`. Schema is additive only.

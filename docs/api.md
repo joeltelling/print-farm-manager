@@ -916,6 +916,7 @@ Mounted at `/api/erp` on the same Express process. Full module map: [docs/erp/RE
 | `POST` | `/api/erp/sales-docs/:id/convert` | Body `{ "to": "delivery" \| "invoice" }`; only from a confirmed doc, one step of the chain |
 | `GET` | `/api/erp/sales-docs/:id/pdf` | Quote / Delivery note / Invoice PDF download |
 | `POST` | `/api/erp/postings/:id/attach-to-delivery` | Shopfloor sync: turn a posted `erp_posting` into a delivery-note line; body `{ "doc_id" }` or `{ "customer_id" }` |
+| `POST` | `/api/erp/import-acres` | Merge an original Acres `.db` file (masters, BOMs, work orders, stock, pricing, sales history) into this database |
 
 ### Sales documents example: create a quote
 
@@ -1024,6 +1025,42 @@ Creates only missing links. Existing rates, SKUs, sourcing choices, and stock ar
 ```
 
 Returns `200`; unexpected schema/database errors return `500`.
+
+### `POST /api/erp/import-acres`
+
+Merges an original Acres SQLite database (the standalone ERP that predated CoMa's embedded
+ERP, see [docs/erp/README.md](erp/README.md) "Importing an original Acres database") into
+this one. Every table is matched by natural key (`uom.code`, `warehouse.code`, `item.sku`,
+`machine.machine`, `mfg_component.sku`, `pricing_config.code`, `work_order.code`) so
+running the import against a database that already has seeded defaults or shopfloor-synced
+stubs never duplicates them, and every foreign key is remapped from the source file's ids
+to this database's ids. `pricing_config` and `item_cost` rows that already exist are left
+untouched unless the matching overwrite flag is set. The whole import runs inside one
+transaction: any failure rolls back completely.
+
+**Request:** `multipart/form-data` with field `file`, the Acres `.db` file. Max 500 MB.
+Optional form fields `overwrite_pricing_config` and `overwrite_item_cost` (`"true"` to
+update rows that already exist instead of skipping them).
+
+```json
+{
+  "ok": true,
+  "tables": {
+    "item": { "matched": 4, "inserted": 12, "updated": 0, "skipped": 0 },
+    "machine": { "matched": 1, "inserted": 2, "updated": 0, "skipped": 0 },
+    "work_order": { "matched": 0, "inserted": 38, "updated": 0, "skipped": 0 },
+    "stock_move": { "matched": 3, "inserted": 210, "updated": 0, "skipped": 0 },
+    "pricing_config": { "matched": 3, "inserted": 1, "updated": 0, "skipped": 0 }
+  },
+  "warnings": []
+}
+```
+
+`400` when no file is uploaded or the file is not a readable SQLite database. A row that
+references a foreign key the import cannot resolve is skipped and noted in `warnings`
+instead of failing the whole request. Re-running the import with the exact same source
+file is safe: tables with a natural key never duplicate, and `stock_move`/`sales_order`
+(which have none) dedupe by matching every other column.
 
 ### `POST /api/erp/items`
 
