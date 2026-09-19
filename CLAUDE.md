@@ -1,6 +1,6 @@
 # CLAUDE.md: Print Farm Manager Operating Manual
 
-Print Farm Manager runs a real fleet of 50+ printers (Prusa, Bambu, Elegoo, Klipper, OctoPrint) and has been public open source since v1.0.0 (github.com/joeltelling/print-farm-manager). Two consequences shape every decision:
+Print Farm Manager runs a real fleet of 50+ printers (Prusa, Bambu, Elegoo, Klipper, OctoPrint) and has been public open source since v1.0.0 (github.com/joeltelling/print-farm-manager). This checkout is the seanlw/print-farm-manager fork; the upstream repository has stopped receiving commits (as of 2026-09), so this fork carries its own CI, Dependabot config, and dependency updates. Two consequences shape every decision:
 
 1. Correctness bugs land on physical hardware. A bad dispatch or a double-credited part count wastes plastic, printer hours, and operator trust.
 2. Docs are a product surface. Strangers self-install from README.md and docs/installation.md, and community contributors build drivers from docs/driver-authoring.md.
@@ -9,7 +9,8 @@ Print Farm Manager runs a real fleet of 50+ printers (Prusa, Bambu, Elegoo, Klip
 
 - Read docs/README.md first. It is the doc index and current project map.
 - ARCHITECTURE.md is the original spec. All phases (1 through 6D) are complete and shipped. Its "what NOT to build" sections are stale phase briefings, not current constraints. The code and docs/ are the source of truth.
-- Deliberately parked features (do not build as a side effect of another task): filament/spool tracking, Bambu camera streaming, printer diagnostics panel, multi-group printers. Joel decides when these resume.
+- Deliberately parked features (do not build as a side effect of another task): filament/spool tracking, Bambu camera streaming, printer diagnostics panel, multi-group printers. Sean (the fork owner) decides when these resume. One exception exists: an optional Spoolman integration (server/integrations/spoolman.js, server/routes/spoolman.js, docs/spoolman.md) was built on this fork and does not exist upstream.
+- docs/proposals/ is a local-only folder of internal planning notes. It is deliberately never committed (it may be absent in a fresh clone), is not in the doc index, and is not current behavior. Do not commit it or link to it from committed docs. The one decision it holds that matters here: a client test framework (Vitest plus happy-dom and React Testing Library, dev dependencies only) is approved and planned in phases but not yet built; Playwright end-to-end tests are deferred. Root `npm test` will run the server and client suites together.
 
 ## The five non-negotiables
 
@@ -17,17 +18,18 @@ Print Farm Manager runs a real fleet of 50+ printers (Prusa, Bambu, Elegoo, Klip
 2. **Docs ship with the change.** Every feature or fix updates the relevant docs/ file and adds a dated docs/CHANGELOG.md entry in the same commit.
 3. **No em dashes or en dashes in prose.** Use commas, colons, parentheses, or plain hyphens in every doc, comment, commit message, and UI string you write. Verify with `grep -rPn '[\x{2013}\x{2014}]'` on your changed files before finishing. (Legacy docs contain thousands of them; do not fix lines you are not otherwise touching.)
 4. **Read official protocol docs before touching driver code.** Never guess field names, URL formats, or payload shapes for PrusaLink, Bambu MQTT (OpenBambuAPI), Moonraker, SDCP, or OctoPrint. If the doc is not findable, stop and say so.
-5. **Never claim hardware validation that did not happen.** "Implemented from protocol docs, not yet validated on hardware" is the honest and expected phrasing until Joel runs it on a real printer.
+5. **Never claim hardware validation that did not happen.** "Implemented from protocol docs, not yet validated on hardware" is the honest and expected phrasing until someone has run it on a real printer and reported the result.
 
 ## Architecture in one minute
 
 - `server/index.js`: Express entry. Serves the built client from `client/dist` in production (same origin, port 3000) and hosts the operator-action endpoints (set-ready, recommission, set-ready-batch) inline because they need the scheduler instance.
 - `server/db.js`: opens SQLite (WAL), creates tables with `CREATE TABLE IF NOT EXISTS`, then runs additive startup migrations as `try { db.exec('ALTER TABLE ...') } catch (_) {}` lines. This is the entire migration system.
 - `server/poller.js`: polls every active printer every 15 s via its driver, writes status to the printers table, emits `statusChange` and `printerIdle`.
-- `server/scheduler.js`: listens to poller events, picks the highest-priority open part with a matching G-code (model, group, material, color), inserts a job row as a dispatch lock, uploads, and handles FINISHED/ERROR/OFFLINE/STOPPED transitions. Batched sweeps respect `dispatch_batch_size`.
+- `server/scheduler.js`: listens to poller events, picks the highest-priority open part with a matching G-code (model, group, material, color), inserts a job row as a dispatch lock, uploads, and handles FINISHED/ERROR/OFFLINE/STOPPED transitions. Batched sweeps respect `dispatch_batch_size`. `scheduleForPrinter` is the single dispatch entry point: the `printerIdle` handler and the no-job fallback both route through it, so new code should not call `_dispatchToPrinter` directly.
+- `server/integrations/spoolman.js` plus `server/routes/spoolman.js` and `server/routes/filaments.js`: the optional, off-by-default Spoolman integration and the Filament Library (fork only, see Session start). `server/backup.js` takes and prunes automatic database backups at startup, separate from the export/restore in `server/routes/backup.js`.
 - `server/drivers/`: one module per brand behind a lazy registry (`drivers/index.js`). Contract lives in docs/driver-authoring.md.
 - `server/routes/`: one factory module per resource, `module.exports = (db) => router`.
-- `client/`: Vite + React 18 SPA. Three runtime deps total (react, react-dom, react-router-dom). No axios, no CSS framework, no state library. Everything hand-rolled and dark-themed.
+- `client/`: Vite 8 + React 18 SPA. Runtime deps are kept deliberately few: react, react-dom, react-router-dom (v7, classic component and hook API only), i18next with react-i18next and the browser language detector, and three (the G-code viewer). No axios, no CSS framework, no state library. Everything hand-rolled and dark-themed. Adding a runtime dependency is an escalation (rule 3 below).
 - Operator safety model: `printers.is_held = 1` means "waiting for a human". Prints finish held; operators confirm quality via Set Ready, which credits quantity and releases the hold. The system prefers asking the operator over inferring.
 
 ## Server conventions
@@ -40,12 +42,13 @@ Print Farm Manager runs a real fleet of 50+ printers (Prusa, Bambu, Elegoo, Klip
 - Static routes go before parameterized ones (`/reorder` before `/:id`) or Express matches the literal as an id.
 - Not-found pattern: look the row up first, `return res.status(404).json({ error: 'X not found' })`. Validation errors are 400 with the missing field names. Conflicts are 409. Creates return 201 with the row re-selected by `lastInsertRowid`.
 - Multi-statement writes wrap in `db.transaction(() => { ... })()`.
-- Schema changes are additive only: a new `try/catch ALTER TABLE` line in db.js. No migration framework, no destructive migrations, nothing that loses data on an existing install.
+- Schema changes are additive only: a new `try/catch ALTER TABLE` line in db.js. No migration framework, no destructive migrations, nothing that loses data on an existing install. Order matters: an older migration rebuilds `jobs` to make `gcode_id` nullable and hardcodes the pre-Spoolman column list, so any new `ALTER TABLE jobs ADD COLUMN` must be placed after that rebuild (see the 2026-08-03 CHANGELOG entry and `server/tests/db-fresh-install.test.js`). Always verify a schema change against a brand-new database, not only your long-lived dev one.
 - G-code uniqueness on `(part_id, printer_model)` is enforced in the routes, not by a DB constraint.
 - Log lines are prefixed with the module: `console.log('[scheduler] ...')`.
 - Timing constants are named, in caps, with a comment stating what they must exceed and why (see `STALE_JOB_GRACE_MS` in scheduler.js).
 - Node is pinned to `>=22 <24` (native better-sqlite3 build breaks on Node 24 on Windows). The production farm machine is Windows: use `path.join`, split stored paths with `split(/[\\/]/)`, and keep update.bat working.
-- `DEMO_MODE=true` skips real polling; `server/seed-demo.js` fills a demo DB. Use these when developing without printers.
+- `DEMO_MODE=true` skips real polling; `server/seed-demo.js` fills a demo DB. Use these when developing without printers. A dev database that was restored from real farm data still points at real printer IPs, so set `DEMO_MODE=true` for any browser check or experiment, or the poller will contact real hardware.
+- Run the suite in Docker when the host Node is not 22.x: `docker compose run --rm print-farm-manager-dev npm test` (or `exec` against a running dev container). After changing dependencies, rebuild the image and renew its anonymous volumes (`docker compose up -d --build -V print-farm-manager-dev`), or the container keeps the old `node_modules`.
 
 ## Driver conventions (summary; the contract is docs/driver-authoring.md)
 
@@ -69,6 +72,7 @@ Print Farm Manager runs a real fleet of 50+ printers (Prusa, Bambu, Elegoo, Klip
 - Cross-page signals use window CustomEvents (see `farmNameChanged`), not context. There are no providers.
 - File uploads use FormData without a Content-Type header; G-code upload alone uses XMLHttpRequest for progress reporting.
 - New layouts must work at the 600 px breakpoint (scoped inline `<style>` blocks, see App.jsx and Jobs.jsx).
+- Client changes have no automated test yet. Until the planned client test suite lands, verify in a browser (dev container, `DEMO_MODE=true`) and say in your summary exactly which routes and interactions you checked.
 - New UI text goes through i18n, never hardcoded in JSX. Add a key to `client/src/locales/en.json` (the source of truth for every user-facing string, and the schema every other language file must match) and render it with `t('namespace.key')`. See docs/TRANSLATING.md for the key convention, pluralization, and `common.*` versus a page namespace.
 
 ## Sync pairs: code that must change together
@@ -81,7 +85,9 @@ If you touch one side of a pair, grep for and update the other in the same commi
 | Any new table or column | server/routes/backup.js export AND restore (column lists derive from the live schema; keep it that way), plus server/tests/backup-restore.test.js seeding and asserting it |
 | Driver registry (drivers/index.js) | routes/models.js VALID_CONNECTORS, routes/printers.js NO_API_KEY_TYPES, and every brand touchpoint in client/src/pages/Settings.jsx (find them with `grep -rn "octoprint" client/src`) |
 | A route's request/response shape | docs/api.md entry and the route's test file |
-| "Awaiting sign-off" derived-status logic (`is_held === 1 && status FINISHED/IDLE`) | It is duplicated across Dashboard.jsx, Fleet.jsx, Printers.jsx; keep all copies identical |
+| "Awaiting sign-off" derived-status logic (`is_held === 1 && status FINISHED/IDLE/STOPPED`) | It is duplicated across Dashboard.jsx, Fleet.jsx, Printers.jsx; keep all copies identical. Known drift: the list-level `awaitingConfirmation` in Fleet.jsx omits `STOPPED` while Fleet's per-card check includes it. It is planned to be fixed by a shared `isAwaitingSignoff` helper as part of the client test framework work. Do not fix it in passing: it widens what bulk Set Ready can target, which needs the completed_qty analysis first. |
+| Node version (package.json `engines`, Dockerfile `FROM node:`, CI `node-version`, the `node` ignore in .github/dependabot.yml) | Keep all four consistent with the `>=22 <24` pin. A Node 25 base-image bump once failed only because better-sqlite3 would not compile |
+| A new `package.json` or Dockerfile in the tree | Add a matching entry to .github/dependabot.yml, or it is never updated |
 | README.md install steps | docs/installation.md (and vice versa) |
 
 ## Named mistakes and the rule that prevents each
@@ -92,7 +98,7 @@ If you touch one side of a pair, grep for and update the other in the same commi
 - **The guessed protocol field.** Fixing a driver by pattern-matching what the payload "should" look like. Four consecutive wrong commits were once made on the Bambu project_file URL. Rule: fetch the official protocol doc (the URL is usually in the driver's header comment) before editing any driver payload.
 - **The hold bypass.** "Fixing" a stuck printer by clearing `is_held` or auto-resolving a job in code. Holds exist so a human confirms physical outcomes. Rule: only operator endpoints (set-ready, recommission) and the one documented auto-unhold (held printer recovers to PRINTING with a live job) may clear a hold.
 - **The route shadowed by :id.** Adding `router.put('/reorder')` after `router.put('/:id')` and wondering why reorder 404s with "Part not found". Rule: static paths are declared above parameterized ones in every route file.
-- **The destructive migration.** Renaming or dropping a column, or adding a migration framework. Rule: schema evolution is additive `try/catch ALTER TABLE` in db.js only; anything else needs Joel's sign-off (existing installs in the wild must survive `git pull`).
+- **The destructive migration.** Renaming or dropping a column, or adding a migration framework. Rule: schema evolution is additive `try/catch ALTER TABLE` in db.js only; anything else needs Sean's sign-off (existing installs in the wild must survive `git pull`).
 - **The silent Moonraker no-op.** Passing upload options as query params. Moonraker returns 200 and ignores them; the print never starts. Rule: Moonraker options are form fields appended to the multipart body.
 - **The window.confirm shortcut.** Using `window.confirm`/`alert` for a destructive action. Rule: `useConfirm` with `danger: true`, and render the modal element.
 - **The invisible toast.** Calling `showToast` without rendering `{toastEl}` in the JSX. Rule: every page that mutates renders both `{toastEl}` and `{confirmModal}` at the end of its JSX.
@@ -102,14 +108,16 @@ If you touch one side of a pair, grep for and update the other in the same commi
 - **The fake hardware pass.** Describing a driver as working because tests pass against mocks. Rule: state hardware-validation status explicitly in the changelog entry and the summary; mocks prove the contract, not the printer.
 - **The Windows path break.** Building paths with string concatenation and `/`, or shell commands that assume bash. Rule: `path.join` for construction, `split(/[\\/]/)` for parsing stored filepaths, and remember update.bat and PM2 on the farm machine.
 - **The convenient timestamp.** Storing `new Date().toISOString()` or epoch seconds. Rule: `Date.now()` milliseconds, INTEGER column, everywhere.
-- **The heavyweight test.** Importing server/index.js or the real db.js in a test. Rule: tests build `new Database(':memory:')`, define the minimal schema inline, mount the route factory on a throwaway Express app, and drive it with supertest. Drivers mock the transport (`jest.mock('axios')`, mocked mqtt), never the driver module itself.
+- **The heavyweight test.** Importing server/index.js or the real db.js in a test. Rule: tests build `new Database(':memory:')`, define the minimal schema inline, mount the route factory on a throwaway Express app, and drive it with supertest. Drivers mock the transport (`jest.mock('axios')`, mocked mqtt), never the driver module itself. The single deliberate exception is `server/tests/db-fresh-install.test.js`, which loads a copy of the real db.js into a scratch directory because the bug class it guards (migration ordering on a fresh database) cannot be reproduced any other way.
+- **The migration order trap.** Adding an `ALTER TABLE jobs ADD COLUMN` above the older `jobs` table rebuild in db.js. The rebuild hardcodes the old column list, so fresh installs crashed with a column-count mismatch while the long-lived dev database, already past that migration, hid it. Rule: new `jobs` columns go after the rebuild, and every schema change is tested against a brand-new database.
+- **The blind dependency bump.** Merging a Dependabot major because CI is green. CI runs the server suite and a Docker build, not the client at runtime. Dependabot proposed Node 25 (better-sqlite3 will not compile) and react 19 without react-dom (npm ERESOLVE); the Docker build caught those only because they failed to install, while a bump that builds but breaks at runtime (router, three) would pass CI. Rule: majors and anything that touches routing, the G-code viewer, or the build toolchain get a real browser check in the dev container with `DEMO_MODE=true` before merging.
 
 ## Quality bar per deliverable
 
 Every bar is a checklist. A deliverable is done when every box is checked, not when it "looks good".
 
 **Baseline for any code change:**
-- [ ] `npm test` passes in full (24 suites, ~378 tests; no skips added)
+- [ ] `npm test` passes in full (no skips added). Run it in Docker if the host Node is not 22.x. Once the client suite exists it runs server and client together
 - [ ] The relevant docs/ component file reflects the new behavior
 - [ ] docs/CHANGELOG.md has a new dated entry at the top: `## YYYY-MM-DD: short title`, prose explaining what and why (including the real-world trigger if it was a bug), then a `### Changes` bullet list of `path: what changed`
 - [ ] `git diff` of prose and comments shows no em/en dashes (`grep -P '[\x{2013}\x{2014}]'` on changed files)
@@ -129,6 +137,7 @@ Every bar is a checklist. A deliverable is done when every box is checked, not w
 
 **Client change, additionally:**
 - [ ] `npm run build` succeeds
+- [ ] Browser-checked against the dev container with `DEMO_MODE=true`, and the summary names what was checked (until the client test suite lands)
 - [ ] Toast/confirm rules followed; loading state exists; palette copied from an existing page
 - [ ] Works at the 600 px breakpoint if layout changed
 
@@ -141,7 +150,7 @@ Every bar is a checklist. A deliverable is done when every box is checked, not w
 
 ## When uncertain: escalation rules
 
-Ask Joel before acting when any of these is true. Otherwise act, and flag assumptions in your summary.
+Ask Sean before acting when any of these is true. Otherwise act, and flag assumptions in your summary.
 
 1. **completed_qty:** the change adds or alters any path that increments or decrements `parts.completed_qty`, beyond mechanically preserving existing behavior. Present the analysis first: what unique real-world event backs the credit, and why it cannot double-fire across restart, reconnect, or poll flap.
 2. **Schema:** anything beyond an additive `ALTER TABLE ADD COLUMN` or new `CREATE TABLE IF NOT EXISTS`.
@@ -157,8 +166,16 @@ Act without asking, then report plainly:
 
 Default philosophy when torn between inferring and asking the operator (in product code): the system asks the operator. Hold the printer, add a notification, let Set Ready resolve it. That is the design's answer to ambiguity, and it is also yours.
 
+## Dependabot
+
+- Config lives in .github/dependabot.yml: monthly, 7-day cooldown, minor and patch updates grouped per manifest, GitHub Actions grouped into one PR. Major bumps of better-sqlite3, the `node` image, react, and react-dom are ignored on purpose and are done by hand.
+- Security updates are separate from that schedule and still open promptly.
+- Reviewing a Dependabot PR: green CI is necessary, not sufficient (see "The blind dependency bump"). Read the changelog for majors, check the sync pairs table for the Node pin, and browser-check client-side or build-tool bumps before merging.
+- When a PR conflicts after another merge (usually `package-lock.json`), comment `@dependabot rebase` on it.
+
 ## Skills
 
 - `/ship`: finishing pass for any change (tests, docs, changelog, dash check, commit).
 - `/add-connector`: scaffold and register a new printer brand driver end to end.
 - `/pr-review`: review a community PR with this repo's specific failure modes in mind.
+- `/review`: execution-verified review of a PR or branch against main.

@@ -10,7 +10,7 @@ The change is written; this skill makes it landable. Work through every phase. D
 ## Phase 1: Inventory the change
 
 1. `git status` and `git diff` (plus `git diff --staged` if anything is staged). Build a mental list of every touched file and what changed in it.
-2. If the diff contains changes you did not make and cannot explain, stop and ask Joel before proceeding. Never sweep unknown edits into a commit.
+2. If the diff contains changes you did not make and cannot explain, stop and ask Sean before proceeding. Never sweep unknown edits into a commit.
 3. Classify the change: bug fix, feature, endpoint change, driver work, client-only, docs-only. This decides which quality bar in CLAUDE.md applies.
 
 ## Phase 2: Sync pairs
@@ -27,7 +27,7 @@ Fix any drift now, as part of this change.
 
 ## Phase 3: Tests
 
-1. Run `npm test`. The full suite must pass: no new skips, no "unrelated" failures waved through. If a failure is genuinely pre-existing, verify with `git stash && npm test && git stash pop` and report it to Joel with the exact output rather than papering over it.
+1. Run `npm test`. The full suite must pass: no new skips, no "unrelated" failures waved through. If a failure is genuinely pre-existing, verify with `git stash && npm test && git stash pop` and report it to Sean with the exact output rather than papering over it.
 2. Does the change have its own test?
    - Bug fix: there must be a regression test that fails without the fix. If missing, write it now (in-memory SQLite, factory-mounted route, supertest; transport-mocked for drivers).
    - New endpoint: success + validation failure + not-found cases.
@@ -81,8 +81,8 @@ Any hit on a line you added must be rewritten with a comma, colon, parentheses, 
 
    Types in use: `feat`, `fix`, `docs`, `chore`, `test`, `ci`. Scope is the module (`scheduler`, `bambu`, `client`, `backup`, `update.bat`).
 3. One concern per commit. If the diff contains two unrelated changes, split them.
-4. Commit to a branch if on `main` and the change is more than trivial, unless Joel said to commit straight to main. Do not push unless asked.
+4. Commit to a branch if on `main` and the change is more than trivial, unless Sean said to commit straight to main. Do not push unless asked.
 
 ## Phase 7: Report
 
-Summarize for Joel in this order: what shipped, test results (suite count and pass state), which docs were updated, anything flagged (pre-existing failures, assumptions, unvalidated hardware behavior, sync pairs you had to fix). If hardware validation is pending, say so explicitly.
+Summarize for Sean in this order: what shipped, test results (pass state, no exact counts), which docs were updated, anything flagged (pre-existing failures, assumptions, unvalidated hardware behavior, sync pairs you had to fix). If hardware validation is pending, say so explicitly.

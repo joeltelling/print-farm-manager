@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-09-19: README and CLAUDE.md refreshed for the fork; sign-off rules addressed to Sean
+
+The upstream project (joeltelling/print-farm-manager) has stopped receiving commits, and this fork (seanlw/print-farm-manager) now owns its own CI, Docker image, and dependency updates, so the top-level docs had drifted from reality. README.md now says this is a fork and credits the original author, lists what the app does today (OctoPrint alongside the other brands, printer groups and models, the 3D G-code preview for `.gcode`/`.bgcode`/`.3mf`, the Filament Library and optional Spoolman integration, decommission tracking, i18n, hourly automatic backups), corrects the tech stack (React Router v7, Vite 8, i18next, three.js, helmet, the bgcode/3mf decoders, the Jest test setup), and points clone URLs and the published image at this repository (`ghcr.io/seanlw/print-farm-manager`, confirmed publicly pullable for `latest` and `edge`). The README's version-tag advice now matches what the publish workflow actually does.
+
+CLAUDE.md was refreshed the same way. Stale test counts and dependency descriptions were corrected, the fork status and the Spoolman exception were recorded, and lessons from recent work were added (migration ordering on `jobs`, the Node-version sync pair, browsing with `DEMO_MODE=true`, a Dependabot review section, and the blind-dependency-bump mistake). Every rule that asked for sign-off from Joel (parked features, schema and dependency escalations, `completed_qty` analysis, skill summaries) now asks Sean, and the hardware-validation wording no longer assumes a specific owner.
+
+### Changes
+- `README.md`: fork note, current feature list, corrected tech stack, testing section, updated project structure, fork clone URLs and image name.
+- `docs/installation.md`: clone URLs updated to match README.md (sync pair).
+- `CONTRIBUTING.md`: clone URL updated.
+- `CLAUDE.md`: stale facts corrected, new architecture entries, new sync-pair rows, new named mistakes, Dependabot section, sign-off rules addressed to Sean.
+- `.claude/skills/{add-connector,pr-review,ship}/SKILL.md`: sign-off and summary recipient changed to Sean; `ship` no longer asks for a suite count.
+
+Docs only, no runtime code changed.
+
 ## 2026-09-19: quieter Dependabot schedule (monthly, cooldown, grouped)
 
 The first weekly Dependabot run opened about 20 separate PRs, each needing its own review and, because most touch a lockfile, its own rebase. Changed `.github/dependabot.yml` to cut that down without adding auto-merge: every ecosystem now runs monthly, waits 7 days after a release before proposing it (`cooldown`), and batches routine updates into grouped PRs. The root npm manifest and `client/` each get one grouped PR for minor and patch updates, and GitHub Actions updates go into one `actions-deps` PR. Major bumps still arrive as their own PRs so they get a deliberate look, and the existing ignore rules for `better-sqlite3`, the `node` image, `react` and `react-dom` majors are unchanged. Security updates are not affected by the schedule or cooldown, so vulnerability PRs still open promptly. The approach follows what the TeslaMate project does (monthly, cooldown, grouped Actions, manual merges).

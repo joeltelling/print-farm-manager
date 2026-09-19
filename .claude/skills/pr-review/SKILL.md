@@ -57,7 +57,7 @@ Specific known traps:
 
 1. Rank findings by severity, house style: **[P1]** correctness/data-loss/security (blocks merge), **[P2]** should fix before or shortly after merge, then minor notes. For each finding: file, line, what breaks, and a concrete failure scenario ("restore a backup taken after this PR and loaded_color comes back NULL").
 2. Verify each P1 by actually exercising the code where feasible (run the test, hit the route with curl against a dev server, or write a quick throwaway test) rather than reasoning from the diff alone.
-3. Deliver as Joel directs: default is a summary to him with a recommended verdict (approve / approve-with-nits / request-changes). Only post to GitHub (`gh pr review`) when he asks.
+3. Deliver as Sean directs: default is a summary to Sean with a recommended verdict (approve / approve-with-nits / request-changes). Only post to GitHub (`gh pr review`) when Sean asks.
 4. Merge mechanics to remember:
    - docs/CHANGELOG.md prepend conflicts: `.gitattributes` has `merge=union` for it, but GitHub's server-side merge IGNORES that. Resolve locally and push back to the PR branch (regulars leave "allow maintainer edits" on).
    - Squash-merge titles should follow the `type(scope): summary` convention.

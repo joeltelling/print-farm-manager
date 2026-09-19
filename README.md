@@ -8,6 +8,8 @@ No cloud. No subscriptions. No vendor lock-in.
 
 > **Security note:** This app has no built-in authentication. It is designed to run on a trusted local network only. Do not expose port 3000 (or 5173 in dev) to the internet — your printer API keys are served to any client that can reach the server. Run it behind your router's firewall or a local VPN.
 
+> **About this fork:** Print Farm Manager was created by Joel Telling (3D Printing Nerd) at [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager), which is no longer receiving commits. This repository, [seanlw/print-farm-manager](https://github.com/seanlw/print-farm-manager), continues the project: it keeps its own CI, publishes its own Docker image, keeps dependencies current with Dependabot, and adds an optional [Spoolman integration](docs/spoolman.md) that does not exist upstream. It remains MIT licensed.
+
 ---
 
 ## What It Does
@@ -15,10 +17,15 @@ No cloud. No subscriptions. No vendor lock-in.
 - **Live fleet view** — see every printer's status, progress, and time remaining at a glance, auto-refreshing every 15 seconds
 - **Automated job dispatch** — define projects and parts, upload G-code, and let the scheduler assign jobs to idle printers automatically
 - **Operator confirmation flow** — every finished print requires a human sign-off before the next job dispatches, preventing runaway failures
-- **Multi-brand support** — Prusa, Elegoo, Bambu, and Klipper printers in the same fleet, managed from one interface
+- **Multi-brand support**: Prusa, Elegoo, Bambu, Klipper, and OctoPrint printers in the same fleet, managed from one interface
+- **Printer groups and models**: register your printer models, group printers (racks, rooms), and restrict a project or G-code to specific groups
+- **G-code preview**: upload `.gcode`, `.bgcode`, or `.3mf` files and inspect them in an in-browser 3D viewer before they print
+- **Filament library**: an admin-managed list of filament types and colors that printers and G-code files select from, with an optional [Spoolman](docs/spoolman.md) integration (off by default) for spool tracking
+- **Decommission tracking and event history**: retire printers without losing their history, and keep per-printer operator notes and an event log
+- **Ready for translation**: every UI string goes through i18n. English ships today; [docs/TRANSLATING.md](docs/TRANSLATING.md) explains how to add a language
 - **CSV fleet import** — add 50 printers at once from a spreadsheet
 - **TV dashboard mode** — a heads-up fleet summary designed for a monitor on the shop wall
-- **Farm backup and restore** — export your entire farm config and job history as a single JSON file
+- **Backups**: the database is snapshotted automatically every hour (the last 24 are kept), and you can export or restore your entire farm config and job history as a single JSON file
 
 ![Fleet view — per-printer cards with operator confirmation](docs/images/fleet.png)
 
@@ -48,6 +55,8 @@ No cloud. No subscriptions. No vendor lock-in.
 | [basic-ftp](https://github.com/patrickjuchli/basic-ftp) | FTPS file transfer to Bambu printers |
 | [sdcp](https://github.com/blakejrobinson/sdcp) | WebSocket protocol driver for Elegoo SDCP printers |
 | [multer](https://github.com/expressjs/multer) | G-code file upload handling |
+| [helmet](https://helmetjs.github.io) | Security headers |
+| [pako](https://github.com/nodeca/pako), [heatshrink-ts](https://github.com/jason2866/heatshrink-ts), [jszip](https://stuk.github.io/jszip/) | Decoding `.bgcode` and `.3mf` files for preview and metadata |
 | [papaparse](https://www.papaparse.com) | CSV fleet import |
 | [form-data](https://github.com/form-data/form-data) | Multipart upload for Klipper/Moonraker |
 | [PM2](https://pm2.keymetrics.io) | Process manager — auto-start on boot, crash recovery |
@@ -56,8 +65,15 @@ No cloud. No subscriptions. No vendor lock-in.
 | Package | Role |
 |---|---|
 | [React 18](https://react.dev) | UI framework |
-| [React Router v6](https://reactrouter.com) | Client-side routing |
-| [Vite](https://vitejs.dev) | Build tool and dev server |
+| [React Router v7](https://reactrouter.com) | Client-side routing |
+| [i18next](https://www.i18next.com) + react-i18next | Internationalization |
+| [three.js](https://threejs.org) | 3D G-code viewer |
+| [Vite 8](https://vite.dev) | Build tool and dev server |
+
+### Testing
+| Package | Role |
+|---|---|
+| [Jest](https://jestjs.io) + [supertest](https://github.com/ladjs/supertest) | Server test suite (`npm test`) |
 
 ### Data
 | Technology | Role |
@@ -71,7 +87,7 @@ No cloud. No subscriptions. No vendor lock-in.
 Requires **Node.js 22 LTS** — Node 24+ has known issues compiling the native SQLite dependency on Windows (see the [Installation Guide](docs/installation.md) for details).
 
 ```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
+git clone https://github.com/seanlw/print-farm-manager.git
 cd print-farm-manager
 npm install
 cd client && npm install && cd ..
@@ -85,7 +101,7 @@ npm run dev
 ### Prefer Docker instead of a local Node.js install?
 
 ```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
+git clone https://github.com/seanlw/print-farm-manager.git
 cd print-farm-manager
 docker compose up --build print-farm-manager-dev
 ```
@@ -105,12 +121,12 @@ Requires [Docker](https://docs.docker.com/get-docker/) (and Compose, bundled wit
 
 #### Quickest start — pull the published image
 
-No clone, no local build. A multi-arch image (`linux/amd64` + `linux/arm64`) is published automatically to GitHub Container Registry on every release — see [docs/docker-publish.md](docs/docker-publish.md). Save this as `docker-compose.yml`:
+No clone, no local build. A multi-arch image (`linux/amd64` and `linux/arm64`) is built and published automatically to GitHub Container Registry: on every push to `main`, on version tags, and nightly to pick up base-image security patches. See [docs/docker-publish.md](docs/docker-publish.md). Save this as `docker-compose.yml`:
 
 ```yaml
 services:
   print-farm-manager:
-    image: ghcr.io/joeltelling/print-farm-manager:latest
+    image: ghcr.io/seanlw/print-farm-manager:latest
     container_name: print-farm-manager
     restart: unless-stopped
     ports:
@@ -148,14 +164,14 @@ docker compose up -d
 | `docker compose up -d` | Start it again |
 | `docker compose down` | Stop and remove the container (volumes are preserved) |
 
-Pin to a specific release instead of always tracking `latest` by using a version tag, e.g. `ghcr.io/joeltelling/print-farm-manager:1.2.0`. `edge` tracks the latest build of `main` between releases.
+`latest` and `edge` both track the newest build of `main`. Version tags such as `ghcr.io/seanlw/print-farm-manager:1.2.0` exist only for versions where a `v*` git tag has been pushed to this repository, so check the repository's tags before pinning to one.
 
 #### Building from source instead
 
 If you're testing local changes rather than running a release, clone the repo and build with the `docker-compose.yml` at its root (uses `build:` instead of `image:`):
 
 ```bash
-git clone https://github.com/joeltelling/print-farm-manager.git
+git clone https://github.com/seanlw/print-farm-manager.git
 cd print-farm-manager
 docker compose up -d --build
 ```
@@ -174,7 +190,7 @@ docker run -d --name print-farm-manager --restart unless-stopped \
   -p 3000:3000 \
   -v farm-data:/app/server/data \
   -v farm-gcode:/app/server/gcode \
-  ghcr.io/joeltelling/print-farm-manager:latest
+  ghcr.io/seanlw/print-farm-manager:latest
 ```
 
 > Same security note as above applies inside Docker: only publish port 3000 to interfaces on your trusted LAN, not `0.0.0.0` on an internet-facing host.
@@ -223,6 +239,10 @@ print-farm-manager/
 │   ├── db.js             # SQLite schema + migrations
 │   ├── poller.js         # 15-second printer poll loop
 │   ├── scheduler.js      # Job dispatch engine
+│   ├── backup.js         # Hourly automatic database snapshots
+│   ├── routes/           # One REST module per resource (printers, projects, parts, gcodes, jobs, ...)
+│   ├── integrations/     # Optional integrations (Spoolman)
+│   ├── tests/            # Jest + supertest suites
 │   └── drivers/          # Per-brand printer drivers
 │       ├── prusa.js       # PrusaLink REST
 │       ├── elegoo-centauri.js   # SDCP WebSocket (Centauri Carbon)
@@ -230,11 +250,21 @@ print-farm-manager/
 │       ├── bambu.js       # MQTT + FTPS
 │       ├── klipper.js     # Moonraker REST
 │       └── octoprint.js   # OctoPrint REST
-├── client/               # React + Vite frontend
-├── docs/                 # Full documentation
+├── client/               # React + Vite frontend (pages, 3D G-code viewer, i18n locales)
+├── docs/                 # Full documentation, indexed in docs/README.md
 ├── Dockerfile            # Multi-stage: server-deps/client-build/runtime (production) + dev
 └── docker-compose.yml    # Production container + persistent volumes, plus an opt-in `dev` profile
 ```
+
+---
+
+## Running the Tests
+
+```bash
+npm test
+```
+
+Or in Docker: `docker compose run --rm print-farm-manager-dev npm test`. Contributors: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

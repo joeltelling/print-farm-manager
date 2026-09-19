@@ -110,14 +110,14 @@ Before adding printers to the app, gather the following credentials. The app wil
 
 **Windows** — open Command Prompt or PowerShell in the folder where you want to install (e.g. `C:\PrintFarm`):
 ```
-git clone https://github.com/joeltelling/print-farm-manager.git
+git clone https://github.com/seanlw/print-farm-manager.git
 cd print-farm-manager
 ```
 
 **macOS** — open Terminal and navigate to your preferred location (e.g. `~/PrintFarm`):
 ```
 mkdir -p ~/PrintFarm && cd ~/PrintFarm
-git clone https://github.com/joeltelling/print-farm-manager.git
+git clone https://github.com/seanlw/print-farm-manager.git
 cd print-farm-manager
 ```
 

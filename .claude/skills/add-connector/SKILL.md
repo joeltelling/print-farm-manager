@@ -16,7 +16,7 @@ You are adding a new printer brand to Print Farm Manager. This is a 6-file chang
    - Klipper: Moonraker web API docs (note: upload options like `print=true` are multipart FORM FIELDS, never query params; Moonraker silently ignores query params)
    - Prusa: PrusaLink OpenAPI spec
    - Elegoo: SDCP protocol docs / elegoo-link source
-4. Never guess at field names, URL formats, or command payloads. Four consecutive wrong commits were once made on the Bambu `project_file` URL format because the docs were not checked. If you cannot find authoritative docs for a payload, stop and tell Joel what is missing rather than guessing.
+4. Never guess at field names, URL formats, or command payloads. Four consecutive wrong commits were once made on the Bambu `project_file` URL format because the docs were not checked. If you cannot find authoritative docs for a payload, stop and tell Sean what is missing rather than guessing.
 5. Decide the connection model before coding:
    - Stateless request/response polling (Prusa, Klipper, OctoPrint pattern): no module state at all.
    - Persistent connection (Bambu, CC2 pattern): module-level `const connections = new Map()` keyed by `printer.id`, status served from a cached last-known payload, OFFLINE until the first message arrives.
@@ -83,7 +83,7 @@ Create `server/tests/<id>-driver.test.js`. House pattern:
 
 ## Phase 5: Hardware validation status
 
-Software-complete is not hardware-confirmed. In the CHANGELOG entry and in your summary to Joel, state explicitly which of these has been done:
+Software-complete is not hardware-confirmed. In the CHANGELOG entry and in your summary to Sean, state explicitly which of these has been done:
 
 - [ ] Status mapping observed against a real printer
 - [ ] Upload + auto-start confirmed on real hardware
@@ -91,7 +91,7 @@ Software-complete is not hardware-confirmed. In the CHANGELOG entry and in your 
 - [ ] Cancel-from-printer-screen maps to STOPPED
 - [ ] Power-cycle / network-drop recovery observed
 
-If none, say so plainly: "implemented from protocol docs, not yet validated on hardware". Never describe a driver as confirmed working without Joel having run it on a real printer.
+If none, say so plainly: "implemented from protocol docs, not yet validated on hardware". Never describe a driver as confirmed working without someone having run it on a real printer and reported the result.
 
 ## Final checklist (all must be true)
 
