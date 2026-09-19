@@ -561,7 +561,7 @@
     "chipFilamentColors_other": "{{count}} filament colors",
     "pollingTitle": "Polling",
     "pollingHint": "All printers are polled every <0>15 seconds</0> via their connector API. Polling runs concurrently: all printers are queried in parallel each tick. Unreachable printers show as <1>{{offline}}</1> and do not affect other printers.",
-    "aboutText": "Hi, I'm Joel (aka <0>3D Printing Nerd</0>). I built this tool to manage my own print farm and decided to open-source it so the community could benefit too. If it saves you time or headaches, I'd love a coffee, it helps me keep making free content and tools like this one. Thanks for being part of the community. Happy printing!",
+    "aboutText": "Print Farm Manager was created by Joel Telling (aka <0>3D Printing Nerd</0>), who built it to run a personal print farm and open-sourced it so the community could benefit too. This version is a community-maintained fork that continues the project. If it saves you time or headaches, please consider supporting the original creator with a coffee, it helps keep the free content and tools coming. Thanks for being part of the community. Happy printing!",
     "buyMeACoffee": "Buy Me a Coffee",
     "credentialHelpPrusa": "API Key: on the printer under Settings → Network → PrusaLink, or in the PrusaLink web UI (open the printer's IP in a browser) under Settings → API Key.",
     "credentialHelpElegooCentauri": "No API key needed, just the printer's IP address, shown on the printer's network settings screen.",

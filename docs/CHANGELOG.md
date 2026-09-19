@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-09-19: docs index and CONTRIBUTING made fork-neutral, Settings About text credits the original creator
+
+Follow-up to the README and CLAUDE.md refresh. `docs/README.md` had fallen well behind the code: its project tree was missing everything added after the first phases (the Spoolman integration, filament and group routes, the G-code decoder and 3D viewer, i18n, backups, the test folder, `.github/`), and its index did not link CONTRIBUTING.md, ARCHITECTURE.md, or the Dependabot config. It now matches the current tree and states that post-Phase-6D work is tracked in this changelog rather than as numbered phases.
+
+CONTRIBUTING.md was written as if there were one canonical repository. It is now neutral about where changes go, so a clone or fork of this repository can follow it unchanged: the clone command uses a placeholder for the reader's own account, issues and PRs go to whichever repository the contributor is working in, and a new "Working on a Fork" section covers what actually differs on a fork (CI and the GHCR image name follow the repository, Dependabot has to be switched on per fork, and following another repository is an optional second remote). It also picked up the current workflow: run tests in Docker, use `DEMO_MODE=true` so the poller does not contact real printers, the `jobs` migration ordering rule, and a note that the client has no automated suite yet, so UI changes are checked in a browser and reported in the PR.
+
+The Settings page "About" text was written in the first person as the original author. It now credits Joel Telling (3D Printing Nerd) as the creator, says this version is a community-maintained fork, and invites support for the original creator. The Buy Me a Coffee and PayPal links are unchanged and still go to the original creator. No pronouns are used for anyone.
+
+### Changes
+- `docs/README.md`: rewritten index and project structure, links to CONTRIBUTING.md, ARCHITECTURE.md and `.github/dependabot.yml`, note on post-6D work.
+- `CONTRIBUTING.md`: fork-neutral wording, "Working on a Fork" section, current dev and test workflow.
+- `client/src/locales/en.json`: `settings.aboutText` reworded (string only, no code change).
+
+Client change verified by loading the Settings page in a browser against the dev container with `DEMO_MODE=true`: text renders with the highlighted name and both links intact, no console errors. Docs and one UI string only, no runtime logic changed.
+
 ## 2026-09-19: README and CLAUDE.md refreshed for the fork; sign-off rules addressed to Sean
 
 The upstream project (joeltelling/print-farm-manager) has stopped receiving commits, and this fork (seanlw/print-farm-manager) now owns its own CI, Docker image, and dependency updates, so the top-level docs had drifted from reality. README.md now says this is a fork and credits the original author, lists what the app does today (OctoPrint alongside the other brands, printer groups and models, the 3D G-code preview for `.gcode`/`.bgcode`/`.3mf`, the Filament Library and optional Spoolman integration, decommission tracking, i18n, hourly automatic backups), corrects the tech stack (React Router v7, Vite 8, i18next, three.js, helmet, the bgcode/3mf decoders, the Jest test setup), and points clone URLs and the published image at this repository (`ghcr.io/seanlw/print-farm-manager`, confirmed publicly pullable for `latest` and `edge`). The README's version-tag advice now matches what the publish workflow actually does.
