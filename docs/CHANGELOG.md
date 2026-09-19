@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-19: keep req.body an object when a request has no JSON body (Express 5 prep)
+
+Found while reviewing Dependabot's Express 4 to 5 bump. The production server was run on both versions and the responses compared: everything matched (the SPA index and deep-link fallback, static files, security headers, JSON validation, encoded params) except one thing. A POST or PUT with no JSON body answered 400 on Express 4 and 500 on Express 5. Express 4's `express.json()` leaves `req.body` as `{}` when there is no body; Express 5 leaves it `undefined`, and about 14 handlers destructure it directly (`const { ids } = req.body` in `set-ready-batch`, `/api/models`, `/api/projects`, and others), so the destructuring threw a TypeError before validation could answer. The UI always sends JSON so it is not affected, and the failure happens before any write (no `completed_qty` change), but it silently changes the documented 400 behavior for any other API client. The existing route tests could not see it because they mount each router on a throwaway app, and nothing tests `server/index.js` startup.
+
+`server/default-request-body.js` is a two-line middleware mounted right after `express.json()` that sets `req.body = {}` when it is undefined. On Express 4 it is a no-op, so it is safe to ship before the Express 5 bump and makes that bump behavior-neutral. It follows the same shape as `security-headers.js` so it can be tested on a throwaway app.
+
+### Changes
+- `server/default-request-body.js` (new): the middleware.
+- `server/index.js`: mounted after `express.json()`.
+- `server/tests/default-request-body.test.js` (new): a missing body becomes `{}` so validation answers 400; the same handler without the middleware throws 500 (proves the test would catch a regression); a real JSON body is untouched; a body set earlier is not replaced; malformed JSON is still a 400 from `express.json()`.
+- `docs/server.md`: file table and startup sequence.
+
+Verified: full suite passes in the Docker dev container. The production server was probed on Express 4 with this change (responses identical to before) and on Express 5 with this change merged in (the previous 500s are 400 again, everything else identical). Hardware validation is not applicable: HTTP request handling only.
+
 ## 2026-09-19: client test suite, phase 3 (DOM tests: hooks, components, every route)
 
 Third phase of the client test framework. Phases 1 and 2 covered pure logic; this adds a DOM layer, so a page that builds fine but breaks at runtime (a router or dependency change, a bad hook, an unexpected request) now fails a test instead of waiting for someone to open the app. It adds three dev dependencies to the client (all approved): `happy-dom`, `@testing-library/react` and `@testing-library/dom`. Nothing in the shipped app changed: this phase adds tests and dev dependencies only.

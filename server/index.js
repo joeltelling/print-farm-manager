@@ -14,6 +14,7 @@ const path    = require('path');
 const fs      = require('fs');
 
 const applySecurityHeaders = require('./security-headers');
+const defaultRequestBody  = require('./default-request-body');
 
 const db             = require('./db');
 const PrinterPoller  = require('./poller');
@@ -43,6 +44,9 @@ const PORT = process.env.PORT || 3000;
 applySecurityHeaders(app);
 
 app.use(express.json());
+// Keep req.body an object when a request has no JSON body, so validation still answers 400
+// (Express 5 would leave it undefined and the handlers would 500). See server/default-request-body.js.
+app.use(defaultRequestBody);
 
 // API routes
 app.use('/api/printers',        printersRouter);

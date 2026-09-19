@@ -9,6 +9,7 @@
 | File | Responsibility |
 |---|---|
 | `server/index.js` | App setup, route mounting, server start, poller + scheduler init |
+| `server/default-request-body.js` | Tiny middleware mounted right after `express.json()` that makes `req.body` an object when a request has no JSON body, so route handlers that destructure it still answer their documented 400 instead of throwing (Express 5 leaves `req.body` undefined; Express 4 left `{}`). Tested in `server/tests/default-request-body.test.js` |
 | `server/security-headers.js` | Helmet/CSP + `Permissions-Policy` setup, as an `(app) => void` factory so it can be mounted on a bare `express()` app in tests without booting the whole server |
 | `server/db.js` | SQLite connection, schema creation, directory setup |
 | `server/poller.js` | Printer status polling loop |
@@ -23,7 +24,7 @@
 
 1. `db.js` is `require()`d — this synchronously creates `server/data/` and `server/gcode/` if missing, opens the SQLite database, and runs all `CREATE TABLE IF NOT EXISTS` statements.
 2. All route modules are instantiated with the `db` instance injected.
-3. Express app is configured with `applySecurityHeaders(app)` (`server/security-headers.js` — CSP, no `X-Powered-By`, etc.; see `docs/CHANGELOG.md` 2026-07-04 and its follow-up), `express.json()`, and route mounting.
+3. Express app is configured with `applySecurityHeaders(app)` (`server/security-headers.js`: CSP, no `X-Powered-By`, etc.; see `docs/CHANGELOG.md` 2026-07-04 and its follow-up), `express.json()`, `defaultRequestBody` (keeps `req.body` an object when there is no JSON body), and route mounting.
 4. `app.listen()` binds to the port.
 5. Inside the listen callback, `PrinterPoller` and `JobScheduler` are instantiated. `scheduler.start()` is called first (subscribes to poller events), then `poller.start()` fires the first poll tick and starts the 15-second interval.
 6. The startup sweep (`sweepIdlePrinters`) is deferred until the poller emits `pollComplete` after its first tick. This ensures dispatch works from live printer state rather than stale DB values from before the last shutdown — preventing accidental dispatch to a printer that started printing while the server was down.
