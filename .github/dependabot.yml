@@ -3,7 +3,14 @@ updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    # Wait a week after a release before proposing it, so yanked or broken
+    # releases are usually gone by the time a PR opens.
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
     ignore:
       # Native module: majors have broken the Windows build on Node 22/23 before.
       # Bump manually after checking the farm machine.
@@ -12,7 +19,12 @@ updates:
   - package-ecosystem: "npm"
     directory: "/client"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    groups:
+      client-minor-patch:
+        update-types: ["minor", "patch"]
     ignore:
       # React majors need react and react-dom bumped together plus a client
       # check, so do them by hand.
@@ -23,7 +35,9 @@ updates:
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    cooldown:
+      default-days: 7
     ignore:
       # package.json pins Node to >=22 <24 (better-sqlite3 will not build on
       # newer releases), so never bump the base image major automatically.
@@ -32,4 +46,9 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions-deps:
+        patterns: ["*"]

@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-09-19: quieter Dependabot schedule (monthly, cooldown, grouped)
+
+The first weekly Dependabot run opened about 20 separate PRs, each needing its own review and, because most touch a lockfile, its own rebase. Changed `.github/dependabot.yml` to cut that down without adding auto-merge: every ecosystem now runs monthly, waits 7 days after a release before proposing it (`cooldown`), and batches routine updates into grouped PRs. The root npm manifest and `client/` each get one grouped PR for minor and patch updates, and GitHub Actions updates go into one `actions-deps` PR. Major bumps still arrive as their own PRs so they get a deliberate look, and the existing ignore rules for `better-sqlite3`, the `node` image, `react` and `react-dom` majors are unchanged. Security updates are not affected by the schedule or cooldown, so vulnerability PRs still open promptly. The approach follows what the TeslaMate project does (monthly, cooldown, grouped Actions, manual merges).
+
+### Changes
+- `.github/dependabot.yml`: schedule weekly to monthly, added `cooldown: default-days: 7`, added minor/patch groups for both npm manifests and a catch-all group for GitHub Actions.
+
+Config only, no runtime code changed.
+
 ## 2026-09-19: enable Dependabot on the fork
 
 The upstream repository's Dependabot setup lived in the upstream repo's GitHub settings, not in a committed config file, so it did not carry over to this fork and upstream is no longer receiving commits. Added a `.github/dependabot.yml` so this repository gets its own weekly version-update PRs, independent of upstream. Security alerts and security updates are separate repository toggles under Settings, Advanced Security, and need no file.
