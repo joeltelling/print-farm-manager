@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-09-19: qs 6.15.3 to 6.16.0 (two open Dependabot security alerts)
+
+Dependabot had two open medium alerts on `qs`, both fixed in 6.16.0: an array-limit bypass via bracket-key comma parsing, and a denial of service through an attacker-controlled `isBuffer`. `qs` is not a direct dependency: it comes in through `body-parser` and `express` (and `superagent`, used only by the test suite), and every one of their ranges already allowed 6.16.0, so this is a lockfile-only update with no `package.json` change and one `qs` version left in the tree.
+
+Practical exposure here was low: the server only mounts `express.json()`, never `express.urlencoded()`, and Express 5's default query parser is the simple one rather than `qs`, so the vulnerable parsing paths were not reachable from the app's routes. The update still closes the alerts and keeps the tree clean.
+
+### Changes
+- `package-lock.json`: `qs` 6.15.3 to 6.16.0 (version, resolved URL, integrity hash only).
+
+Verified: a clean `npm ci` from the lockfile works, `npm ls qs` shows a single 6.16.0, `npm audit` for production dependencies reports no vulnerabilities, and the full suite (server and client) passes in the Docker dev container. The production server was probed with the same 14-request script used for the Express 5 review; responses match the baseline. Not applicable to hardware: transitive parsing library only.
+
 ## 2026-09-19: keep req.body an object when a request has no JSON body (Express 5 prep)
 
 Found while reviewing Dependabot's Express 4 to 5 bump. The production server was run on both versions and the responses compared: everything matched (the SPA index and deep-link fallback, static files, security headers, JSON validation, encoded params) except one thing. A POST or PUT with no JSON body answered 400 on Express 4 and 500 on Express 5. Express 4's `express.json()` leaves `req.body` as `{}` when there is no body; Express 5 leaves it `undefined`, and about 14 handlers destructure it directly (`const { ids } = req.body` in `set-ready-batch`, `/api/models`, `/api/projects`, and others), so the destructuring threw a TypeError before validation could answer. The UI always sends JSON so it is not affected, and the failure happens before any write (no `completed_qty` change), but it silently changes the documented 400 behavior for any other API client. The existing route tests could not see it because they mount each router on a throwaway app, and nothing tests `server/index.js` startup.
