@@ -33,7 +33,7 @@ npm test
 
 Using Docker instead? `docker compose run --rm print-farm-manager-dev npm test` (or `docker compose exec print-farm-manager-dev npm test` if the dev container is already running).
 
-The client tests cover pure logic (the helpers in `client/src/lib/`: formatters, printer status rules and the G-code parser, plus translation keys, `en.json`, and the client/server input formats). Put new display logic that does not need React in `client/src/lib/` and add a test for it in `client/tests/`. Pages, hooks and the 3D viewer have no automated tests yet, so for UI changes also check them in a browser (with `DEMO_MODE=true`) and say in your PR which pages and interactions you checked.
+The client tests cover pure logic (the helpers in `client/src/lib/`: formatters, printer status rules and the G-code parser, plus translation keys, `en.json`, and the client/server input formats) and, using happy-dom and React Testing Library, the shared hooks and components, every route (mounted against a mocked API, so a page that throws or asks for an unexpected endpoint fails), and the Jobs filters in the URL. Put new display logic that does not need React in `client/src/lib/` and add a test for it in `client/tests/`. A new route goes in the `PAGES` list in `client/tests/routes-smoke.test.jsx`, and a new request a page makes on load needs a matching entry in `client/tests/helpers/fixtures.js`. Details are in [docs/web-app.md](docs/web-app.md#testing). The suite does not cover layout, real browser behavior or the 3D viewer, so for UI changes also check them in a browser (with `DEMO_MODE=true`) and say in your PR which pages and interactions you checked.
 
 ## Working on a Fork
 

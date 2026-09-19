@@ -312,18 +312,29 @@ Every page that formats a date, duration, or decimal number calls `useFormatting
 
 ## Testing
 
-The client has a Vitest suite in `client/tests/`, run by root `npm test` after the server suite (or on its own with `npm test --prefix client`; `npm run test:watch --prefix client` re-runs on change). It uses Vite's own config, so JSX and ES modules need no extra setup, and it runs in plain Node with no DOM.
+The client has a Vitest suite in `client/tests/`, run by root `npm test` after the server suite (or on its own with `npm test --prefix client`; `npm run test:watch --prefix client` re-runs on change). It uses Vite's own config, so JSX and ES modules need no extra setup. Most tests run in plain Node. A test that needs a DOM starts with `// @vitest-environment happy-dom` and uses React Testing Library; happy-dom is a lightweight DOM, not a browser.
 
-What is covered today:
+**Pure logic (plain Node)**
 
-- **`client/tests/format.test.js`**: every formatter in `client/src/lib/format.js`, with a stand-in `t()` that returns the translation key and its values, so a test asserts which key and numbers a formatter chose without loading `en.json`. Dates use fixed instants and the timezone is pinned to UTC.
-- **`client/tests/printer-status.test.js`**: the awaiting-sign-off and display-status helpers, including a test that pins Fleet's bulk list as deliberately excluding `STOPPED`.
-- **`client/tests/gcode-parse.test.js`**: the G-code parser against small hand-written programs (extrusion versus travel, positioning and extruder modes, `G92`, feature types, arc splitting and its 180 segment cap).
-- **`client/tests/i18n-keys.test.js`**: every static `t('key')`, `i18nKey`, and `labelKey: 'key'` in `client/src` exists in `en.json` (plural forms count). Dynamic keys are skipped, not guessed.
-- **`client/tests/en-json.test.js`**: `en.json` has only string values, none empty, no em or en dashes, balanced `<0>...</0>` Trans tags, and both plural forms for every plural key.
-- **`client/tests/input-format-contract.test.js`**: text that `formatDurationForInput` and `formatMaterialForInput` pre-fill into the estimate inputs is parsed back correctly by the server's real `normalizePrintTime` and `normalizeMaterialGrams`.
+- **`format.test.js`**: every formatter in `client/src/lib/format.js`, with a stand-in `t()` that returns the translation key and its values, so a test asserts which key and numbers a formatter chose without loading `en.json`. Dates use fixed instants and the timezone is pinned to UTC.
+- **`printer-status.test.js`**: the awaiting-sign-off and display-status helpers, including a test that pins Fleet's bulk list as deliberately excluding `STOPPED`.
+- **`gcode-parse.test.js`**: the G-code parser against small hand-written programs (extrusion versus travel, positioning and extruder modes, `G92`, feature types, arc splitting and its 180 segment cap).
+- **`i18n-keys.test.js`**: every static `t('key')`, `i18nKey`, and `labelKey: 'key'` in `client/src` exists in `en.json` (plural forms count). Dynamic keys are skipped, not guessed.
+- **`en-json.test.js`**: `en.json` has only string values, none empty, no em or en dashes, balanced `<0>...</0>` Trans tags, and both plural forms for every plural key.
+- **`input-format-contract.test.js`**: text that `formatDurationForInput` and `formatMaterialForInput` pre-fill into the estimate inputs is parsed back correctly by the server's real `normalizePrintTime` and `normalizeMaterialGrams`.
 
-Shared display logic that does not need React belongs in `client/src/lib/` with a test next to it in `client/tests/`. Pages, hooks and the WebGL G-code viewer have no automated tests yet, so changes to them are still verified in a browser.
+**DOM tests (happy-dom and React Testing Library)**
+
+- **`routes-smoke.test.jsx`**: mounts the whole app (`App`, router, sidebar, page) at each route against a mocked API, waits for the heading and a piece of fixture data, and fails if the page requested anything the mock does not know about or logged a console error. It also checks sidebar navigation and opening a printer from the directory. It asserts nothing about layout or styling.
+- **`jobs-url-params.test.jsx`**: the Jobs filters in both directions: the query string seeds the filters and the API request, and changing a filter rewrites the URL and refetches, replacing history entries instead of pushing them.
+- **`hooks.test.jsx`**: `useToast` (variants, icons, default, warning, and custom durations), `useConfirm` (confirm, cancel, Escape, backdrop, multiple actions, prompts and required prompts), `useFilamentLibrary` (local library versus Spoolman, failures, refetch), and the formatting locale.
+- **`components.test.jsx`**: `EmptyState` and `PollTimer`.
+
+The shared helpers are in `client/tests/helpers/`. `env.jsx` gives DOM tests real English strings (`t()` throws on an unknown key instead of returning it), a `fetch` mock that records unmocked requests, a console error watcher, and per-test cleanup. `fixtures.js` holds small invented API payloads shaped like the real ones (no real farm data).
+
+To add a page or route to the smoke test, add it to the `PAGES` list in `routes-smoke.test.jsx`. If a page starts requesting a new endpoint on mount, add it to `baseRoutes()` in `fixtures.js`; the smoke test fails on an unmocked request on purpose.
+
+Shared display logic that does not need React belongs in `client/src/lib/` with a test next to it in `client/tests/`. What the suite cannot cover: layout and styling, real browser behavior, and the WebGL G-code viewer, so changes to those are still verified in a browser.
 
 ## Configuration
 
@@ -344,7 +355,9 @@ Shared display logic that does not need React belongs in `client/src/lib/` with 
 | `react-i18next` | ^17.0.0 | React bindings (`useTranslation`, `Trans`) for i18next |
 | `vite` | ^8.0.16 | Dev server and bundler |
 | `@vitejs/plugin-react` | ^6.1.1 | JSX transform + Fast Refresh |
-| `vitest` | ^5.0.1 | Client unit test runner (dev only) |
+| `vitest` | ^5.0.1 | Client test runner (dev only) |
+| `happy-dom` | ^20.14.5 | Lightweight DOM for component and page tests (dev only) |
+| `@testing-library/react`, `@testing-library/dom` | ^16.3.3, ^10.4.2 | Rendering and querying components in tests (dev only) |
 
 ## Quick Start (client only)
 

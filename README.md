@@ -74,7 +74,7 @@ No cloud. No subscriptions. No vendor lock-in.
 | Package | Role |
 |---|---|
 | [Jest](https://jestjs.io) + [supertest](https://github.com/ladjs/supertest) | Server test suite |
-| [Vitest](https://vitest.dev) | Client test suite (pure logic, translation keys, formatters); `npm test` runs both |
+| [Vitest](https://vitest.dev), [happy-dom](https://github.com/capricorn86/happy-dom) and [Testing Library](https://testing-library.com/docs/react-testing-library/intro/) | Client test suite (formatters, translation keys, hooks, components, and every route mounted against a mocked API); `npm test` runs both |
 
 ### Data
 | Technology | Role |

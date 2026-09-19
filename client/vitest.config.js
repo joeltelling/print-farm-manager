@@ -8,8 +8,9 @@ process.env.TZ = 'UTC';
 export default mergeConfig(viteConfig, defineConfig({
   test: {
     include: ['tests/**/*.test.{js,jsx}'],
-    // Layer 1 tests are pure logic and need no DOM. A test that does need one opts in with a
-    // `// @vitest-environment happy-dom` header (added in a later phase).
+    // Most tests are pure logic and run in plain Node. A test that needs a DOM (component,
+    // hook, and page tests) opts in with a `// @vitest-environment happy-dom` header on its
+    // first line.
     environment: 'node',
   },
 }));

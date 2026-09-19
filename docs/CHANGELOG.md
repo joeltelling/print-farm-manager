@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-09-19: client test suite, phase 3 (DOM tests: hooks, components, every route)
+
+Third phase of the client test framework. Phases 1 and 2 covered pure logic; this adds a DOM layer, so a page that builds fine but breaks at runtime (a router or dependency change, a bad hook, an unexpected request) now fails a test instead of waiting for someone to open the app. It adds three dev dependencies to the client (all approved): `happy-dom`, `@testing-library/react` and `@testing-library/dom`. Nothing in the shipped app changed: this phase adds tests and dev dependencies only.
+
+A DOM test starts with `// @vitest-environment happy-dom`; everything else still runs in plain Node. The main new test mounts the whole app at each of the eight routes against a mocked `fetch`, waits for the page heading and a piece of fixture data, and fails if the page made a request the mock does not know about or logged a console error. It also checks sidebar navigation and opening a printer from the directory. Other new tests cover the Jobs filters in both directions (the query string seeds the filters and the API request, and changing a filter rewrites the URL and refetches, replacing history entries rather than pushing them, which is the `useSearchParams` path that could previously only be half checked by hand), `useToast` (variants, icons, and the 2.5 and 4.5 second timings), `useConfirm` (confirm, cancel, Escape, backdrop, multiple actions, prompts and required prompts), `useFilamentLibrary` (local library versus Spoolman, failures, refetch), the formatting locale, `EmptyState`, and `PollTimer`.
+
+Two guard rails are deliberate. The test helper `t()` throws on an unknown translation key instead of returning the key (which made a typo look like a missing element), and the `fetch` mock answers unmocked requests with a 404 and records them so the smoke test can fail on them. The fixtures are small invented payloads shaped like the real API responses; no real farm data, printer addresses or keys are used.
+
+Each new test was checked to fail when it should: a Jobs page that throws on mount, a page requesting an unmocked endpoint, Jobs pushing history entries instead of replacing them, a shortened warning toast, a removed PollTimer cap, and an Escape key that no longer closes the confirm dialog each turned the matching tests red, and restoring the code turned them green.
+
+What the suite still cannot cover: layout and styling, real browser behavior, and the WebGL G-code viewer, so changes to those are still checked in a browser. Playwright end-to-end tests remain deferred and would need their own dependency approval. After pulling this, rebuild the dev image (`docker compose up -d --build -V print-farm-manager-dev`) so the container has the new dev dependencies.
+
+### Changes
+- `client/package.json`, `client/package-lock.json`: added `happy-dom`, `@testing-library/react`, `@testing-library/dom` (dev).
+- `client/tests/helpers/env.jsx`, `client/tests/helpers/fixtures.js` (new): DOM test setup, `fetch` mock, console watcher, invented fixtures.
+- `client/tests/routes-smoke.test.jsx`, `jobs-url-params.test.jsx`, `hooks.test.jsx`, `components.test.jsx` (new).
+- `client/vitest.config.js`: comment updated.
+- `CLAUDE.md`, `docs/web-app.md`, `CONTRIBUTING.md`, `README.md`: what the suite covers, how to add a route, and the updated "fake browser pass" rule.
+
+Verified: root `npm test` (server and client suites) passes in the Docker dev container and `npm run build` succeeds. Hardware validation is not applicable: tests only.
+
 ## 2026-09-19: client test suite, phase 2 (shared status logic, G-code parser)
 
 Second phase of the client test framework. The "awaiting sign-off" condition was copy-pasted into Dashboard (three times), Printers, and Fleet, with CLAUDE.md asking contributors to keep the copies identical; the G-code parser behind the 3D viewer could only be reached through a web worker, so it could not be tested at all. Both are now pure modules with tests, and no behavior changed.
