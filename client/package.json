@@ -14,7 +14,7 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^17.0.14",
     "react-router-dom": "^7.18.4",
-    "three": "^0.185.1"
+    "three": "^0.186.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.2.0",
