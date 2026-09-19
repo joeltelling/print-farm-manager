@@ -33,7 +33,7 @@
     "axios": "^1.20.0",
     "basic-ftp": "^5.2.1",
     "better-sqlite3": "^9.6.0",
-    "concurrently": "^8.2.2",
+    "concurrently": "^10.0.5",
     "express": "^4.19.2",
     "form-data": "^4.0.5",
     "heatshrink-ts": "^0.1.0",
