@@ -13,10 +13,22 @@ updates:
     directory: "/client"
     schedule:
       interval: "weekly"
+    ignore:
+      # React majors need react and react-dom bumped together plus a client
+      # check, so do them by hand.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # package.json pins Node to >=22 <24 (better-sqlite3 will not build on
+      # newer releases), so never bump the base image major automatically.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

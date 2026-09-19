@@ -6,10 +6,10 @@
 
 The upstream repository's Dependabot setup lived in the upstream repo's GitHub settings, not in a committed config file, so it did not carry over to this fork and upstream is no longer receiving commits. Added a `.github/dependabot.yml` so this repository gets its own weekly version-update PRs, independent of upstream. Security alerts and security updates are separate repository toggles under Settings, Advanced Security, and need no file.
 
-Major bumps of `better-sqlite3` are ignored because it is a native module and the farm machine is Windows on Node 22/23; bump it manually after checking the build there.
+Major bumps of `better-sqlite3` are ignored because it is a native module and the farm machine is Windows on Node 22/23; bump it manually after checking the build there. The first Dependabot batch also proposed Node 25 for the Docker base image (the image build failed because `better-sqlite3` does not compile there, and it breaks the `>=22 <24` pin) and React 19 without a matching `react-dom` (npm ERESOLVE), so major bumps of the `node` image, `react` and `react-dom` are ignored too.
 
 ### Changes
-- `.github/dependabot.yml` (new): weekly updates for the root and `client/` npm manifests, the Dockerfile, and GitHub Actions; ignores `better-sqlite3` major versions.
+- `.github/dependabot.yml` (new): weekly updates for the root and `client/` npm manifests, the Dockerfile, and GitHub Actions; ignores major versions of `better-sqlite3`, the `node` Docker image, and `react`/`react-dom`.
 
 Config only, no runtime code changed.
 
