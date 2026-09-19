@@ -42,7 +42,7 @@
     "mqtt": "^5.15.1",
     "multer": "^2.2.0",
     "pako": "^3.0.1",
-    "papaparse": "^5.4.1",
+    "papaparse": "^5.7.0",
     "sdcp": "^0.5.4"
   },
   "devDependencies": {
