@@ -34,7 +34,7 @@
     "basic-ftp": "^5.2.1",
     "better-sqlite3": "^9.6.0",
     "concurrently": "^10.0.5",
-    "express": "^4.19.2",
+    "express": "^4.22.3",
     "form-data": "^4.0.5",
     "heatshrink-ts": "^0.1.0",
     "helmet": "^8.2.0",
