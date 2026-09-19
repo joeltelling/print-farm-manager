@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useFilamentLibrary } from '../useFilamentLibrary';
+import { isAwaitingSignoff } from '../lib/printer-status';
 
 const STATUS_COLORS = {
   IDLE:      { bg: '#1e3a5f', text: '#93c5fd', labelKey: 'common.statusIdle' },
@@ -46,9 +47,7 @@ function statusBadge(status, t) {
 function summarize(group) {
   const counts = { PRINTING: 0, IDLE: 0, AWAITING: 0, ERROR: 0, PAUSED: 0, OFFLINE: 0 };
   for (const p of group) {
-    // Keep this condition identical to Fleet.jsx and Dashboard.jsx (see CLAUDE.md sync pairs).
-    const awaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE' || p.status === 'STOPPED');
-    if (awaiting) { counts.AWAITING++; continue; }
+    if (isAwaitingSignoff(p)) { counts.AWAITING++; continue; }
     if (counts[p.status] !== undefined) counts[p.status]++;
   }
   return counts;

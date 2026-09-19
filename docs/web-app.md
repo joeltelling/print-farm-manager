@@ -27,6 +27,8 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
 | `client/src/lib/format.js` | Pure display formatters (durations, dates, material) shared by the pages; unit tested in `client/tests/format.test.js` |
+| `client/src/lib/printer-status.js` | Pure helpers for what the operator sees: `isAwaitingSignoff`, `isBatchReleasable` (Fleet's bulk Set Ready list), `displayPrinterStatus`, `displayJobStatus`, `dashboardCellStatus` |
+| `client/src/lib/gcode-parse.js` | Pure G-code parser behind the 3D viewer (arcs, G90/G91 and M82/M83 modes, feature-type filtering); `gcode-parser.worker.js` is a thin wrapper around it |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vitest.config.js` | Vitest config: merges `vite.config.js`, includes `tests/**/*.test.{js,jsx}`, pins `TZ=UTC` |
@@ -315,6 +317,8 @@ The client has a Vitest suite in `client/tests/`, run by root `npm test` after t
 What is covered today:
 
 - **`client/tests/format.test.js`**: every formatter in `client/src/lib/format.js`, with a stand-in `t()` that returns the translation key and its values, so a test asserts which key and numbers a formatter chose without loading `en.json`. Dates use fixed instants and the timezone is pinned to UTC.
+- **`client/tests/printer-status.test.js`**: the awaiting-sign-off and display-status helpers, including a test that pins Fleet's bulk list as deliberately excluding `STOPPED`.
+- **`client/tests/gcode-parse.test.js`**: the G-code parser against small hand-written programs (extrusion versus travel, positioning and extruder modes, `G92`, feature types, arc splitting and its 180 segment cap).
 - **`client/tests/i18n-keys.test.js`**: every static `t('key')`, `i18nKey`, and `labelKey: 'key'` in `client/src` exists in `en.json` (plural forms count). Dynamic keys are skipped, not guessed.
 - **`client/tests/en-json.test.js`**: `en.json` has only string values, none empty, no em or en dashes, balanced `<0>...</0>` Trans tags, and both plural forms for every plural key.
 - **`client/tests/input-format-contract.test.js`**: text that `formatDurationForInput` and `formatMaterialForInput` pre-fill into the estimate inputs is parsed back correctly by the server's real `normalizePrintTime` and `normalizeMaterialGrams`.

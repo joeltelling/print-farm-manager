@@ -7,6 +7,7 @@ import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
 import { useFormattingLocale } from '../useFormattingLocale';
 import { formatTimeRemaining, formatEta } from '../lib/format';
+import { isAwaitingSignoff, isBatchReleasable, displayPrinterStatus } from '../lib/printer-status';
 
 const STATUS_COLORS = {
   PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', labelKey: 'common.statusPrinting' },
@@ -40,20 +41,10 @@ function statusStyle(status) {
   return STATUS_COLORS[status] || STATUS_COLORS.UNKNOWN;
 }
 
-// What the card should say. The hardware still reports IDLE/FINISHED while the
-// scheduler transfers a file, so a healthy in-flight upload displays as UPLOADING.
-// Held + uploading is a FAILED upload — that keeps its hardware status so the
-// existing confirmation flow renders unchanged. This is display-only; it never
-// feeds back into printers.status.
-function displayStatus(p) {
-  if (p.has_uploading_job === 1 && p.is_held === 0 && p.status !== 'PRINTING') return 'UPLOADING';
-  return p.status;
-}
-
 function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail }) {
   const { t } = useTranslation();
   const formattingLocale = useFormattingLocale();
-  const shownStatus = displayStatus(printer);
+  const shownStatus = displayPrinterStatus(printer);
   const style = statusStyle(shownStatus);
   const isUploading = shownStatus === 'UPLOADING';
 
@@ -88,8 +79,7 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
   // STOPPED is included: some printers (Bambu) latch the stopped state until the next
   // print starts, with nothing to acknowledge on the printer screen — the only way out
   // is confirming here so the farm dispatches a new job.
-  const needsConfirmation = printer.is_held === 1
-    && (printer.status === 'FINISHED' || printer.status === 'IDLE' || printer.status === 'STOPPED');
+  const needsConfirmation = isAwaitingSignoff(printer);
   // OFFLINE with an active job: printer dropped off network but job may still be running.
   // Operator can confirm the job is OK (green = resume) or declare it failed (red).
   // If the printer comes back PRINTING on its own, the hold is released automatically.
@@ -358,7 +348,9 @@ export default function Fleet() {
   }, [fetchPrinters]);
 
   // Printers awaiting operator confirmation — excludes those currently printing (hold is pre-set for when they finish)
-  const awaitingConfirmation = printers.filter(p => p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE') && p.has_uploading_job === 0);
+  // Bulk-releasable printers only. Deliberately narrower than isAwaitingSignoff (STOPPED is
+  // excluded): see isBatchReleasable in lib/printer-status.js.
+  const awaitingConfirmation = printers.filter(isBatchReleasable);
   const awaitingOfflineReview = printers.filter(p => p.is_held === 1 && p.status === 'OFFLINE' && p.has_active_job === 1);
   const awaitingUploadReview = printers.filter(p => p.is_held === 1 && p.has_uploading_job === 1 && p.status !== 'OFFLINE');
 
@@ -584,7 +576,7 @@ export default function Fleet() {
   }
 
   const counts = printers.reduce((acc, p) => {
-    const s = displayStatus(p);
+    const s = displayPrinterStatus(p);
     acc[s] = (acc[s] || 0) + 1;
     return acc;
   }, {});
@@ -593,7 +585,7 @@ export default function Fleet() {
 
   const filtered = printers.filter((p) => {
     if (filter === 'UNKNOWN') return !KNOWN_STATUSES.has(p.status);
-    if (filter !== 'ALL' && displayStatus(p) !== filter) return false;
+    if (filter !== 'ALL' && displayPrinterStatus(p) !== filter) return false;
     if (search && !p.name.toLowerCase().includes(search.toLowerCase()) &&
         !p.ip.includes(search) && !(p.group_name || '').toLowerCase().includes(search.toLowerCase())) {
       return false;

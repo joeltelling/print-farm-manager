@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-19: client test suite, phase 2 (shared status logic, G-code parser)
+
+Second phase of the client test framework. The "awaiting sign-off" condition was copy-pasted into Dashboard (three times), Printers, and Fleet, with CLAUDE.md asking contributors to keep the copies identical; the G-code parser behind the 3D viewer could only be reached through a web worker, so it could not be tested at all. Both are now pure modules with tests, and no behavior changed.
+
+`client/src/lib/printer-status.js` holds `isAwaitingSignoff` (held and FINISHED, IDLE, or STOPPED), which Dashboard, Printers and the Fleet cards now share, plus `displayPrinterStatus` and `displayJobStatus` (moved out of Fleet and Jobs) and `dashboardCellStatus`. Fleet's bulk "Set Ready (N)" list keeps its own predicate, `isBatchReleasable` (held, FINISHED or IDLE, and no uploading job), which is exactly what the page did before. The two are intentionally different: the bulk list excludes STOPPED. Reading the code shows why. The Fleet card defaults a stopped plate to 0 good parts because crediting it must be an explicit choice, and `POST /api/printers/set-ready-batch` only clears the hold; it does not resolve the stopped job the way the single-printer set-ready does. Putting STOPPED into the bulk list would let one click release stopped printers without that per-printer confirmation, which is a `completed_qty` question, so it was not changed. A test now pins the exclusion, and the CLAUDE.md sync-pair row describes the two predicates instead of a "known drift".
+
+`client/src/lib/gcode-parse.js` now holds the parser (`parseGcode`), and `gcode-parser.worker.js` is a thin wrapper that calls it and posts the result. Before the move, the new function was compared with the original worker code on five real sliced files (about 395,000 segments): the output was byte-identical. New tests cover extrusion versus travel, absolute and relative XYZ and E modes, `G92`, feature-type filtering, and arc splitting including the 180 segment cap.
+
+Each new test was checked to fail when it should: adding STOPPED to the bulk list, removing STOPPED from the awaiting rule, ignoring `G92`, and raising the arc cap each turned the matching test red.
+
+### Changes
+- `client/src/lib/printer-status.js` (new), `client/src/lib/gcode-parse.js` (new).
+- `client/src/pages/{Dashboard,Printers,Fleet,Jobs}.jsx`: inline conditions and local helpers replaced by imports. Fleet's bulk list now reads `printers.filter(isBatchReleasable)`.
+- `client/src/gcode-parser.worker.js`: reduced to a wrapper around `parseGcode`.
+- `client/tests/printer-status.test.js`, `client/tests/gcode-parse.test.js` (new).
+- `CLAUDE.md`, `docs/web-app.md`, `CONTRIBUTING.md`: layout, tests, and the sign-off sync-pair row.
+
+Verified: root `npm test` (server and client suites) passes in the Docker dev container and `npm run build` succeeds (the worker still bundles as a single file). In a browser against the dev container with `DEMO_MODE=true`, the 3D viewer renders the sample part as before, and Dashboard, Fleet, Printers and Jobs load with no console errors. The dev printer is not held, so the awaiting-sign-off visuals are covered by the unit tests rather than on screen. Hardware validation is not applicable: client display logic only.
+
 ## 2026-09-19: client test suite, phase 1 (Vitest, shared formatters, CI)
 
 The server had a full Jest suite while the client had no automated checks at all beyond `vite build` inside the Docker build. That mattered because Dependabot now bumps react-router, three, i18next and the Vite plugin routinely, and the recent bumps could only be verified by clicking through the app. This is the first phase of a planned client test framework: infrastructure plus tests for pure logic that needs no DOM.

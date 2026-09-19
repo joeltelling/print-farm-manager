@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import PollTimer from '../components/PollTimer';
 import { useFormattingLocale } from '../useFormattingLocale';
 import { formatClockTime, formatLongDate, formatDurationSecs, formatMaterial } from '../lib/format';
+import { isAwaitingSignoff, dashboardCellStatus } from '../lib/printer-status';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -61,11 +62,7 @@ const LEGEND_ITEMS = [
 
 function cellColors(printer) {
   // Held printer (awaiting operator sign-off) renders as green regardless of status.
-  // Keep this condition identical to Fleet.jsx and Printers.jsx (see CLAUDE.md sync pairs).
-  if (printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE' || printer.status === 'STOPPED')) {
-    return CELL_COLORS.FINISHED;
-  }
-  return CELL_COLORS[printer.status] || CELL_COLORS.IDLE;
+  return CELL_COLORS[dashboardCellStatus(printer)] || CELL_COLORS.IDLE;
 }
 
 // ── Row-level status summary badges for the fleet grid ───────────────────────
@@ -78,7 +75,7 @@ function RowSummary({ group }) {
     <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
       {ROW_STATUSES.map(s => {
         const count = group.filter(p => {
-          const isAwaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE' || p.status === 'STOPPED');
+          const isAwaiting = isAwaitingSignoff(p);
           if (s === 'FINISHED') return isAwaiting;
           return p.status === s && !isAwaiting;
         }).length;
@@ -294,8 +291,7 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
                   {group.map(printer => {
                     const c = cellColors(printer);
-                    // Keep this condition identical to Fleet.jsx and Printers.jsx (see CLAUDE.md sync pairs).
-                    const isAwaiting = printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE' || printer.status === 'STOPPED');
+                    const isAwaiting = isAwaitingSignoff(printer);
                     const cellStatusLabel = isAwaiting ? t('common.statusAwaitingShort') : statusLabel(t, printer.status);
                     return (
                       <div

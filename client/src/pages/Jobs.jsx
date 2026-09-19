@@ -5,6 +5,7 @@ import { useConfirm } from '../useConfirm';
 import EmptyState from '../components/EmptyState';
 import { useFormattingLocale } from '../useFormattingLocale';
 import { formatShortDateTime, formatJobDuration } from '../lib/format';
+import { displayJobStatus } from '../lib/printer-status';
 
 // Colors match the Fleet page conventions: blue = printing, green = done.
 // Cancelled gets a line-through as a non-color cue against Queued.
@@ -19,18 +20,6 @@ const JOB_STATUS = {
   failed:    { bg: '#7f1d1d', text: '#f87171', labelKey: 'jobs.statusFailed' },
   cancelled: { bg: '#111827', text: '#6b7280', labelKey: 'jobs.statusCancelled', strike: true },
 };
-
-// The printer can be held (awaiting operator sign-off) while the job row is still
-// 'printing' (e.g. a printer goes PRINTING -> IDLE directly between polls, with no
-// observable FINISHED/STOPPED tick). The scheduler correctly holds the printer but has
-// nothing to resolve the job against yet, so the row stays 'printing' until Set Ready
-// or Bad Print is used. Display-only: never write this back as jobs.status.
-function displayJobStatus(job) {
-  if (job.status === 'printing' && job.printer_is_held === 1 && job.printer_status !== 'PRINTING') {
-    return 'awaiting';
-  }
-  return job.status;
-}
 
 const STATUS_OPTIONS = ['all', 'queued', 'uploading', 'printing', 'finished', 'failed', 'cancelled'];
 
