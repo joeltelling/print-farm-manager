@@ -2,6 +2,17 @@
 
 ---
 
+## 2026-09-19: enable Dependabot on the fork
+
+The upstream repository's Dependabot setup lived in the upstream repo's GitHub settings, not in a committed config file, so it did not carry over to this fork and upstream is no longer receiving commits. Added a `.github/dependabot.yml` so this repository gets its own weekly version-update PRs, independent of upstream. Security alerts and security updates are separate repository toggles under Settings, Advanced Security, and need no file.
+
+Major bumps of `better-sqlite3` are ignored because it is a native module and the farm machine is Windows on Node 22/23; bump it manually after checking the build there.
+
+### Changes
+- `.github/dependabot.yml` (new): weekly updates for the root and `client/` npm manifests, the Dockerfile, and GitHub Actions; ignores `better-sqlite3` major versions.
+
+Config only, no runtime code changed.
+
 ## 2026-08-03: Spoolman usage tracking falls back to reported length when weight is unavailable (issue #21)
 
 `reportJobUsage` only ever read `gcodes.filament_used_grams`, so any G-code sliced by something other than PrusaSlicer/SuperSlicer/OrcaSlicer (the only family `parseFilamentUsage` recognizes for a grams line) always hit the `no-parsed-usage` no-op, even when the same slicer comment block did carry a length figure. Cura's default header is `;Filament used: 1.20047m`, length only, no grams line at all; Bambu Studio's native metadata has historically not carried either in a form this parser recognizes either (there's an open community request on Bambu's own forum asking for it). For gcode from either of those, usage was silently never reported to Spoolman, correctly, since there was nothing to report from, but the fallback below recovers the length case.
