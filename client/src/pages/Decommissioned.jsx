@@ -4,13 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
 import { useFormattingLocale } from '../useFormattingLocale';
+import { formatDateTime } from '../lib/format';
 
 function formatTimestamp(t, ms, formattingLocale) {
   if (!ms) return t('decommissioned.unknownTimestamp');
-  return new Date(ms).toLocaleString(formattingLocale, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+  return formatDateTime(ms, formattingLocale);
 }
 
 export default function Decommissioned() {

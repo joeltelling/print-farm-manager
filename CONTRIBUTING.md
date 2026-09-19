@@ -29,9 +29,11 @@ Run the test suite before opening a PR. All tests must pass:
 npm test
 ```
 
+`npm test` runs the server suite (Jest, `server/tests/`) and then the client suite (Vitest, `client/tests/`). Run either alone with `npm run test:server` or `npm run test:client`, and `npm run test:watch --prefix client` re-runs the client tests as you edit.
+
 Using Docker instead? `docker compose run --rm print-farm-manager-dev npm test` (or `docker compose exec print-farm-manager-dev npm test` if the dev container is already running).
 
-There is no automated test suite for the client yet. For UI changes, check them in a browser (with `DEMO_MODE=true`) and say in your PR which pages and interactions you checked.
+The client tests cover pure logic (formatters in `client/src/lib/`, translation keys, `en.json`, and the client/server input formats). Put new display logic that does not need React in `client/src/lib/` and add a test for it in `client/tests/`. Pages, hooks and the 3D viewer have no automated tests yet, so for UI changes also check them in a browser (with `DEMO_MODE=true`) and say in your PR which pages and interactions you checked.
 
 ## Working on a Fork
 

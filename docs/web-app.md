@@ -26,8 +26,10 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Dashboard.jsx` | TV command center dashboard |
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
+| `client/src/lib/format.js` | Pure display formatters (durations, dates, material) shared by the pages; unit tested in `client/tests/format.test.js` |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
+| `client/vitest.config.js` | Vitest config: merges `vite.config.js`, includes `tests/**/*.test.{js,jsx}`, pins `TZ=UTC` |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
 
 ## Layout
@@ -306,6 +308,19 @@ This matches the server's 15-second poll interval. In practice, the UI is never 
 
 Every page that formats a date, duration, or decimal number calls `useFormattingLocale()` and threads the result into its formatter functions, mirroring how `t` itself is threaded through `formatDuration`/`formatMaterial`. One exception: `Projects.jsx`'s `formatMaterialForInput` pre-fills an editable text input whose value round-trips to `server/routes/gcodes.js`'s dot-only material parser, so it deliberately stays dot-decimal regardless of locale.
 
+## Testing
+
+The client has a Vitest suite in `client/tests/`, run by root `npm test` after the server suite (or on its own with `npm test --prefix client`; `npm run test:watch --prefix client` re-runs on change). It uses Vite's own config, so JSX and ES modules need no extra setup, and it runs in plain Node with no DOM.
+
+What is covered today:
+
+- **`client/tests/format.test.js`**: every formatter in `client/src/lib/format.js`, with a stand-in `t()` that returns the translation key and its values, so a test asserts which key and numbers a formatter chose without loading `en.json`. Dates use fixed instants and the timezone is pinned to UTC.
+- **`client/tests/i18n-keys.test.js`**: every static `t('key')`, `i18nKey`, and `labelKey: 'key'` in `client/src` exists in `en.json` (plural forms count). Dynamic keys are skipped, not guessed.
+- **`client/tests/en-json.test.js`**: `en.json` has only string values, none empty, no em or en dashes, balanced `<0>...</0>` Trans tags, and both plural forms for every plural key.
+- **`client/tests/input-format-contract.test.js`**: text that `formatDurationForInput` and `formatMaterialForInput` pre-fill into the estimate inputs is parsed back correctly by the server's real `normalizePrintTime` and `normalizeMaterialGrams`.
+
+Shared display logic that does not need React belongs in `client/src/lib/` with a test next to it in `client/tests/`. Pages, hooks and the WebGL G-code viewer have no automated tests yet, so changes to them are still verified in a browser.
+
 ## Configuration
 
 | Setting | Value | Location |
@@ -319,12 +334,13 @@ Every page that formats a date, duration, or decimal number calls `useFormatting
 |---|---|---|
 | `react` | ^18.3.1 | UI framework |
 | `react-dom` | ^18.3.1 | DOM renderer |
-| `react-router-dom` | ^6.24.0 | Client-side routing |
+| `react-router-dom` | ^7.18.4 | Client-side routing |
 | `i18next` | ^26.0.0 | i18n core (resources, interpolation, pluralization) |
 | `i18next-browser-languagedetector` | ^8.0.0 | Detects/caches the visitor's language (localStorage, then browser) |
 | `react-i18next` | ^17.0.0 | React bindings (`useTranslation`, `Trans`) for i18next |
 | `vite` | ^8.0.16 | Dev server and bundler |
-| `@vitejs/plugin-react` | ^5.2.0 | JSX transform + Fast Refresh |
+| `@vitejs/plugin-react` | ^6.1.1 | JSX transform + Fast Refresh |
+| `vitest` | ^5.0.1 | Client unit test runner (dev only) |
 
 ## Quick Start (client only)
 

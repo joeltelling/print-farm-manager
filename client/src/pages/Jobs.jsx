@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useConfirm } from '../useConfirm';
 import EmptyState from '../components/EmptyState';
 import { useFormattingLocale } from '../useFormattingLocale';
+import { formatShortDateTime, formatJobDuration } from '../lib/format';
 
 // Colors match the Fleet page conventions: blue = printing, green = done.
 // Cancelled gets a line-through as a non-color cue against Queued.
@@ -32,21 +33,6 @@ function displayJobStatus(job) {
 }
 
 const STATUS_OPTIONS = ['all', 'queued', 'uploading', 'printing', 'finished', 'failed', 'cancelled'];
-
-function formatTime(ms, formattingLocale) {
-  if (!ms) return '—';
-  return new Date(ms).toLocaleString(formattingLocale, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatDuration(startMs, endMs, t) {
-  if (!startMs) return '—';
-  const ms  = (endMs || Date.now()) - startMs;
-  const s   = Math.floor(ms / 1000);
-  const h   = Math.floor(s / 3600);
-  const m   = Math.floor((s % 3600) / 60);
-  if (h > 0) return t('common.durationHoursMinutes', { h, m });
-  return t('common.durationMinutes', { m });
-}
 
 const selectSx = {
   background: '#1e2433',
@@ -192,8 +178,8 @@ export default function Jobs() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#64748b', fontSize: 12 }}>
                   <span>
-                    {formatTime(job.started_at, formattingLocale)}
-                    {job.started_at && <> · {formatDuration(job.started_at, job.finished_at || null, t)}</>}
+                    {formatShortDateTime(job.started_at, formattingLocale)}
+                    {job.started_at && <> · {formatJobDuration(job.started_at, job.finished_at || null, t)}</>}
                   </span>
                   {job.status === 'queued' && (
                     <button
@@ -256,11 +242,11 @@ export default function Jobs() {
                       </span>
                     </td>
                     <td style={{ padding: '8px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>
-                      {formatTime(job.started_at, formattingLocale)}
+                      {formatShortDateTime(job.started_at, formattingLocale)}
                     </td>
                     <td style={{ padding: '8px 10px', color: '#64748b' }}>
                       {job.started_at
-                        ? formatDuration(job.started_at, job.finished_at || null, t)
+                        ? formatJobDuration(job.started_at, job.finished_at || null, t)
                         : '—'}
                     </td>
                     <td style={{ padding: '8px 10px' }}>

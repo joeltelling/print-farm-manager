@@ -3,35 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useFormattingLocale } from '../useFormattingLocale';
 import { useFilamentLibrary } from '../useFilamentLibrary';
-
-function formatTimestamp(ms, formattingLocale) {
-  if (!ms) return '—';
-  return new Date(ms).toLocaleString(formattingLocale, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-function formatDuration(ms, t) {
-  if (!ms || ms <= 0) return '—';
-  const totalMin = Math.round(ms / 60000);
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h === 0) return t('common.durationMinutes', { m });
-  return t('common.durationHoursMinutes', { h, m });
-}
-
-function formatHours(ms, t, formattingLocale) {
-  if (!ms || ms <= 0) return t('common.durationHours', { h: 0 });
-  const h = ms / 3600000;
-  // maximumFractionDigits (no minimum) trims trailing zeros the same way toFixed did,
-  // while using the locale's own decimal separator instead of always a dot.
-  const formatted = new Intl.NumberFormat(formattingLocale, {
-    maximumFractionDigits: h >= 100 ? 0 : 1,
-    useGrouping: false,
-  }).format(h);
-  return t('common.durationHours', { h: formatted });
-}
+import { formatTimestamp, formatDurationMs, formatHours } from '../lib/format';
 
 const EVENT_META = {
   decommission:  { labelKey: 'common.statusDecommissioned', bg: '#7f1d1d', color: '#fca5a5' },
@@ -820,7 +792,7 @@ export default function PrinterDetail() {
                       <td style={{ padding: '7px 10px', color: '#94a3b8', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.project_name ?? '—'}</td>
                       <td style={{ padding: '7px 10px', color: '#64748b', fontFamily: 'monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.gcode_filename ?? '—'}</td>
                       <td style={{ padding: '7px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>{formatTimestamp(job.started_at, formattingLocale)}</td>
-                      <td style={{ padding: '7px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{formatDuration(job.duration_ms, t)}</td>
+                      <td style={{ padding: '7px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{formatDurationMs(job.duration_ms, t)}</td>
                       <td style={{ padding: '7px 10px', color: '#94a3b8', textAlign: 'center' }}>{job.parts_per_plate}</td>
                       <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                         <span style={{ color: statusColor, fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>{t(JOB_STATUS_LABEL_KEYS[job.status] || 'common.statusUnknown')}</span>

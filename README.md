@@ -73,7 +73,8 @@ No cloud. No subscriptions. No vendor lock-in.
 ### Testing
 | Package | Role |
 |---|---|
-| [Jest](https://jestjs.io) + [supertest](https://github.com/ladjs/supertest) | Server test suite (`npm test`) |
+| [Jest](https://jestjs.io) + [supertest](https://github.com/ladjs/supertest) | Server test suite |
+| [Vitest](https://vitest.dev) | Client test suite (pure logic, translation keys, formatters); `npm test` runs both |
 
 ### Data
 | Technology | Role |

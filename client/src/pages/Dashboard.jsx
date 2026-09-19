@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import PollTimer from '../components/PollTimer';
 import { useFormattingLocale } from '../useFormattingLocale';
+import { formatClockTime, formatLongDate, formatDurationSecs, formatMaterial } from '../lib/format';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -65,43 +66,6 @@ function cellColors(printer) {
     return CELL_COLORS.FINISHED;
   }
   return CELL_COLORS[printer.status] || CELL_COLORS.IDLE;
-}
-
-function formatTime(d, formattingLocale) {
-  return d.toLocaleTimeString(formattingLocale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
-
-function formatDate(d, formattingLocale) {
-  return d.toLocaleDateString(formattingLocale, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function formatDuration(secs, t) {
-  if (!secs) return null;
-  const MINUTE = 60, HOUR = 3600, DAY = 86400, WEEK = 604800;
-  if (secs >= WEEK) {
-    const w = Math.floor(secs / WEEK);
-    const d = Math.floor((secs % WEEK) / DAY);
-    return d > 0 ? t('common.durationWeeksDays', { w, d }) : t('common.durationWeeks', { w });
-  }
-  if (secs >= DAY) {
-    const d = Math.floor(secs / DAY);
-    const h = Math.floor((secs % DAY) / HOUR);
-    return h > 0 ? t('common.durationDaysHours', { d, h }) : t('common.durationDays', { d });
-  }
-  const h = Math.floor(secs / HOUR);
-  const m = Math.floor((secs % HOUR) / MINUTE);
-  if (h > 0) return m > 0 ? t('common.durationHoursMinutes', { h, m }) : t('common.durationHours', { h });
-  return t('common.durationMinutes', { m });
-}
-
-function formatMaterial(grams, t, formattingLocale) {
-  if (grams == null) return null;
-  if (grams < 1000) return t('common.massGrams', { g: Math.round(grams) });
-  // maximumFractionDigits with no minimum trims trailing zeros the same way the
-  // previous toFixed(2).replace(/\.?0+$/, '') did, while using the locale's own
-  // decimal separator (',' for pl/de, '.' for en) instead of always a dot.
-  const kg = new Intl.NumberFormat(formattingLocale, { maximumFractionDigits: 2, useGrouping: false }).format(grams / 1000);
-  return t('common.massKilograms', { kg });
 }
 
 // ── Row-level status summary badges for the fleet grid ───────────────────────
@@ -256,10 +220,10 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: 'monospace', fontSize: 28, fontWeight: 700, color: '#60a5fa', lineHeight: 1 }}>
-              {formatTime(clock, formattingLocale)}
+              {formatClockTime(clock, formattingLocale)}
             </div>
             <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>
-              {formatDate(clock, formattingLocale)}
+              {formatLongDate(clock, formattingLocale)}
             </div>
           </div>
           <PollTimer lastPolled={lastPolled} intervalMs={POLL_INTERVAL_MS} size={28} />
@@ -489,7 +453,7 @@ export default function Dashboard() {
                         <span style={{ fontWeight: 700, color: '#cbd5e1' }}>{t('dashboard.soFar')}</span>
                         <span style={{ color: '#374151' }}>·</span>
                         {proj.elapsed_secs > 0 && (
-                          <span style={{ color: '#94a3b8' }}>{formatDuration(proj.elapsed_secs, t)}</span>
+                          <span style={{ color: '#94a3b8' }}>{formatDurationSecs(proj.elapsed_secs, t)}</span>
                         )}
                         {proj.elapsed_secs > 0 && proj.material_used_grams > 0 && (
                           <span style={{ color: '#374151' }}>·</span>

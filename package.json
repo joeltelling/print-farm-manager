@@ -26,7 +26,9 @@
     "client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
     "start": "node server/index.js",
-    "test": "jest --testPathPatterns=server/tests",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "jest --testPathPatterns=server/tests",
+    "test:client": "npm test --prefix client",
     "postinstall": "patch-package"
   },
   "dependencies": {

@@ -16,7 +16,7 @@
 
 ## Test gate
 
-Every trigger — including PRs — runs the `test` job first: `npm ci` + `npm test` (the Jest suite in `server/tests/`) on `ubuntu-24.04`. Both `build` and `pr_test_build` declare `needs: test`, so a failing test suite blocks any image from being built at all, published or not. `merge` in turn depends on `build`, so the whole publish path is transitively gated on tests passing.
+Every trigger, including PRs, runs the `test` job first: `npm ci` and `npm ci --prefix client` (the client has its own lockfile), then `npm test` on `ubuntu-24.04`. Root `npm test` runs the server Jest suite (`server/tests/`) and then the client Vitest suite (`client/tests/`), so one required check covers both. The npm cache is keyed on both lockfiles. Both `build` and `pr_test_build` declare `needs: test`, so a failing test suite blocks any image from being built at all, published or not. `merge` in turn depends on `build`, so the whole publish path is transitively gated on tests passing.
 
 ## Why native ARM runners instead of QEMU
 

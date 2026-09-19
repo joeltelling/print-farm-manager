@@ -6,28 +6,7 @@ import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
 import GcodeViewerModal from '../GcodeViewerModal';
 import { useFilamentLibrary } from '../useFilamentLibrary';
-
-// ── Estimate helpers ──────────────────────────────────────────────────────────
-
-function formatDurationForInput(secs) {
-  if (!secs) return '';
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  return `${m}m`;
-}
-
-// Pre-fills an editable text input (materialDraft), not a translated display string,
-// so this deliberately stays dot-decimal regardless of locale: the value round-trips
-// to server/routes/gcodes.js's normalizeMaterialGrams(), whose regex only accepts a
-// literal dot. Locale-formatting this would produce a value the server rejects if the
-// operator saves the field without editing it.
-function formatMaterialForInput(grams) {
-  if (grams == null) return '';
-  if (grams < 1000) return `${Math.round(grams)}g`;
-  const kg = (grams / 1000).toFixed(2).replace(/\.?0+$/, '');
-  return `${kg}kg`;
-}
+import { formatDurationForInput, formatMaterialForInput } from '../lib/format';
 
 // Model options are loaded from /api/models at runtime — no hardcoded list here.
 

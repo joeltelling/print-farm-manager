@@ -6,6 +6,7 @@ import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
 import { useFormattingLocale } from '../useFormattingLocale';
+import { formatTimeRemaining, formatEta } from '../lib/format';
 
 const STATUS_COLORS = {
   PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', labelKey: 'common.statusPrinting' },
@@ -47,26 +48,6 @@ function statusStyle(status) {
 function displayStatus(p) {
   if (p.has_uploading_job === 1 && p.is_held === 0 && p.status !== 'PRINTING') return 'UPLOADING';
   return p.status;
-}
-
-function formatTimeRemaining(t, secs) {
-  if (secs == null || secs < 0) return null;
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  if (h > 0) return t('fleet.timeRemainingHm', { h, m });
-  if (m > 0) return t('fleet.timeRemainingM', { m });
-  return t('fleet.timeRemainingLessThanMin');
-}
-
-// Wall-clock finish time — "done 3:45 PM", with a day marker if it rolls past midnight
-function formatEta(t, secs, formattingLocale) {
-  if (secs == null || secs < 0) return null;
-  const eta = new Date(Date.now() + secs * 1000);
-  const time = eta.toLocaleTimeString(formattingLocale, { hour: 'numeric', minute: '2-digit' });
-  const days = Math.floor((eta - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000);
-  if (days === 1) return t('fleet.etaTomorrow', { time });
-  if (days > 1) return t('fleet.etaDay', { day: eta.toLocaleDateString(formattingLocale, { weekday: 'short' }), time });
-  return t('fleet.etaToday', { time });
 }
 
 function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail }) {

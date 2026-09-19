@@ -2,6 +2,33 @@
 
 ---
 
+## 2026-09-19: client test suite, phase 1 (Vitest, shared formatters, CI)
+
+The server had a full Jest suite while the client had no automated checks at all beyond `vite build` inside the Docker build. That mattered because Dependabot now bumps react-router, three, i18next and the Vite plugin routinely, and the recent bumps could only be verified by clicking through the app. This is the first phase of a planned client test framework: infrastructure plus tests for pure logic that needs no DOM.
+
+Root `npm test` now runs the server Jest suite and then the client Vitest suite (`npm run test:server` and `npm run test:client` run them separately), so one command and one required CI check cover both. The CI `test` job gained a client install step (the client has its own lockfile) and npm caching keyed on both lockfiles. Vitest is the only new dependency, added to the client as a dev dependency; it reuses the client's Vite config, and the config pins the timezone to UTC so date assertions do not depend on the machine.
+
+The formatting helpers that were copy-pasted or trapped inside page files moved, with behavior unchanged, into `client/src/lib/format.js`: the clock and date formatters and material and duration formatters from Dashboard, the Jobs table formatters, the printer detail formatters, the Decommissioned timestamp, the Fleet time-remaining and ETA formatters, and the two estimate-input pre-fill formatters from Projects. `formatDuration` had existed three times with three different signatures, so the extracted versions have honest names (`formatDurationSecs`, `formatJobDuration`, `formatDurationMs`) and keep their original rounding and unit behavior. The placeholder for a missing value is written as an escape so the source has no literal em dash, and the rendered character is the same.
+
+Tests added: every formatter, with a stand-in `t()` that returns the translation key and values; a check that every static translation key used in `client/src` exists in `en.json`; structural checks on `en.json` (string values only, none empty, no em or en dashes, balanced Trans tags, both plural forms present); and a contract test that runs the text the estimate inputs are pre-filled with through the server's real `normalizePrintTime` and `normalizeMaterialGrams`, so the client and server formats cannot drift. To allow that, `server/routes/gcodes.js` now also exports those two existing functions (additive, no route behavior changed).
+
+Each test was checked to fail when it should: a source file using an unknown translation key, a comma-decimal change to the input formatter, a wrong ETA day threshold, and a planted en dash in `en.json` each turned the matching test red, and restoring the code turned them green again.
+
+Not in this phase: tests for pages, hooks or the WebGL G-code viewer (those are still browser-verified), the shared awaiting-sign-off predicate (including the known Fleet drift), and the parser extraction from the G-code worker. The dev image must be rebuilt after pulling this (`docker compose up -d --build -V print-farm-manager-dev`), or the container keeps the old `node_modules`.
+
+### Changes
+- `client/package.json`, `client/package-lock.json`: added `vitest` (dev), `test` and `test:watch` scripts.
+- `client/vitest.config.js` (new): merges `vite.config.js`, includes `tests/**/*.test.{js,jsx}`, `TZ=UTC`.
+- `client/src/lib/format.js` (new): extracted formatters.
+- `client/src/pages/{Dashboard,Jobs,PrinterDetail,Decommissioned,Fleet,Projects}.jsx`: local formatter definitions removed, imports from `../lib/format`, call sites renamed where the function was renamed.
+- `client/tests/{format,i18n-keys,en-json,input-format-contract}.test.js` (new).
+- `server/routes/gcodes.js`: exports `normalizePrintTime` and `normalizeMaterialGrams` for the contract test.
+- `package.json`: `test` runs both suites; added `test:server` and `test:client`.
+- `.github/workflows/docker-publish.yml`: client dependency install, npm cache for both lockfiles.
+- `docs/docker-publish.md`, `docs/web-app.md`, `CONTRIBUTING.md`, `README.md`, `CLAUDE.md`: test workflow, new `lib/` and `tests/` layout, new rules and named mistakes.
+
+Verified: root `npm test` (server and client suites) passes in the Docker dev container, `npm run build` succeeds, and the affected pages (Dashboard, Jobs, PrinterDetail, Projects estimate inputs) were loaded in a browser against the dev container with `DEMO_MODE=true` and showed the same values as before the change. Hardware validation is not applicable: client display logic only.
+
 ## 2026-09-19: docs index and CONTRIBUTING made fork-neutral, Settings About text credits the original creator
 
 Follow-up to the README and CLAUDE.md refresh. `docs/README.md` had fallen well behind the code: its project tree was missing everything added after the first phases (the Spoolman integration, filament and group routes, the G-code decoder and 3D viewer, i18n, backups, the test folder, `.github/`), and its index did not link CONTRIBUTING.md, ARCHITECTURE.md, or the Dependabot config. It now matches the current tree and states that post-Phase-6D work is tracked in this changelog rather than as numbered phases.

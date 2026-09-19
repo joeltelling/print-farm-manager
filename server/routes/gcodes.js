@@ -409,3 +409,10 @@ module.exports = (db, scheduler = null) => {
 
   return router;
 };
+
+// Exposed so the client test suite can check that the text pre-filled into the estimate
+// inputs (formatDurationForInput / formatMaterialForInput in client/src/lib/format.js)
+// round-trips through the same parsers the PUT route uses. See
+// client/tests/input-format-contract.test.js. No route behavior depends on these.
+module.exports.normalizePrintTime = normalizePrintTime;
+module.exports.normalizeMaterialGrams = normalizeMaterialGrams;
