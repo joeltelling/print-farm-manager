@@ -20,7 +20,7 @@ jest.mock('../notifications', () => ({ add: jest.fn() }));
 
 const JobScheduler = require('../scheduler');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 // A real gcode file on disk — required by the scheduler before it calls the driver
 let gcodeFilename;

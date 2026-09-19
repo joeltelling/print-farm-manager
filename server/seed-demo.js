@@ -28,8 +28,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const dataDir = path.join(__dirname, 'data');
-const gcodeDir = path.join(__dirname, 'gcode');
+const { dataDir, gcodeDir } = require('./paths');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(gcodeDir)) fs.mkdirSync(gcodeDir, { recursive: true });
 

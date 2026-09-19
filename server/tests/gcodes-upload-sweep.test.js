@@ -15,7 +15,7 @@ const path     = require('path');
 const fs       = require('fs');
 const os       = require('os');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 let db;
 const uploadedFiles = [];

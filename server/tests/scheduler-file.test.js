@@ -26,7 +26,7 @@ const notifications = require('../notifications');
 
 const JobScheduler = require('../scheduler');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 // Files created during tests — cleaned up after all tests complete
 const filesToClean = [];

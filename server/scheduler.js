@@ -6,7 +6,7 @@ const notifications = require('./notifications');
 const events = require('./events');
 const spoolman = require('./integrations/spoolman');
 
-const GCODE_DIR = path.join(__dirname, 'gcode');
+const GCODE_DIR = require('./paths').gcodeDir;
 
 // A job we just dispatched looks identical to a stale orphaned job: the job is
 // 'printing'/'uploading' but the printer's stored status is still its last polled

@@ -3,7 +3,7 @@ const path    = require('path');
 const fs      = require('fs');
 const router  = express.Router();
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 // scheduler is optional — only needed at runtime for sweepIdlePrinters when adding a part
 // reactivates a completed project. Tests pass null so there is no live scheduler dependency.

@@ -472,7 +472,7 @@ describe('_sweepInBatches: fill-to-target concurrency', () => {
 // the per-part ceiling still allows exactly 2 jobs total and holds nothing back
 // incorrectly for P4.
 describe('_sweepInBatches: ceiling interaction through the real wave loop', () => {
-  const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+  const GCODE_DIR = require('../paths').gcodeDir;
   const filesToClean = [];
 
   beforeAll(() => {

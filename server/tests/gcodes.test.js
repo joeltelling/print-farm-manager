@@ -7,7 +7,7 @@ const os      = require('os');
 const Database = require('better-sqlite3');
 let db;
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 beforeAll(() => {
   db = new Database(':memory:');

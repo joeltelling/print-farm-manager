@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-09-19: server tests no longer touch real data, and a server startup smoke test
+
+Two related gaps, one root cause. First, the server test suite was not isolated from real data: `server/events.js` opens the real database (`server/data/farm.db`) merely by being required, independent of the in-memory database each route test builds, so any test that triggered an event inserted it into whatever `farm.db` existed, using the test's printer ids. On a machine with real printers, `npm test` therefore attached fake events ("Job Failed", "decommission", "Material: (none) to PLA") to real printers with matching ids, and events are never deleted by design. The upload tests also left fixture files in the real `server/gcode` folder. It surfaced when a real printer's history in the dev environment contained "Job 2, part: Test Part" entries; measured on empty directories, one run of the suite created a real `farm.db` with 44 orphan events and left 6 files, and the accumulated dev volume held about 3,000 events for a single printer and 650 files for 11 G-code rows. Second, nothing tested `server/index.js` itself (startup, static files, the SPA fallback, the inline operator endpoints), because route tests mount routers on a throwaway app. The Express 5 review found a real behavior difference there by hand.
+
+`server/paths.js` now resolves the data directory, G-code directory and client build from `PFM_DATA_DIR`, `PFM_GCODE_DIR` and `PFM_CLIENT_DIST`, with defaults identical to the old hard-coded paths, so Docker volumes, PM2 and `update.bat` are unaffected. Every module that used those locations (`db.js`, `backup.js`, `scheduler.js`, `index.js`, the backup, projects, parts and gcodes routes, and `seed-demo.js`) goes through it. `jest.config.js` gives each test file a private scratch directory that is removed after the run, and `paths.js` throws under Jest if the real directories would be used, so a future leak fails loudly instead of silently. Twelve tests that spelled the real G-code folder themselves now use `paths.js`. Because the server can now be pointed anywhere, `server/tests/server-smoke.test.js` boots the real `index.js` as a child process on a temporary database and a stub client build, with `DEMO_MODE` so it never polls a printer, and makes real HTTP requests: a clean start, the SPA index and deep links, assets, unknown API routes staying 404, security headers, no-body requests answering 400 (the Express 5 difference, now covered through the real app), and creating a printer then bulk set-ready.
+
+Verified: after a full run of the server suite on empty directories, the data directory is empty and the G-code folder has 0 files (it previously held a `farm.db` with 44 events and 6 files). Against the real dev volume the event count (3003), printer, job and G-code row counts and the file count (652) were identical before and after a full run. Failure probes each turned the right tests red: removing the request-body middleware, writing the SPA catch-all as `'*'` (which crashes Express 5 at startup and is now caught in CI), removing static file serving, dropping the security headers, and making `paths.js` ignore the environment (the original leak).
+
+If a machine ever ran `npm test` against its live data, its printers' event history may contain test entries. They are recognizable by notes such as "Job 2, part: Test Part" or "Material: (none) to PLA" on printers that never had those jobs; nothing in this change deletes history.
+
+### Changes
+- `server/paths.js` (new): the three overridable locations, plus the Jest guard.
+- `server/db.js`, `backup.js`, `scheduler.js`, `index.js`, `seed-demo.js`, `routes/{backup,projects,parts,gcodes}.js`: use `paths.js` instead of hard-coded paths.
+- `jest.config.js` and `server/tests/setup/{global-setup,global-teardown,isolate-data}.js` (new): per-test-file scratch directories.
+- `server/tests/test-isolation.test.js` (new): the isolation guard, including that the defaults are unchanged outside Jest.
+- `server/tests/server-smoke.test.js` (new): the boot-the-real-server smoke test.
+- `server/tests/db-fresh-install.test.js`: copies `paths.js` too and points it at a fresh directory.
+- Eleven test files: `GCODE_DIR` from `paths.js`.
+- `docs/server.md`, `CLAUDE.md`, `CONTRIBUTING.md`: configuration table, tests section, new rules and named mistakes.
+
+Full suite passes in the Docker dev container. Hardware validation is not applicable: test infrastructure and path configuration only.
+
 ## 2026-09-19: qs 6.15.3 to 6.16.0 (two open Dependabot security alerts)
 
 Dependabot had two open medium alerts on `qs`, both fixed in 6.16.0: an array-limit bypass via bracket-key comma parsing, and a denial of service through an attacker-controlled `isBuffer`. `qs` is not a direct dependency: it comes in through `body-parser` and `express` (and `superagent`, used only by the test suite), and every one of their ranges already allowed 6.16.0, so this is a lockfile-only update with no `package.json` change and one `qs` version left in the tree.

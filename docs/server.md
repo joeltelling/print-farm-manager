@@ -10,6 +10,7 @@
 |---|---|
 | `server/index.js` | App setup, route mounting, server start, poller + scheduler init |
 | `server/default-request-body.js` | Tiny middleware mounted right after `express.json()` that makes `req.body` an object when a request has no JSON body, so route handlers that destructure it still answer their documented 400 instead of throwing (Express 5 leaves `req.body` undefined; Express 4 left `{}`). Tested in `server/tests/default-request-body.test.js` |
+| `server/paths.js` | Resolves the data, G-code, backup and client build locations from `PFM_DATA_DIR`, `PFM_GCODE_DIR` and `PFM_CLIENT_DIST` (defaults unchanged). Every module that touches those locations goes through it. Under Jest it refuses the real directories, so a test can never write to an operator's live data |
 | `server/security-headers.js` | Helmet/CSP + `Permissions-Policy` setup, as an `(app) => void` factory so it can be mounted on a bare `express()` app in tests without booting the whole server |
 | `server/db.js` | SQLite connection, schema creation, directory setup |
 | `server/poller.js` | Printer status polling loop |
@@ -17,8 +18,8 @@
 | `server/notifications.js` | In-memory alert store for recoverable server errors |
 | `server/gcode-decode.js` | Normalizes `.bgcode`/`.3mf` to plain-text G-code, extracts bgcode metadata blocks, and parses slicer filament-usage stats (used by `GET /api/gcodes/:id/preview`) |
 | `server/routes/` | One file per resource (printers, projects, parts, gcodes, jobs, backup) |
-| `server/data/farm.db` | SQLite database file (auto-created, gitignored) |
-| `server/gcode/` | G-code file storage directory (auto-created, gitignored) |
+| `server/data/farm.db` | SQLite database file (auto-created, gitignored; default location, see `PFM_DATA_DIR`) |
+| `server/gcode/` | G-code file storage directory (auto-created, gitignored; default location, see `PFM_GCODE_DIR`) |
 
 ## Startup Sequence
 
@@ -33,9 +34,20 @@
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3000` | Express listening port — override with `process.env.PORT` |
+| `PORT` | `3000` | Express listening port |
+| `DEMO_MODE` | unset | `true` skips real printer polling (use with `server/seed-demo.js`, or any time you do not want the server to contact printers) |
+| `PFM_DATA_DIR` | `server/data` | Where the database (`farm.db`), the hourly backups and restore uploads live |
+| `PFM_GCODE_DIR` | `server/gcode` | Where uploaded G-code and 3mf files are stored |
+| `PFM_CLIENT_DIST` | `client/dist` | The built React client the server serves |
+| `DEBUG_BAMBU`, `DEBUG_ELEGOO` | unset | Verbose driver logging |
 
-No `.env` file is required. The only runtime configuration is `PORT`.
+No `.env` file is required. The defaults are the paths the server has always used, so Docker volumes (`/app/server/data`, `/app/server/gcode`), PM2 and `update.bat` are unaffected. The three `PFM_*` variables are resolved once in `server/paths.js`; set them to keep your data somewhere else, or (as the test suite does) to point a server at a scratch directory.
+
+## Tests
+
+`npm run test:server` runs Jest with `jest.config.js`, which gives every test file a private scratch data and G-code directory (created under the OS temp folder and removed at the end). This matters because some modules open the real database or write to the real upload folder merely by being required (`server/events.js` is one), so without it `npm test` on a machine with real printers would attach fake events to them. `server/tests/test-isolation.test.js` guards this, and `server/paths.js` throws if a test would use the real directories.
+
+`server/tests/server-smoke.test.js` starts the real `server/index.js` as a child process on a temporary database and a stub client build, then makes real HTTP requests: startup, the static and SPA-fallback handling, security headers, no-body requests answering 400, and the inline operator endpoints. Route tests mount each router on a throwaway app, so this is the only test that exercises `index.js` itself, which is what makes an Express or Node upgrade safe to check in CI.
 
 ## Route Mounting
 

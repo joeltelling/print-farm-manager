@@ -4,12 +4,12 @@ const path    = require('path');
 const fs      = require('fs');
 
 const router   = express.Router();
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const { gcodeDir: GCODE_DIR, dataDir: DATA_DIR } = require('../paths');
 
 // Multer for restore uploads — write to data/ dir, clean up after processing
 const restoreUpload = multer({
   storage: multer.diskStorage({
-    destination: path.join(__dirname, '..', 'data'),
+    destination: DATA_DIR,
     filename: (_req, _file, cb) => cb(null, `restore-upload-${Date.now()}.json`),
   }),
   limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB

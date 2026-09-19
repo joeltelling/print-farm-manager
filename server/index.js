@@ -74,7 +74,7 @@ app.delete('/api/notifications/:id', (req, res) => {
 });
 
 // Serve built React client (production mode)
-const clientDist = path.join(__dirname, '../client/dist');
+const { clientDist } = require('./paths');
 if (!fs.existsSync(path.join(clientDist, 'index.html'))) {
   console.error('');
   console.error('  ERROR: client/dist/index.html not found.');

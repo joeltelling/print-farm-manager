@@ -29,7 +29,7 @@ Run the test suite before opening a PR. All tests must pass:
 npm test
 ```
 
-`npm test` runs the server suite (Jest, `server/tests/`) and then the client suite (Vitest, `client/tests/`). Run either alone with `npm run test:server` or `npm run test:client`, and `npm run test:watch --prefix client` re-runs the client tests as you edit.
+`npm test` runs the server suite (Jest, `server/tests/`) and then the client suite (Vitest, `client/tests/`). The server suite gives every test file a private scratch data and G-code directory, so it never touches your real database or uploads and is safe to run on a machine that has real printers. New server code that needs those locations must use `server/paths.js` rather than spelling `server/data` or `server/gcode`. One test (`server/tests/server-smoke.test.js`) boots the real server on a temporary database and makes real HTTP requests, so start-up, static files and the operator endpoints are covered too. Run either alone with `npm run test:server` or `npm run test:client`, and `npm run test:watch --prefix client` re-runs the client tests as you edit.
 
 Using Docker instead? `docker compose run --rm print-farm-manager-dev npm test` (or `docker compose exec print-farm-manager-dev npm test` if the dev container is already running).
 

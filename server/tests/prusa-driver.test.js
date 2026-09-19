@@ -8,7 +8,7 @@ const path = require('path');
 const fs   = require('fs');
 const prusa = require('../drivers/prusa');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 const fakePrinter = { id: 1, name: 'MK4S_01', ip: '192.168.1.100', api_key: 'testkey', model: 'mk4s', type: 'prusa' };
 

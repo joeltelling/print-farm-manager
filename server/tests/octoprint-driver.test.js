@@ -8,7 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const octoprint = require('../drivers/octoprint');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 const fakePrinter = { id: 1, name: 'OctoPi_01', ip: '192.168.1.240:5000', model: 'mk3s', type: 'octoprint', api_key: 'test-key' };
 

@@ -5,7 +5,7 @@ const fs = require('fs');
 const { decodeBgcode, decode3mf, extractBgcodeMetadataText, GcodeDecodeError, parseFilamentUsage, parsePrintTime } = require('../gcode-decode');
 const router = express.Router();
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 const storage = multer.diskStorage({
   destination: GCODE_DIR,

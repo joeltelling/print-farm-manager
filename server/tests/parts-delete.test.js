@@ -4,7 +4,7 @@ const Database = require('better-sqlite3');
 const path     = require('path');
 const fs       = require('fs');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 // ── Single DB + app for the whole suite; data is reset between tests ──────────
 

@@ -8,7 +8,7 @@ const path   = require('path');
 const fs     = require('fs');
 const klipper = require('../drivers/klipper');
 
-const GCODE_DIR = path.join(__dirname, '..', 'gcode');
+const GCODE_DIR = require('../paths').gcodeDir;
 
 const fakePrinter = { id: 1, name: 'Voron_01', ip: '192.168.1.250', model: 'voron-24', type: 'klipper' };
 

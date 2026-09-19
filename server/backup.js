@@ -5,7 +5,7 @@
 const path = require('path');
 const fs   = require('fs');
 
-const BACKUP_DIR  = path.join(__dirname, 'data', 'backups');
+const BACKUP_DIR  = require('./paths').backupDir;
 const KEEP_COUNT  = 24;           // 24 hourly snapshots = 1 day of point-in-time recovery
 const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
