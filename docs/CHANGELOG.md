@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-09-21: filament colors can apply to more than one type
+
+Requested to stop re-entering "Black" once per material. Colors were previously scoped one-to-one with a type (`filament_colors.type_id NOT NULL`, `UNIQUE(type_id, name)`); a color is now its own entity, linked to one or more types through a new `filament_color_types` join table, editable at any time from the Settings admin table (click a color's type list to check/uncheck, Save) rather than only settable once at creation.
+
+`GET /api/filaments/colors`, the endpoint every material/color picker in the client already calls, keeps returning the exact same flattened one-row-per-(color, type) shape it always has, backed now by a join instead of a direct column, so every existing picker (Settings add-printer form, Printers bulk edit, PrinterDetail edit form, Projects G-code upload/edit) needed zero changes. Only the Settings admin management table, which now needs to show and edit a color's full type list at once, uses a new `GET /api/filaments/colors/grouped` endpoint.
+
+Existing installs migrate automatically on first start: colors sharing the same name collapse into one row (the first non-null `hex_color` found wins), and every old `(color, type)` pair becomes a `filament_color_types` row, so nothing already entered is lost, only de-duplicated by name. A pre-existing migration ("add `type_id` to `filament_colors` if missing") had to be guarded against re-firing after this one runs: both migrations key off "is `type_id` present", and removing that column again to reach the new shape would have made the old migration wrongly think every install predates `type_id` and wipe all colors on every subsequent server restart. The guard checks for `filament_color_types` existing instead.
+
+A related bug surfaced while writing the regression test for an older-backup-format restore: the delete order for `filament_colors`/`filament_types` during restore was gated only on whether *that specific table's* key was present in the backup, not on whether a table it foreign-keys against was also being deleted, so restoring a backup with colors/types but no `filament_color_types` key threw a foreign key violation instead of a clean restore. Fixed before it shipped.
+
+Not yet used against a live install with a large pre-existing color library. `npm run build` for the client was run and succeeds. New/updated filament route and backup-restore test coverage could not run in this environment (no native toolchain here to compile `better-sqlite3` for Node 22, the same pre-existing limitation as earlier entries) but follows this repo's standard patterns.
+
+### Changes
+- `server/db.js`: `filament_colors` rebuilt without `type_id` (`UNIQUE(name)` instead of `UNIQUE(type_id, name)`); new `filament_color_types` join table; two-step migration (add `type_id` for genuinely ancient installs, then remove it again into the join-table shape) with a guard preventing the older migration from refiring.
+- `server/routes/filaments.js`: `GET /colors` unchanged in shape; new `GET /colors/grouped`; `POST /colors` and the new `PUT /colors/:id` accept `type_ids` (an array, at least one required); `DELETE /types/:id`'s block-if-in-use check now queries `filament_color_types` instead of a column that no longer exists.
+- `server/routes/backup.js`: exports/restores `filament_color_types`; fixed the delete-ordering bug described above.
+- `client/src/pages/Settings.jsx`: Filament Colors admin table now shows and inline-edits each color's type list; the add-color form takes a checkbox list of types instead of a single required dropdown.
+- `server/tests/backup-restore.test.js`: schema, seed data (one color linked to two types), and the config-tables describe block rewritten for the new shape; new test for the delete-ordering bug.
+- `docs/filaments.md`: rewritten for the new schema, endpoints, and Settings UI, also corrected a few UI/behavior claims that had already drifted from the code before this change.
+
+---
+
 ## 2026-09-21: printer host field accepts a hostname, not just an IP
 
 Requested for a farm using DNS names for its printers instead of static IPs. Audited every driver (`server/drivers/*.js`), the printers route, and both Add Printer / Edit Details forms: nothing anywhere validates, parses, or splits `printers.ip` as an IPv4 literal, it is treated as an opaque string interpolated straight into a URL, MQTT broker address, or FTPS host in every code path. A hostname already worked with zero code changes; this change is documentation and labels only, making that fact discoverable instead of operators reasonably assuming "IP Address" means only an IP.

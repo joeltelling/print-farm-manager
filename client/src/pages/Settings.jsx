@@ -55,12 +55,14 @@ export default function Settings() {
   // Printer models — fetched from DB, used throughout this page
   const [allModels, setAllModels] = useState([]);
   const [filamentTypes, setFilamentTypes] = useState([]);   // [{id, name}]
-  const [filamentColors, setFilamentColors] = useState([]); // [{id, name, hex_color}]
+  const [filamentColors, setFilamentColors] = useState([]); // [{id, name, hex_color, type_id, type_name}], one row per (color, type)
+  const [groupedColors, setGroupedColors] = useState([]);   // [{id, name, hex_color, types: [{id, name}]}], Filament Library admin table only
   const [allGroups, setAllGroups] = useState([]);           // [{name, created_at}]
   const fetchModels = useCallback(() => {
     fetch('/api/models').then(r => r.json()).then(setAllModels).catch(() => {});
     fetch('/api/filaments/types').then(r => r.json()).then(setFilamentTypes).catch(() => {});
     fetch('/api/filaments/colors').then(r => r.json()).then(setFilamentColors).catch(() => {});
+    fetch('/api/filaments/colors/grouped').then(r => r.json()).then(setGroupedColors).catch(() => {});
     fetch('/api/groups').then(r => r.json()).then(setAllGroups).catch(() => {});
   }, []);
   useEffect(() => { fetchModels(); }, [fetchModels]);
@@ -102,9 +104,20 @@ export default function Settings() {
     }
   }
 
-  const [colorForm, setColorForm] = useState({ type_id: '', name: '', hex_color: '' });
+  const [colorForm, setColorForm] = useState({ type_ids: [], name: '', hex_color: '' });
   const [colorFormError, setColorFormError] = useState(null);
   const [colorDeleteError, setColorDeleteError] = useState({});
+  const [editingColorTypes, setEditingColorTypes] = useState(null); // color id currently being edited, or null
+  const [editTypeIds, setEditTypeIds] = useState([]);
+  const [editTypesError, setEditTypesError] = useState(null);
+  const [savingColorTypes, setSavingColorTypes] = useState(false);
+
+  function toggleFormTypeId(id) {
+    setColorForm(p => ({
+      ...p,
+      type_ids: p.type_ids.includes(id) ? p.type_ids.filter(t => t !== id) : [...p.type_ids, id],
+    }));
+  }
 
   async function handleAddColor(e) {
     e.preventDefault();
@@ -114,14 +127,14 @@ export default function Settings() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type_id: parseInt(colorForm.type_id, 10),
+          type_ids: colorForm.type_ids,
           name: colorForm.name,
           hex_color: colorForm.hex_color || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add color');
-      setColorForm({ type_id: '', name: '', hex_color: '' });
+      setColorForm({ type_ids: [], name: '', hex_color: '' });
       fetchModels();
       showToast('Filament color added');
     } catch (err) {
@@ -139,6 +152,37 @@ export default function Settings() {
       showToast(`"${name}" removed`);
     } catch (err) {
       setColorDeleteError(prev => ({ ...prev, [id]: err.message }));
+    }
+  }
+
+  function startEditColorTypes(color) {
+    setEditingColorTypes(color.id);
+    setEditTypeIds(color.types.map(t => t.id));
+    setEditTypesError(null);
+  }
+
+  function toggleEditTypeId(id) {
+    setEditTypeIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+  }
+
+  async function saveColorTypes(colorId) {
+    setSavingColorTypes(true);
+    setEditTypesError(null);
+    try {
+      const res = await fetch(`/api/filaments/colors/${colorId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type_ids: editTypeIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      setEditingColorTypes(null);
+      fetchModels();
+      showToast('Types updated');
+    } catch (err) {
+      setEditTypesError(err.message);
+    } finally {
+      setSavingColorTypes(false);
     }
   }
 
@@ -718,22 +762,23 @@ export default function Settings() {
         </form>
         {typeFormError && <div style={{ marginTop: -16, marginBottom: 16, color: '#fca5a5', fontSize: 13 }}>{typeFormError}</div>}
 
-        {/* Filament Colors */}
+        {/* Filament Colors: one entry per color, applying to one or more types. Fixes
+            having to re-enter e.g. "Black" once per material: pick every type it applies
+            to when creating it, or click Edit later to add/remove types. */}
         <h3 style={{ fontSize: 14, fontWeight: 600, color: '#94a3b8', marginBottom: 10 }}>Colors</h3>
-        {filamentColors.length > 0 && (
+        {groupedColors.length > 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
             <thead>
               <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #334155' }}>
-                <th style={{ padding: '4px 8px' }}>Type</th>
                 <th style={{ padding: '4px 8px' }}>Color</th>
                 <th style={{ padding: '4px 8px' }}>Name</th>
+                <th style={{ padding: '4px 8px' }}>Types</th>
                 <th style={{ padding: '4px 8px' }}></th>
               </tr>
             </thead>
             <tbody>
-              {filamentColors.map(c => (
+              {groupedColors.map(c => (
                 <tr key={c.id} style={{ borderBottom: '1px solid #1a2030' }}>
-                  <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 12 }}>{c.type_name}</td>
                   <td style={{ padding: '6px 8px' }}>
                     <span style={{
                       display: 'inline-block', width: 16, height: 16, borderRadius: '50%',
@@ -746,7 +791,50 @@ export default function Settings() {
                     {c.name}
                     {c.hex_color && <span style={{ color: '#475569', fontSize: 11, marginLeft: 8, fontFamily: 'monospace' }}>{c.hex_color}</span>}
                   </td>
-                  <td style={{ padding: '6px 8px' }}>
+                  <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 12, maxWidth: 260 }}>
+                    {editingColorTypes === c.id ? (
+                      <div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', marginBottom: 6 }}>
+                          {filamentTypes.map(t => (
+                            <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#cbd5e1', cursor: 'pointer' }}>
+                              <input
+                                type="checkbox"
+                                checked={editTypeIds.includes(t.id)}
+                                onChange={() => toggleEditTypeId(t.id)}
+                                disabled={savingColorTypes}
+                                style={{ accentColor: '#3b82f6' }}
+                              />
+                              {t.name}
+                            </label>
+                          ))}
+                        </div>
+                        {editTypesError && <div style={{ color: '#fca5a5', fontSize: 11, marginBottom: 6 }}>{editTypesError}</div>}
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => saveColorTypes(c.id)}
+                            disabled={savingColorTypes || editTypeIds.length === 0}
+                            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, padding: '2px 8px', cursor: savingColorTypes ? 'not-allowed' : 'pointer' }}
+                          >
+                            {savingColorTypes ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingColorTypes(null)}
+                            disabled={savingColorTypes}
+                            style={{ background: 'none', border: '1px solid #334155', color: '#94a3b8', borderRadius: 4, fontSize: 11, padding: '2px 8px', cursor: 'pointer' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <span onClick={() => startEditColorTypes(c)} style={{ cursor: 'pointer' }} title="Click to edit">
+                        {c.types.map(t => t.name).join(', ') || '(no types, click to add)'}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '6px 8px', verticalAlign: 'top' }}>
                     <button
                       onClick={() => handleDeleteColor(c.id, c.name)}
                       style={{ background: 'none', border: '1px solid #7f1d1d', borderRadius: 4, color: '#f87171', fontSize: 12, padding: '2px 8px', cursor: 'pointer' }}
@@ -762,56 +850,69 @@ export default function Settings() {
             </tbody>
           </table>
         )}
-        {filamentColors.length === 0 && (
+        {groupedColors.length === 0 && (
           <p style={{ color: '#475569', fontSize: 13, marginBottom: 12 }}>No colors yet. Add your first below.</p>
         )}
-        <form onSubmit={handleAddColor} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, alignItems: 'flex-end' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Type *</label>
-            <select
-              value={colorForm.type_id}
-              onChange={e => setColorForm(p => ({ ...p, type_id: e.target.value }))}
-              required
-              style={inputStyle}
-            >
-              <option value="">Select type…</option>
-              {filamentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Color name *</label>
-            <input
-              value={colorForm.name}
-              onChange={e => setColorForm(p => ({ ...p, name: e.target.value }))}
-              required
-              placeholder="e.g. Black, Galaxy Red"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Hex (optional)</label>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <form onSubmit={handleAddColor} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'flex-end' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Color name *</label>
               <input
-                type="color"
-                value={colorForm.hex_color || '#000000'}
-                onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
-                style={{ width: 36, height: 34, padding: 2, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer' }}
-                title="Pick a color"
-              />
-              <input
-                value={colorForm.hex_color}
-                onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
-                placeholder="#rrggbb"
-                style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }}
+                value={colorForm.name}
+                onChange={e => setColorForm(p => ({ ...p, name: e.target.value }))}
+                required
+                placeholder="e.g. Black, Galaxy Red"
+                style={inputStyle}
               />
             </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Hex (optional)</label>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="color"
+                  value={colorForm.hex_color || '#000000'}
+                  onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
+                  style={{ width: 36, height: 34, padding: 2, background: '#0f172a', border: '1px solid #334155', borderRadius: 4, cursor: 'pointer' }}
+                  title="Pick a color"
+                />
+                <input
+                  value={colorForm.hex_color}
+                  onChange={e => setColorForm(p => ({ ...p, hex_color: e.target.value }))}
+                  placeholder="#rrggbb"
+                  style={{ ...inputStyle, width: 90, fontFamily: 'monospace' }}
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={colorForm.type_ids.length === 0}
+              style={{
+                background: colorForm.type_ids.length === 0 ? '#1e2433' : '#2563eb',
+                color: colorForm.type_ids.length === 0 ? '#475569' : '#fff',
+                border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600,
+                cursor: colorForm.type_ids.length === 0 ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end',
+              }}
+            >
+              Add Color
+            </button>
           </div>
-          <button
-            type="submit"
-            style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}
-          >
-            Add Color
-          </button>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>Applies to * (pick one or more)</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+              {filamentTypes.map(t => (
+                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#cbd5e1', fontSize: 13, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={colorForm.type_ids.includes(t.id)}
+                    onChange={() => toggleFormTypeId(t.id)}
+                    style={{ accentColor: '#3b82f6' }}
+                  />
+                  {t.name}
+                </label>
+              ))}
+              {filamentTypes.length === 0 && <span style={{ color: '#475569', fontSize: 12 }}>Add a type above first.</span>}
+            </div>
+          </div>
         </form>
         {colorFormError && <div style={{ marginTop: 8, color: '#fca5a5', fontSize: 13 }}>{colorFormError}</div>}
       </section>

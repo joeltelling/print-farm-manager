@@ -125,10 +125,13 @@ beforeEach(() => {
     );
     CREATE TABLE filament_colors (
       id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      name      TEXT NOT NULL UNIQUE,
+      hex_color TEXT
+    );
+    CREATE TABLE filament_color_types (
+      color_id  INTEGER NOT NULL REFERENCES filament_colors(id),
       type_id   INTEGER NOT NULL REFERENCES filament_types(id),
-      name      TEXT NOT NULL,
-      hex_color TEXT,
-      UNIQUE(type_id, name)
+      PRIMARY KEY (color_id, type_id)
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
@@ -163,14 +166,18 @@ beforeEach(() => {
        2, 45.5, '["Bambu Farm"]', 'PETG', 'Red')
   `).run(now);
 
-  // Two types/colors (not one) so a restore that gets the filament_colors -> filament_types
-  // FK order wrong, or maps a color to the wrong type, doesn't slip through by coincidence.
+  // Two types, two colors, and "Galaxy Black" linked to BOTH types (not just one) so a
+  // restore that gets the filament_color_types FK order wrong, or drops one of a color's
+  // multiple type links, doesn't slip through by coincidence.
   db.prepare(`INSERT INTO printer_models (model_id, label, connector) VALUES ('x1c', 'Bambu X1 Carbon', 'bambu')`).run();
   db.prepare(`INSERT INTO printer_groups (name, created_at) VALUES ('Bambu Farm', ?)`).run(now);
   db.prepare(`INSERT INTO filament_types (name) VALUES ('PLA')`).run();
   db.prepare(`INSERT INTO filament_types (name) VALUES ('PETG')`).run();
-  db.prepare(`INSERT INTO filament_colors (type_id, name, hex_color) VALUES (1, 'Galaxy Black', '#1a1a1a')`).run();
-  db.prepare(`INSERT INTO filament_colors (type_id, name, hex_color) VALUES (2, 'Signal Red', '#cc0000')`).run();
+  db.prepare(`INSERT INTO filament_colors (name, hex_color) VALUES ('Galaxy Black', '#1a1a1a')`).run();
+  db.prepare(`INSERT INTO filament_colors (name, hex_color) VALUES ('Signal Red', '#cc0000')`).run();
+  db.prepare(`INSERT INTO filament_color_types (color_id, type_id) VALUES (1, 1)`).run(); // Galaxy Black -> PLA
+  db.prepare(`INSERT INTO filament_color_types (color_id, type_id) VALUES (1, 2)`).run(); // Galaxy Black -> PETG
+  db.prepare(`INSERT INTO filament_color_types (color_id, type_id) VALUES (2, 2)`).run(); // Signal Red -> PETG
   db.prepare(`INSERT INTO settings (key, value) VALUES ('farm_name', 'Test Farm')`).run();
   db.prepare(`INSERT INTO settings (key, value) VALUES ('dispatch_batch_size', '5')`).run();
 
@@ -316,11 +323,13 @@ describe('Backup export/restore — column round-trip regression', () => {
 // Reported (PR review, third round): the regression suite covered migrated columns on
 // printers/projects/parts/gcodes, the missing NOT NULL DEFAULT case, and gcode_files
 // validation, but never seeded or asserted printer_models/filament_types/filament_colors/
-// settings — the four tables this PR originally added to backup/restore — leaving both the
-// round trip (including the filament_colors -> filament_types FK order) and the
-// older-backup compatibility guard (missing keys must leave existing config alone) untested.
+// settings, the four tables this PR originally added to backup/restore, leaving both the
+// round trip and the older-backup compatibility guard (missing keys must leave existing
+// config alone) untested. filament_color_types (a color linked to more than one type) was
+// added later and folded into this same describe block rather than a new one, since it is
+// exactly the kind of relationship this block exists to stress-test.
 describe('Backup export/restore: config tables (printer models, printer groups, filament library, settings)', () => {
-  test('export includes printer_models, printer_groups, filament_types, filament_colors, and settings', async () => {
+  test('export includes printer_models, printer_groups, filament_types, filament_colors, filament_color_types, and settings', async () => {
     const res = await request(app).get('/api/backup');
     expect(res.status).toBe(200);
 
@@ -339,6 +348,14 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
         expect.objectContaining({ name: 'Signal Red', hex_color: '#cc0000' }),
       ])
     );
+    // Galaxy Black (color_id 1) is linked to both types; Signal Red (color_id 2) only to PETG.
+    expect(res.body.filament_color_types).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ color_id: 1, type_id: 1 }),
+        expect.objectContaining({ color_id: 1, type_id: 2 }),
+        expect.objectContaining({ color_id: 2, type_id: 2 }),
+      ])
+    );
     expect(res.body.settings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ key: 'farm_name', value: 'Test Farm' }),
@@ -347,22 +364,21 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
     );
   });
 
-  test('restore round-trips printer models, filament library (preserving type/color FK relationships), and settings', async () => {
+  test('restore round-trips printer models and the filament library, preserving a color linked to multiple types', async () => {
     const exportRes = await request(app).get('/api/backup');
     expect(exportRes.status).toBe(200);
     const backupFile = writeTempBackupFile(exportRes.body);
 
     try {
       // Mutate (don't delete) the existing rows so a no-op restore can't slip through, while
-      // *leaving the filament_colors -> filament_types FK relationship intact* going into
-      // restore. Deleting them here first would make restore's own internal
-      // DELETE FROM filament_colors / DELETE FROM filament_types run against already-empty
-      // tables, which would silently pass even if that delete order were reversed — the
-      // exact bug this test needs to catch only shows up when restore has to clear real,
-      // still-linked rows: deleting filament_types first while filament_colors still
-      // references them (or inserting filament_colors before their filament_types row
-      // exists) raises a foreign key constraint violation and the request would 500 instead
-      // of 200 below.
+      // *leaving the filament_colors/filament_types/filament_color_types FK relationships
+      // intact* going into restore. Deleting them here first would make restore's own
+      // internal DELETE FROM filament_color_types / filament_colors / filament_types run
+      // against already-empty tables, which would silently pass even if that delete order
+      // were reversed: the exact bug this test needs to catch only shows up when restore
+      // has to clear real, still-linked rows: deleting filament_types or filament_colors
+      // first while filament_color_types still references them raises a foreign key
+      // constraint violation and the request would 500 instead of 200 below.
       db.prepare("UPDATE filament_colors SET hex_color = '#000000'").run();
       db.prepare("UPDATE filament_types SET name = name || '-wiped'").run(); // keeps UNIQUE(name) satisfied
       db.prepare("UPDATE printer_models SET label = 'Wiped'").run();
@@ -376,6 +392,7 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
       expect(restoreRes.body.printer_groups).toBe(1);
       expect(restoreRes.body.filament_types).toBe(2);
       expect(restoreRes.body.filament_colors).toBe(2);
+      expect(restoreRes.body.filament_color_types).toBe(3);
 
       const model = db.prepare('SELECT * FROM printer_models WHERE model_id = ?').get('x1c');
       expect(model).toMatchObject({ label: 'Bambu X1 Carbon', connector: 'bambu' });
@@ -383,22 +400,26 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
       const group = db.prepare('SELECT * FROM printer_groups WHERE name = ?').get('Bambu Farm');
       expect(group.created_at).not.toBe(0);
 
-      // Confirm each restored color's type_id resolves to the *correct* filament_types row
-      // by name, not just to some row that happens to satisfy the FK.
-      const black = db.prepare(`
-        SELECT ft.name AS type_name, fc.hex_color FROM filament_colors fc
-        JOIN filament_types ft ON ft.id = fc.type_id
-        WHERE fc.name = 'Galaxy Black'
-      `).get();
-      expect(black.type_name).toBe('PLA');
+      // Confirm the restored Galaxy Black resolves to *both* of its original types by
+      // name, not just to some row count that happens to satisfy the FK.
+      const blackTypes = db.prepare(`
+        SELECT ft.name FROM filament_colors fc
+        JOIN filament_color_types fct ON fct.color_id = fc.id
+        JOIN filament_types ft ON ft.id = fct.type_id
+        WHERE fc.name = 'Galaxy Black' ORDER BY ft.name
+      `).all().map(r => r.name);
+      expect(blackTypes).toEqual(['PETG', 'PLA']);
+      const black = db.prepare("SELECT hex_color FROM filament_colors WHERE name = 'Galaxy Black'").get();
       expect(black.hex_color).toBe('#1a1a1a');
 
-      const red = db.prepare(`
-        SELECT ft.name AS type_name, fc.hex_color FROM filament_colors fc
-        JOIN filament_types ft ON ft.id = fc.type_id
-        WHERE fc.name = 'Signal Red'
-      `).get();
-      expect(red.type_name).toBe('PETG');
+      const redTypes = db.prepare(`
+        SELECT ft.name FROM filament_colors fc
+        JOIN filament_color_types fct ON fct.color_id = fc.id
+        JOIN filament_types ft ON ft.id = fct.type_id
+        WHERE fc.name = 'Signal Red' ORDER BY ft.name
+      `).all().map(r => r.name);
+      expect(redTypes).toEqual(['PETG']);
+      const red = db.prepare("SELECT hex_color FROM filament_colors WHERE name = 'Signal Red'").get();
       expect(red.hex_color).toBe('#cc0000');
 
       const farmName = db.prepare("SELECT value FROM settings WHERE key = 'farm_name'").get();
@@ -417,6 +438,7 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
     delete backup.printer_groups;
     delete backup.filament_types;
     delete backup.filament_colors;
+    delete backup.filament_color_types;
     delete backup.settings;
     const backupFile = writeTempBackupFile(backup);
 
@@ -437,8 +459,41 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
       const colors = db.prepare('SELECT name FROM filament_colors ORDER BY name').all().map(c => c.name);
       expect(colors).toEqual(['Galaxy Black', 'Signal Red']);
 
+      const linkCount = db.prepare('SELECT COUNT(*) AS count FROM filament_color_types').get().count;
+      expect(linkCount).toBe(3);
+
       const farmName = db.prepare("SELECT value FROM settings WHERE key = 'farm_name'").get();
       expect(farmName.value).toBe('Test Farm');
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('restoring a backup with colors/types but no filament_color_types key clears the links without a foreign key error', async () => {
+    // A backup missing only filament_color_types (predating that table, while still
+    // having filament_colors/filament_types) is the exact case that broke the delete
+    // ordering during development: filament_colors/filament_types are restored (deleted
+    // and reinserted), which requires clearing filament_color_types first regardless of
+    // whether *this* backup has anything to put back afterward, or the DELETE FROM
+    // filament_colors/filament_types below fails on a still-referenced child row.
+    const exportRes = await request(app).get('/api/backup');
+    const backup = exportRes.body;
+    delete backup.filament_color_types;
+    const backupFile = writeTempBackupFile(backup);
+
+    try {
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.ok).toBe(true);
+
+      // Colors and types themselves are still restored correctly...
+      const colors = db.prepare('SELECT name FROM filament_colors ORDER BY name').all().map(c => c.name);
+      expect(colors).toEqual(['Galaxy Black', 'Signal Red']);
+
+      // ...but there is no data to restore their links from, so the junction table is
+      // empty rather than silently keeping stale rows or throwing.
+      const linkCount = db.prepare('SELECT COUNT(*) AS count FROM filament_color_types').get().count;
+      expect(linkCount).toBe(0);
     } finally {
       fs.unlinkSync(backupFile);
     }

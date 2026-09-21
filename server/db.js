@@ -217,17 +217,34 @@ try {
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS filament_colors (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    type_id   INTEGER NOT NULL REFERENCES filament_types(id),
-    name      TEXT NOT NULL,
-    hex_color TEXT,
-    UNIQUE(type_id, name)
+    name      TEXT NOT NULL UNIQUE,
+    hex_color TEXT
   )`);
 } catch (_) {}
 
-// Add type_id to filament_colors if missing (existing installs that predate this column)
+// A color can apply to more than one filament type (one "Black" instead of a
+// separate "Black" row per material), the many-to-many link lives here instead
+// of on filament_colors itself.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS filament_color_types (
+    color_id  INTEGER NOT NULL REFERENCES filament_colors(id),
+    type_id   INTEGER NOT NULL REFERENCES filament_types(id),
+    PRIMARY KEY (color_id, type_id)
+  )`);
+} catch (_) {}
+
+// Add type_id to filament_colors if missing (existing installs that predate this column).
+// Guarded on filament_color_types NOT existing: once the migration below removes type_id
+// again (colors decoupled from a single type), this same "type_id is missing" condition
+// becomes permanently true, and without this guard this block would refire on every
+// server start and wipe every color, forever. filament_color_types existing is the
+// signal that this install has already moved past needing type_id at all.
 try {
   const hasTypeId = db.prepare("PRAGMA table_info(filament_colors)").all().some(c => c.name === 'type_id');
-  if (!hasTypeId) {
+  const hasColorTypesTable = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'filament_color_types'"
+  ).get();
+  if (!hasTypeId && !hasColorTypesTable) {
     db.exec(`
       PRAGMA foreign_keys = OFF;
       CREATE TABLE filament_colors_new (
@@ -242,6 +259,34 @@ try {
       PRAGMA foreign_keys = ON;
     `);
     console.log('[db] Migrated filament_colors — added type_id (existing colors cleared)');
+  }
+} catch (_) {}
+
+// Decouple filament_colors from a single type now that filament_color_types exists:
+// colors sharing the same name collapse into one row (first non-null hex_color found
+// wins), and every (old color, its type) pair becomes a junction row, so nothing an
+// operator already entered is lost, only de-duplicated by name.
+try {
+  const hasTypeId = db.prepare("PRAGMA table_info(filament_colors)").all().some(c => c.name === 'type_id');
+  if (hasTypeId) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      CREATE TABLE filament_colors_new (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL UNIQUE,
+        hex_color TEXT
+      );
+      INSERT INTO filament_colors_new (name, hex_color)
+        SELECT name, MIN(hex_color) FROM filament_colors GROUP BY name;
+      INSERT INTO filament_color_types (color_id, type_id)
+        SELECT fcn.id, fco.type_id
+        FROM filament_colors fco
+        JOIN filament_colors_new fcn ON fcn.name = fco.name;
+      DROP TABLE filament_colors;
+      ALTER TABLE filament_colors_new RENAME TO filament_colors;
+      PRAGMA foreign_keys = ON;
+    `);
+    console.log('[db] Migrated filament_colors: decoupled from a single type via filament_color_types (colors sharing a name were merged)');
   }
 } catch (_) {}
 
