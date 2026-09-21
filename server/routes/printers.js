@@ -152,13 +152,13 @@ module.exports = (db) => {
     if (!normalized || !db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(normalized)) {
       return res.status(400).json({ error: `Unknown model "${model}". Add it in Settings → Printer Models first.` });
     }
-    const { loaded_material, loaded_color } = req.body;
+    const { loaded_material, loaded_color, auto_advance } = req.body;
     try {
       const result = db.prepare(`
-        INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, auto_advance, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(name, ip, api_key || '', serial_number || '', group_name || null, printerType, normalized,
-             loaded_material || null, loaded_color || null, Date.now());
+             loaded_material || null, loaded_color || null, auto_advance ? 1 : 0, Date.now());
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer creation into a reported error.
       if (group_name && group_name.trim()) {
@@ -178,7 +178,7 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
 
-    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color } = req.body;
+    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color, auto_advance } = req.body;
     let normalized = undefined;
     if (model !== undefined) {
       normalized = normalizeModel(model);
@@ -190,6 +190,11 @@ module.exports = (db) => {
     // loaded_material / loaded_color: if key is present in body, use the value (even if empty → null to clear)
     const newMaterial = 'loaded_material' in req.body ? (loaded_material || null) : printer.loaded_material;
     const newColor    = 'loaded_color'    in req.body ? (loaded_color    || null) : printer.loaded_color;
+    // Same "present in body wins" rule as above: auto_advance is a checkbox, so an
+    // unchecked (false) submission must still be able to turn it off, which a plain
+    // COALESCE(?, auto_advance) bind could never do (COALESCE only falls through on
+    // NULL, not on 0/false).
+    const newAutoAdvance = 'auto_advance' in req.body ? (auto_advance ? 1 : 0) : printer.auto_advance;
 
     // Compute effective new values for all tracked fields (COALESCE: body wins, else keep existing)
     const after = {
@@ -201,12 +206,13 @@ module.exports = (db) => {
       serial_number:   serial_number !== undefined ? serial_number : printer.serial_number,
       loaded_material: newMaterial,
       loaded_color:    newColor,
+      auto_advance:    newAutoAdvance,
     };
 
     const FIELD_LABELS = {
-      name: 'Name', ip: 'IP address', group_name: 'Group', type: 'Connector type',
+      name: 'Name', ip: 'IP address or hostname', group_name: 'Group', type: 'Connector type',
       model: 'Model', serial_number: 'Serial number',
-      loaded_material: 'Material', loaded_color: 'Color',
+      loaded_material: 'Material', loaded_color: 'Color', auto_advance: 'Auto-advance',
     };
 
     try {
@@ -222,10 +228,11 @@ module.exports = (db) => {
             is_held = COALESCE(?, is_held),
             decommission_note = COALESCE(?, decommission_note),
             loaded_material = ?,
-            loaded_color = ?
+            loaded_color = ?,
+            auto_advance = ?
         WHERE id = ?
       `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
-             newMaterial, newColor, req.params.id);
+             newMaterial, newColor, newAutoAdvance, req.params.id);
 
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer update into a reported error.

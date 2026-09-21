@@ -102,6 +102,10 @@ Before adding printers to the app, gather the following credentials. The app wil
 | **Klipper (Voron, etc.)** | IP address of the Klipper host | The IP of the machine running Moonraker (same machine as Klipper). Port 7125 is used automatically. No API key required. |
 | **OctoPrint** | IP address (with port) + API key | In OctoPrint: **Settings → API** shows the key. If OctoPrint is not on port 80, include the port in the IP field — e.g. `192.168.1.50:5000` (OctoPi commonly uses `:5000`). |
 
+Every "IP address" field above also accepts a hostname (`octoprint.lan`, `voron1.printfarm.internal`) instead of a numeric address: the app just uses it as-is in each request, so any name your network can resolve works. Two caveats:
+- **`.local` (mDNS) names** rely on your OS resolving them, which Windows and macOS do natively but the published Docker image does not (no mDNS resolver in the container); a plain DNS hostname works in Docker, a bare `.local` name does not.
+- **Elegoo Centauri Carbon** (the original, not Carbon 2) discovers itself over a UDP broadcast that only works with an IPv4 address, so a hostname there must resolve to an IPv4 address (true of virtually any normal DNS name).
+
 ---
 
 ## Getting the Code
@@ -267,7 +271,7 @@ Model IDs are free-form and only used internally — choose something descriptiv
 Still in **Settings**, click **Add Printer**. Fill in:
 
 - **Name** — a short identifier (e.g. `MK4S_01`). Used throughout the UI.
-- **IP Address** — the local IP of the printer (see credential table above).
+- **IP Address or Hostname**: the printer's local IP, or a resolvable hostname (see credential table above).
 - **API Key / Access Code** — see credential table above. The field is labelled **Access Code** for Bambu and Centauri Carbon 2 printers. Not needed for Elegoo Centauri Carbon (original) or Klipper.
 - **Serial Number** — Bambu and Elegoo Centauri Carbon 2 printers only.
 - **Group** — optional, for organizing multiple printers (e.g. `MK4S Farm`).

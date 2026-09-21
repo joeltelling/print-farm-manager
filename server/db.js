@@ -102,6 +102,7 @@ try { db.exec('ALTER TABLE parts ADD COLUMN material_grams REAL'); } catch (_) {
 try { db.exec('ALTER TABLE gcodes ADD COLUMN material_grams REAL'); } catch (_) {}
 try { db.exec('ALTER TABLE printers ADD COLUMN loaded_material TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE printers ADD COLUMN loaded_color TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE printers ADD COLUMN auto_advance INTEGER DEFAULT 0'); } catch (_) {}
 try { db.exec('ALTER TABLE gcodes ADD COLUMN allowed_groups TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE gcodes ADD COLUMN required_material TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE gcodes ADD COLUMN required_color TEXT'); } catch (_) {}

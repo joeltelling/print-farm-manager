@@ -206,15 +206,17 @@ Create a single printer.
 }
 ```
 
-Required: `name`, `ip`, `api_key`, `model`. Optional: `group_name`, `type` (defaults to `"prusa"`).
+Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname as well as a numeric address; see `docs/installation.md`'s credential table for the two caveats (`.local` names and the original Elegoo Centauri Carbon). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`).
 
 `model` must be one of: `mk4`, `mk4s`, `c1`, `c1l`, `xl`.
+
+`auto_advance` is for belt/conveyor printers: see the `auto_advance` note in `docs/database.md`'s printers table. Not importable via CSV; toggle it per printer through this endpoint or the printer detail page after creation.
 
 Returns `201` with the created printer object. Returns `409` if `name` already exists.
 
 ### `PUT /api/printers/:id`
 
-Partial update — only fields provided are changed (uses `COALESCE`). All fields from POST are accepted, plus `is_held` (`0` or `1`).
+Partial update: only fields provided are changed (uses `COALESCE`, except `auto_advance`, which uses the same "present in body wins" rule as `loaded_material`/`loaded_color` so an explicit `false` can actually turn it off). All fields from POST are accepted, plus `is_held` (`0` or `1`).
 
 Returns `404` if not found, `409` on name conflict.
 

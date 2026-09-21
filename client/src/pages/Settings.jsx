@@ -142,7 +142,7 @@ export default function Settings() {
     }
   }
 
-  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', serial_number: '', model: '', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '' });
+  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', serial_number: '', model: '', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false });
   const [addResult, setAddResult] = useState(null);
   const [addError, setAddError] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -178,12 +178,13 @@ export default function Settings() {
           type: addForm.type,
           loaded_material: addForm.loaded_material.trim() || null,
           loaded_color: addForm.loaded_color.trim() || null,
+          auto_advance: addForm.auto_advance,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Add failed');
       setAddResult(data);
-      setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '' });
+      setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false });
     } catch (err) {
       setAddError(err.message);
     } finally {
@@ -879,12 +880,12 @@ export default function Settings() {
               />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>IP Address *</label>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>IP Address or Hostname *</label>
               <input
                 value={addForm.ip}
                 onChange={e => setAddForm(p => ({ ...p, ip: e.target.value }))}
                 required
-                placeholder="192.168.1.100"
+                placeholder="192.168.1.100 or octoprint.local"
                 style={inputStyle}
               />
             </div>
@@ -951,6 +952,18 @@ export default function Settings() {
                   .filter(c => c.type_name === addForm.loaded_material)
                   .map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 18 }}>
+              <input
+                id="add-printer-auto-advance"
+                type="checkbox"
+                checked={addForm.auto_advance}
+                onChange={e => setAddForm(p => ({ ...p, auto_advance: e.target.checked }))}
+                style={{ accentColor: '#3b82f6' }}
+              />
+              <label htmlFor="add-printer-auto-advance" style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>
+                Belt printer: auto-advance to the next job without operator confirmation
+              </label>
             </div>
           </div>
           <button

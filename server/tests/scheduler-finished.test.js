@@ -35,6 +35,7 @@ function makeDb() {
       name TEXT NOT NULL, ip TEXT NOT NULL, api_key TEXT NOT NULL DEFAULT '',
       model TEXT NOT NULL, type TEXT DEFAULT 'prusa',
       status TEXT DEFAULT 'PRINTING', is_held INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
+      auto_advance INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL
     );
     CREATE TABLE projects (
@@ -81,12 +82,13 @@ function makeScheduler(db) {
 function seedPrinter(db, overrides = {}) {
   const now = Date.now();
   return db.prepare(`
-    INSERT INTO printers (name, ip, model, type, status, is_held, is_active, created_at)
-    VALUES (?, '10.0.0.1', ?, ?, 'PRINTING', 0, 1, ?)
+    INSERT INTO printers (name, ip, model, type, status, is_held, is_active, auto_advance, created_at)
+    VALUES (?, '10.0.0.1', ?, ?, 'PRINTING', 0, 1, ?, ?)
   `).run(
     overrides.name  ?? `Printer_${now}`,
     overrides.model ?? 'mk4s',
     overrides.type  ?? 'bambu',
+    overrides.autoAdvance ? 1 : 0,
     now
   ).lastInsertRowid;
 }
@@ -245,6 +247,77 @@ describe('_handleFinished — normal path (printing job)', () => {
 
     expect(mockGetDriver).toHaveBeenCalledWith('bambu');
     expect(mockGetDriver).not.toHaveBeenCalledWith(expect.objectContaining({ id: printerId }));
+  });
+});
+
+// ── auto_advance: belt/conveyor printers ──────────────────────────────────────
+//
+// A belt printer clears a finished plate itself, so there is nothing for an
+// operator to confirm. completed_qty crediting must be identical to the normal
+// path; only whether the printer ends up held, and whether the next job is
+// dispatched immediately, should differ.
+
+describe('_handleFinished, auto_advance (belt printer)', () => {
+  test('does not hold the printer', () => {
+    const db        = makeDb();
+    const scheduler = makeScheduler(db);
+    const projectId = seedProject(db);
+    const partId    = seedPart(db, projectId);
+    const gcodeId   = seedGcode(db, partId);
+    const printerId = seedPrinter(db, { autoAdvance: true });
+    seedJob(db, printerId, partId, gcodeId, 'printing');
+
+    scheduler._handleFinished(makePrinter(db, printerId));
+
+    const printer = db.prepare('SELECT is_held FROM printers WHERE id = ?').get(printerId);
+    expect(printer.is_held).toBe(0);
+  });
+
+  test('still credits completed_qty exactly like the normal path', () => {
+    const db        = makeDb();
+    const scheduler = makeScheduler(db);
+    const projectId = seedProject(db);
+    const partId    = seedPart(db, projectId, { completedQty: 2 });
+    const gcodeId   = seedGcode(db, partId);
+    const printerId = seedPrinter(db, { autoAdvance: true });
+    seedJob(db, printerId, partId, gcodeId, 'printing', { partsPerPlate: 4 });
+
+    scheduler._handleFinished(makePrinter(db, printerId));
+
+    const part = db.prepare('SELECT completed_qty FROM parts WHERE id = ?').get(partId);
+    expect(part.completed_qty).toBe(6); // 2 + 4, same as the non-auto-advance case
+  });
+
+  test('dispatches the next job immediately instead of waiting for Set Ready', () => {
+    const db        = makeDb();
+    const scheduler = makeScheduler(db);
+    const projectId = seedProject(db);
+    const partId    = seedPart(db, projectId);
+    const gcodeId   = seedGcode(db, partId);
+    const printerId = seedPrinter(db, { autoAdvance: true });
+    seedJob(db, printerId, partId, gcodeId, 'printing');
+
+    scheduler._handleFinished(makePrinter(db, printerId));
+
+    expect(scheduler.scheduleForPrinter).toHaveBeenCalledTimes(1);
+    expect(scheduler.scheduleForPrinter).toHaveBeenCalledWith(expect.objectContaining({ id: printerId }));
+  });
+
+  test('still closes the part and completes the project when target_qty is reached', () => {
+    const db        = makeDb();
+    const scheduler = makeScheduler(db);
+    const projectId = seedProject(db);
+    const partId    = seedPart(db, projectId, { targetQty: 4, completedQty: 0 });
+    const gcodeId   = seedGcode(db, partId);
+    const printerId = seedPrinter(db, { autoAdvance: true });
+    seedJob(db, printerId, partId, gcodeId, 'printing', { partsPerPlate: 4 });
+
+    scheduler._handleFinished(makePrinter(db, printerId));
+
+    const part = db.prepare('SELECT status FROM parts WHERE id = ?').get(partId);
+    expect(part.status).toBe('closed');
+    const project = db.prepare('SELECT status FROM projects WHERE id = ?').get(projectId);
+    expect(project.status).toBe('completed');
   });
 });
 

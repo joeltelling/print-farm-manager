@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-09-21: printer host field accepts a hostname, not just an IP
+
+Requested for a farm using DNS names for its printers instead of static IPs. Audited every driver (`server/drivers/*.js`), the printers route, and both Add Printer / Edit Details forms: nothing anywhere validates, parses, or splits `printers.ip` as an IPv4 literal, it is treated as an opaque string interpolated straight into a URL, MQTT broker address, or FTPS host in every code path. A hostname already worked with zero code changes; this change is documentation and labels only, making that fact discoverable instead of operators reasonably assuming "IP Address" means only an IP.
+
+Two real caveats surfaced during the audit and are now documented: `.local` (mDNS) names resolve on Windows/macOS but not inside the published Docker image (no mDNS resolver in the container), and the original Elegoo Centauri Carbon's UDP discovery step needs the hostname to resolve to an IPv4 address specifically (true of any ordinary DNS name, so this only matters for IPv6-only hosts).
+
+### Changes
+- `client/src/pages/Settings.jsx`, `client/src/pages/PrinterDetail.jsx`: relabeled the field "IP Address or Hostname", updated placeholders and the missing-IP error string.
+- `server/routes/printers.js`: relabeled the `FIELD_LABELS.ip` entry used in printer-event log lines.
+- `docs/database.md`, `docs/installation.md`, `docs/api.md`, `README.md`: documented that a hostname is accepted, plus the two caveats above.
+
+## 2026-09-21: belt/conveyor printers can auto-advance without operator confirmation
+
+Requested for belt printers, which eject a finished part automatically, so there is nothing on the bed for an operator to inspect between plates the way there is on a normal bed printer. Every other printer still holds after `FINISHED` and waits for Set Ready, as before.
+
+Added `printers.auto_advance` (operator-toggled per printer, default off). `completed_qty` analysis (this repo's hardest rule): the crediting code in `scheduler.js`'s `_handleFinished` is untouched, byte-for-byte identical to the non-auto-advance path; the only thing that changes is what happens *after* that credit already landed, whether the printer holds for a human or immediately calls `scheduleForPrinter` for the next job. A genuine fault (`ERROR`), an operator-initiated stop (`STOPPED`), or a network drop (`OFFLINE`) always still holds the printer regardless of this flag: `_handlePrinterUnavailable`, `_handlePrinterStopped`, and `_handlePrinterOffline` were not touched and do not check it. Belt printers still jam or run out of filament; only the routine, successful-completion path skips the confirmation step.
+
+Not importable via CSV, toggled per printer from the Add Printer form or the printer detail page. `npm run build` for the client was run and succeeds. The new scheduler and backup-restore test coverage could not be executed in this environment (no native toolchain here to compile `better-sqlite3` for Node 22, the same pre-existing limitation noted in earlier entries) but follows this repo's standard in-memory-SQLite pattern.
+
+### Changes
+- `server/db.js`: new `auto_advance INTEGER DEFAULT 0` column on `printers` (additive migration).
+- `server/scheduler.js`: `_handleFinished` branches on `printer.auto_advance` after crediting `completed_qty`, skipping the hold and calling `scheduleForPrinter` immediately instead.
+- `server/routes/printers.js`: `POST`/`PUT /api/printers` accept `auto_advance`; the `PUT` handler uses the same "present in body wins" pattern as `loaded_material`/`loaded_color` so an explicit `false` can turn it back off.
+- `client/src/pages/Settings.jsx`: Add Printer form gets an "auto-advance" checkbox.
+- `client/src/pages/PrinterDetail.jsx`: Edit Details form gets the same checkbox, plus a "Belt printer, auto-advance" badge on the read-only summary.
+- `server/tests/scheduler-finished.test.js`: new `auto_advance` describe block (no hold, qty still credited, next job dispatched, part/project still close correctly).
+- `server/tests/backup-restore.test.js`: schema, seed, and round-trip assertions extended to cover the new column, per this repo's sync-pairs rule for new columns.
+- `docs/database.md`, `docs/api.md`: documented the column and the new request field.
+
 ## 2026-09-21: OIDC config in Docker moved to a gitignored .env file
 
 The Docker OIDC setup previously told operators to paste real values straight into the tracked `docker-compose.yml`'s commented-out `environment:` block. For anyone running Compose from a cloned copy of this repo (rather than the standalone snippet in the README), that meant a real client secret sitting in a file `git status` would happily let you commit.

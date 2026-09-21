@@ -240,7 +240,7 @@ The fastest way to add a large fleet is via CSV import on the Settings page.
 | Column | Required | Example |
 |---|---|---|
 | `name` | Yes | `MK4S_01` |
-| `ip` | Yes | `192.168.1.100` |
+| `ip` | Yes | `192.168.1.100` (a resolvable hostname works too, e.g. `octoprint.lan`) |
 | `type` | Yes | `prusa` / `elegoo-centauri` / `elegoo-centauri2` / `bambu` / `klipper` / `octoprint` |
 | `api_key` | Prusa and OctoPrint (API key), Bambu and Centauri Carbon 2 (LAN access code) | `aK3jR7xQ2pLm9vN` |
 | `serial_number` | Bambu and Centauri Carbon 2 | `01S00C123456789` |

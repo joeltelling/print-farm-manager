@@ -24,7 +24,7 @@ Stores the physical printer registry imported from the CSV spreadsheet.
 CREATE TABLE IF NOT EXISTS printers (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   name                TEXT NOT NULL UNIQUE,      -- e.g. "MK4S_07", "Twilight"
-  ip                  TEXT NOT NULL,             -- e.g. "192.168.1.100"
+  ip                  TEXT NOT NULL,             -- IP or hostname, e.g. "192.168.1.100" or "octoprint.lan"
   api_key             TEXT NOT NULL,             -- PrusaLink X-Api-Key header value
   group_name          TEXT,                      -- e.g. "MK4S Farm" (optional)
   type                TEXT DEFAULT 'prusa',      -- vendor; reserved for future use
@@ -54,6 +54,8 @@ If the `model` column is absent or blank, the import falls back to name-based in
 - No match → row is flagged; operator must resolve manually
 
 If a `model` column is present, name inference is skipped entirely — any printer name is valid.
+
+**`auto_advance`** (`INTEGER DEFAULT 0`, migration): for belt/conveyor printers that clear a finished plate themselves. When set, `scheduler.js`'s `_handleFinished` skips the usual hold-for-operator-confirmation step on a clean `FINISHED` transition and dispatches the next job immediately; `completed_qty` crediting itself is unaffected, only whether the printer stops for a human afterward. A genuine fault (`ERROR`), an operator-initiated stop (`STOPPED`), or a network drop (`OFFLINE`) always still holds the printer regardless of this flag. Toggled per printer from the printer detail view (`/printers/:id`) or the Settings Add Printer form; not importable via CSV.
 
 ### printer_groups
 

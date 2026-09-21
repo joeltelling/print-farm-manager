@@ -555,10 +555,26 @@ class JobScheduler extends EventEmitter {
       this._closePart(part, now);
     }
 
-    // Hold the printer — operator must confirm print quality before next job dispatches
-    this.db.prepare('UPDATE printers SET is_held = 1 WHERE id = ?').run(printer.id);
-    events.insert(printer.id, 'job_finished', `Job ${job.id} — ${part.name} (${job.parts_per_plate} parts)`);
-    console.log(`[scheduler] ${printer.name} held — awaiting operator confirmation`);
+    // Belt/conveyor printers (auto_advance = 1) clear a finished plate themselves:
+    // there is nothing on the bed for an operator to inspect or remove, so the usual
+    // hold-for-confirmation step is skipped and the next job dispatches immediately.
+    // This only ever applies on this clean FINISHED path: a genuine fault (ERROR),
+    // an operator-initiated stop (STOPPED), or a network drop (OFFLINE) always still
+    // holds the printer regardless of auto_advance, see _handlePrinterUnavailable,
+    // _handlePrinterStopped, and _handlePrinterOffline, none of which check this flag.
+    // completed_qty crediting above is byte-for-byte identical to the non-auto-advance
+    // path; only what happens to is_held (and whether the next job dispatches now vs.
+    // waiting for an operator) differs.
+    if (printer.auto_advance) {
+      events.insert(printer.id, 'job_finished', `Job ${job.id}, ${part.name} (${job.parts_per_plate} parts), auto-advanced`);
+      console.log(`[scheduler] ${printer.name} finished and auto-advancing (belt printer): Part "${part.name}"`);
+      this.scheduleForPrinter(printer);
+    } else {
+      // Hold the printer: operator must confirm print quality before next job dispatches
+      this.db.prepare('UPDATE printers SET is_held = 1 WHERE id = ?').run(printer.id);
+      events.insert(printer.id, 'job_finished', `Job ${job.id}, ${part.name} (${job.parts_per_plate} parts)`);
+      console.log(`[scheduler] ${printer.name} held, awaiting operator confirmation`);
+    }
 
     // Clean up the file from the printer's SD card (Bambu only — other drivers ignore this)
     if (job.gcode_id) {

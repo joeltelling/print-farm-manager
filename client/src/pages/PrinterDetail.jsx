@@ -240,6 +240,7 @@ export default function PrinterDetail() {
       model: printer.model || '',
       loaded_material: printer.loaded_material || '',
       loaded_color: printer.loaded_color || '',
+      auto_advance: !!printer.auto_advance,
     });
     setDetailsError(null);
     setEditingDetails(true);
@@ -253,7 +254,7 @@ export default function PrinterDetail() {
   async function submitEditDetails(e) {
     e.preventDefault();
     const ip = detailsDraft.ip.trim();
-    if (!ip) { setDetailsError('IP address is required'); return; }
+    if (!ip) { setDetailsError('IP address or hostname is required'); return; }
     setSavingDetails(true);
     setDetailsError(null);
     try {
@@ -268,6 +269,7 @@ export default function PrinterDetail() {
           model: detailsDraft.model,
           loaded_material: detailsDraft.loaded_material.trim() || null,
           loaded_color: detailsDraft.loaded_color.trim() || null,
+          auto_advance: detailsDraft.auto_advance,
         }),
       });
       if (!res.ok) {
@@ -392,12 +394,13 @@ export default function PrinterDetail() {
           <form onSubmit={submitEditDetails} style={{ marginTop: 4 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
               <label style={detailLabelStyle}>
-                IP Address
+                IP Address or Hostname
                 <input
                   autoFocus
                   value={detailsDraft.ip}
                   onChange={e => setDetailsDraft(d => ({ ...d, ip: e.target.value }))}
                   disabled={savingDetails}
+                  placeholder="192.168.1.100 or octoprint.local"
                   style={detailInputStyle}
                 />
               </label>
@@ -475,6 +478,16 @@ export default function PrinterDetail() {
                     .map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </label>
+              <label style={{ ...detailLabelStyle, flexDirection: 'row', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={!!detailsDraft.auto_advance}
+                  onChange={e => setDetailsDraft(d => ({ ...d, auto_advance: e.target.checked }))}
+                  disabled={savingDetails}
+                  style={{ accentColor: '#3b82f6' }}
+                />
+                Belt printer (auto-advance, skips confirmation)
+              </label>
             </div>
             {detailsError && (
               <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 6 }}>{detailsError}</div>
@@ -524,6 +537,11 @@ export default function PrinterDetail() {
                 <span style={{ color: '#7dd3fc' }}>
                   {[printer.loaded_material, printer.loaded_color].filter(Boolean).join(' · ')}
                 </span>
+              </span>
+            )}
+            {!!printer.auto_advance && (
+              <span style={{ background: '#1e2a3a', color: '#7dd3fc', borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>
+                Belt printer, auto-advance
               </span>
             )}
             <button
