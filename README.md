@@ -118,6 +118,14 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    # Optional single sign-on: leave all four unset/blank to keep it off.
+    # Put real values in a .env file next to this docker-compose.yml (never
+    # commit it if this file lives in version control): see docs/auth.md.
+    environment:
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-}
     volumes:
       - farm-data:/app/server/data
       - farm-gcode:/app/server/gcode
@@ -135,7 +143,7 @@ This same file works as a drop-in stack in Portainer (**Stacks → Add stack →
 
 Open `http://localhost:3000` in a browser, or replace `localhost` with the machine's LAN IP to access it from any device on the network. The first visitor creates the admin account, see [docs/auth.md](docs/auth.md).
 
-**Optional single sign-on:** add an `environment:` block with four `OIDC_*` variables to enable it, see the commented-out example in [`docker-compose.yml`](docker-compose.yml) and [docs/installation.md](docs/installation.md#optional-single-sign-on-oidc) for details.
+**Optional single sign-on:** see [docs/installation.md](docs/installation.md#optional-single-sign-on-oidc) for how to get the four `OIDC_*` values from your identity provider, then put them in a `.env` file next to `docker-compose.yml`.
 
 **Updating** to the latest published image:
 

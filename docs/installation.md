@@ -248,7 +248,7 @@ OIDC_REDIRECT_URI=http://<machine-ip>:3000/api/auth/oidc/callback
 
 Register `OIDC_REDIRECT_URI` as an allowed redirect URI in your identity provider's app settings; it must match exactly. The first time someone signs in via SSO with an email that doesn't match an existing account, a new account is created automatically as `operator`; an admin can promote it from the Users page afterward. See [docs/auth.md](auth.md#oidc-single-sign-on) for how existing accounts are matched.
 
-**PM2** picks up environment variables from the shell it was started in: set them in the same terminal before `pm2 start`, or add an `env` block to a PM2 ecosystem file if you manage one. **Docker**: pass them as `environment:` entries in `docker-compose.yml` or `-e` flags to `docker run`; see the [README's Docker section](../README.md#installation-production).
+**PM2** picks up environment variables from the shell it was started in: set them in the same terminal before `pm2 start`, or add an `env` block to a PM2 ecosystem file if you manage one. **Docker**: `docker-compose.yml` already reads these four from a `.env` file in the same directory (copy `.env.example` to `.env` and fill it in); `.env` is gitignored, so a real client secret never ends up committed. Running `docker run` directly instead of Compose: pass `-e OIDC_ISSUER_URL=... -e OIDC_CLIENT_ID=...` etc. See the [README's Docker section](../README.md#installation-production).
 
 ---
 

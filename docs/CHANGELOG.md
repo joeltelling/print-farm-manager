@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-09-21: OIDC config in Docker moved to a gitignored .env file
+
+The Docker OIDC setup previously told operators to paste real values straight into the tracked `docker-compose.yml`'s commented-out `environment:` block. For anyone running Compose from a cloned copy of this repo (rather than the standalone snippet in the README), that meant a real client secret sitting in a file `git status` would happily let you commit.
+
+`docker-compose.yml` now reads all four `OIDC_*` variables via Compose's `${VAR:-}` substitution from a `.env` file in the same directory (already gitignored; unset values just default to empty, which the app already treats as OIDC unconfigured). Added `.env.example` as the tracked template. The README's standalone "pull the published image" snippet gets the same treatment, since it's a compose file users are told to save into their own directory, same risk if they put it under version control.
+
+### Changes
+- `docker-compose.yml`: `environment:` block is now active by default, sourcing `OIDC_*` from `.env` instead of being commented out with literal placeholder values.
+- `.env.example`: new tracked template listing the four variables.
+- `README.md`: the standalone Docker quick-start snippet now includes the same `${VAR:-}` block; both Docker sections point at `.env` instead of "edit this file directly".
+- `docs/installation.md`: updated the Docker instructions in the OIDC section to match.
+
 ## 2026-09-21: docs catch-up for the last three sessions' new pages and URLs
 
 `docs/web-app.md` and README.md had fallen behind: the Login, Account, and Users pages, and the camera/catalog-print additions to the printer detail view, had shipped in earlier commits with API-level docs (`docs/api.md`, `docs/auth.md`) but no client-side documentation, and the README never told a reader what pages exist at all.
