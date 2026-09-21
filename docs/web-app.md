@@ -2,25 +2,32 @@
 
 ## Purpose
 
-The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The app provides:
+The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The whole app is gated behind `AuthContext` (see [docs/auth.md](auth.md)): a logged-out visitor sees only the Login page, regardless of which URL they land on. The app provides:
 
+- **Login page**: email/password sign-in, a "Sign in with SSO" button when OIDC is configured, and a one-time "create the admin account" form on a fresh install
 - **Dashboard** — TV-optimized command center: fleet utilization, stat cards, printer grid, active project progress, and a needs-attention panel
 - **Fleet page** — live grid of all active printers with status, filterable and searchable
 - **Printers page** — searchable directory of all printers (active and decommissioned); click any row to open the detail view
-- **Printer detail view** — per-machine event timeline, inline note form, printer header
+- **Printer detail view**: per-machine event timeline, inline note form, printer header, a live camera feed (OctoPrint/Klipper), and a popup for cataloging any print sent straight to the printer outside the farm
 - **Settings page** — CSV import UI for the printer registry, with flagged-row resolution
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
+- **Account page**: the signed-in user's own API keys: create one (shown once), revoke one
+- **Users page**: admin only: add accounts, change roles, remove access
 
 ## Key Files
 
 | File | Responsibility |
 |---|---|
-| `client/src/main.jsx` | React root — mounts `<App />` into `#root` |
-| `client/src/App.jsx` | Layout shell, sidebar/topbar nav, `<Routes>` |
+| `client/src/main.jsx` | React root, wraps `<App />` in `<AuthProvider>`, mounts into `#root` |
+| `client/src/App.jsx` | Layout shell, sidebar/topbar nav, `<Routes>`, renders `<Login>` when logged out |
+| `client/src/AuthContext.jsx` | Current-user state, checked once via `GET /api/auth/me` |
+| `client/src/pages/Login.jsx` | Sign-in form, SSO button, first-run bootstrap form |
+| `client/src/pages/Account.jsx` | Self-service API key management |
+| `client/src/pages/Users.jsx` | Admin-only account management |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
-| `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline and note form |
+| `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline, note form, camera feed, catalog-print popup |
 | `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
 | `client/src/pages/Settings.jsx` | CSV import, flagged-row resolution, printer models |
 | `client/src/pages/Dashboard.jsx` | TV command center dashboard |
@@ -32,7 +39,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 
 ## Layout
 
-`App.jsx` renders a two-column shell:
+`App.jsx` renders a two-column shell once a user is signed in (a logged-out visitor gets the Login page instead, full-screen, with no sidebar):
 
 ```
 ┌──────────────────────────────────────────┐
@@ -47,12 +54,29 @@ The React single-page application served by Vite. In development, Vite runs on p
 │  Jobs             │                       │
 │  Decommissioned   │                       │
 │  Settings         │                       │
+│  Users (admin)    │                       │
+│  Account          │                       │
+│  ─────────────    │                       │
+│  Sign out         │                       │
 └───────────────────┴───────────────────────┘
 ```
 
-**Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar. All page content is still fully accessible on mobile.
+`Users` only appears in the nav for `admin` accounts; the route itself is conditionally registered on `user.role`, so an `operator` navigating to `/users` directly gets no match rather than the Users UI.
+
+**Responsive breakpoint at 600px:** the sidebar is hidden and replaced by a horizontal top nav bar (with the same Sign out button). All page content is still fully accessible on mobile.
 
 Navigation uses `react-router-dom` `<NavLink>` — active links are highlighted in blue (`#1e40af`).
+
+## Login Page
+
+`client/src/pages/Login.jsx`
+
+Rendered by `App.jsx` in place of the whole layout shell whenever `AuthContext`'s `user` is `null`: no sidebar, no nav, a single centered card. `GET /api/auth/status` on mount decides which form to show:
+
+- **`needsBootstrap: true`** (a fresh install, zero users exist): name, email, and password fields, submitting to `POST /api/auth/bootstrap`. This form only ever appears once per install.
+- **Otherwise:** email and password fields, submitting to `POST /api/auth/login`. If `oidcEnabled` is also true, a "Sign in with SSO" link to `/api/auth/oidc/login` appears below a divider.
+
+A successful bootstrap or login calls `setUser` from `AuthContext`, which re-renders `App.jsx` into the normal layout immediately, no page reload.
 
 ## Dashboard Page
 
@@ -179,6 +203,10 @@ Per-machine history and annotation screen. Reached by clicking a printer card in
 - Note text (if any)
 - Formatted timestamp
 
+**Camera card:** fetched from `GET /api/printers/:id/camera` alongside the rest of the page's data. Renders an `<img>` pointed at the MJPEG stream URL when the printer's connector supports one (OctoPrint, Klipper); nothing is rendered for connectors that don't. See [docs/api.md](api.md).
+
+**Catalog-print popup:** opens automatically (a fixed-position modal, not a page navigation) when the fetched printer has `needs_catalog: true`, meaning it is `PRINTING` or `FINISHED` with no job the farm dispatched, the signature of a print sent straight to it from outside the farm (e.g. OrcaSlicer). Prompts for a Part (grouped by project, open parts only) and a quantity, then submits to `POST /api/printers/:id/catalog-print`. A "Not now" button dismisses it for the rest of this page visit without submitting; reloading the page re-opens it as long as `needs_catalog` is still true server-side.
+
 **← All Printers** back button returns to the Printers list.
 
 ## Decommissioned Page
@@ -277,6 +305,18 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 | cancelled | near-black | muted gray |
 
 **"Awaiting Sign-off" badge (display-only):** a row whose `jobs.status` is still `printing` can belong to a printer that is already held for operator confirmation (for example a printer that transitions `PRINTING` -> `IDLE` directly, with no observable `FINISHED`/`STOPPED` in between two polls). `GET /api/jobs` joins `printer_is_held` and `printer_status` for exactly this case; `displayJobStatus()` in Jobs.jsx renders such a row as "Awaiting Sign-off" (green) instead of "Printing" (blue) so the Jobs page agrees with Fleet/Dashboard, which already reflect the hold via `is_held`. The underlying job row is untouched: it still says `printing` until the operator resolves it via Set Ready or Bad Print, at which point it becomes `finished`/`failed` normally.
+
+## Account Page
+
+`client/src/pages/Account.jsx`
+
+Self-service page for the signed-in user's own API keys. `GET /api/api-keys` lists them (never `key_hash`); the create form (`POST /api/api-keys`) shows the plaintext key exactly once, in a callout the operator must dismiss explicitly ("Done, I copied it") rather than one that just disappears. `DELETE /api/api-keys/:id` revokes; a revoked key shows greyed out with a `REVOKED` badge instead of being removed from the list, so `last_used_at` history stays visible.
+
+## Users Page
+
+`client/src/pages/Users.jsx`
+
+Admin-only account management (see [docs/auth.md](auth.md) for the role model). Lists every user via `GET /api/users`, with an inline "+ Add User" form (`POST /api/users`, password optional for an SSO-only account) and a role `<select>` per row (`PUT /api/users/:id`) that updates immediately on change. Removing a user (`DELETE /api/users/:id`) goes through the shared `useConfirm` modal; the server itself refuses to demote or delete the last remaining admin, and refuses to delete the account you're currently signed in as, so this page just surfaces whatever error message comes back rather than duplicating those checks client-side.
 
 ## Live Update Pattern
 

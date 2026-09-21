@@ -2,6 +2,14 @@
 
 ---
 
+## 2026-09-21: docs catch-up for the last three sessions' new pages and URLs
+
+`docs/web-app.md` and README.md had fallen behind: the Login, Account, and Users pages, and the camera/catalog-print additions to the printer detail view, had shipped in earlier commits with API-level docs (`docs/api.md`, `docs/auth.md`) but no client-side documentation, and the README never told a reader what pages exist at all.
+
+### Changes
+- `README.md`: new "Pages" section, a URL-to-page table covering every route including `/account`, `/users`, and `/login`, plus the OIDC callback URL to register with an identity provider.
+- `docs/web-app.md`: new Login/Account/Users Page sections; updated Purpose, Key Files, and Layout to include the new pages and `AuthContext`; updated Printer Detail View for the camera card and catalog-print popup.
+
 ## 2026-09-21: catalog prints sent straight to the printer (OrcaSlicer and other direct uploads)
 
 OrcaSlicer's "send to printer" (and any other tool) already uploads straight to a printer's own protocol, bypassing the farm's dispatch entirely, so the farm never had a way to know that print happened. Added detection: `needs_catalog` on the printer row is true when the printer is `PRINTING` or `FINISHED` but no job row owns that activity, the exact signature of a print the farm never dispatched (every farm-dispatched job gets its job row synchronously before the upload even starts). The printer detail page opens a popup automatically in that case, asking which Part and how many parts are on the plate, then `POST /api/printers/:id/catalog-print` attaches it.

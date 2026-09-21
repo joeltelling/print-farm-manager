@@ -201,6 +201,30 @@ Open `http://localhost:3000` in a browser, or replace `localhost` with the machi
 
 ---
 
+## Pages
+
+Once signed in, everything lives under one origin (`http://<machine-ip>:3000` in production, or `:5173` in dev):
+
+| URL | Page | Notes |
+|---|---|---|
+| `/` | Dashboard | Fleet summary, TV mode |
+| `/fleet` | Fleet | Live per-printer cards, operator confirmation |
+| `/printers` | Printers | All-printers directory |
+| `/printers/:id` | Printer detail | Event timeline, job history, camera feed (OctoPrint/Klipper), and the "catalog this print" popup for anything sent straight to the printer (e.g. from OrcaSlicer) |
+| `/projects` | Projects | Project/Part/G-code management |
+| `/jobs` | Jobs | Job queue |
+| `/decommissioned` | Decommissioned | Decommissioned printers + recommission |
+| `/settings` | Settings | CSV import, add printer, printer models |
+| `/account` | Account | Your own API keys: create one, copy it once, revoke it later |
+| `/users` | Users | Admin only, add accounts, change roles, remove access |
+| `/login` | Login | Shown automatically when signed out; becomes a one-time "create the admin account" form on a fresh install |
+
+`/users` only appears in the nav for `admin` accounts; the route itself isn't registered for an `operator`, so navigating there directly renders a blank page rather than the Users UI. See [docs/auth.md](docs/auth.md) for the account model and [docs/web-app.md](docs/web-app.md) for how each page is built.
+
+If you configured OIDC, the identity provider redirects back to `/api/auth/oidc/callback` (an API route, not a page you visit directly): that's the exact URL to register as the app's allowed redirect URI, see [docs/installation.md](docs/installation.md#optional-single-sign-on-oidc).
+
+---
+
 ## CSV Import Format
 
 The fastest way to add a large fleet is via CSV import on the Settings page.
