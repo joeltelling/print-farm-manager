@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Fleet from './pages/Fleet';
+import Webcams from './pages/Webcams';
 import Printers from './pages/Printers';
 import PrinterDetail from './pages/PrinterDetail';
 import Projects from './pages/Projects';
@@ -17,6 +18,7 @@ function navItems(role) {
   const items = [
     { to: '/',               label: 'Dashboard' },
     { to: '/fleet',          label: 'Fleet' },
+    { to: '/webcams',        label: 'Webcams' },
     { to: '/printers',       label: 'Printers',      end: true },
     { to: '/projects',       label: 'Projects' },
     { to: '/jobs',           label: 'Jobs' },
@@ -139,6 +141,7 @@ export default function App() {
           <Routes>
             <Route path="/"                element={<Dashboard />} />
             <Route path="/fleet"           element={<Fleet />} />
+            <Route path="/webcams"         element={<Webcams />} />
             <Route path="/printers"        element={<Printers />} />
             <Route path="/printers/:id"    element={<PrinterDetail />} />
             <Route path="/projects"        element={<Projects />} />

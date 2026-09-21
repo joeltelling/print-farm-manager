@@ -1,20 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import PollTimer from '../components/PollTimer';
+import FleetStatusGrid from '../components/FleetStatusGrid';
 
 const POLL_INTERVAL_MS = 15000;
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-const CELL_COLORS = {
-  PRINTING:  { bg: '#1e3a5f', text: '#60a5fa', border: '#1e40af' },
-  IDLE:      { bg: '#1a2030', text: '#374151', border: '#232b3a' },
-  FINISHED:  { bg: '#14532d', text: '#22c55e', border: '#15803d' },
-  STOPPED:   { bg: '#431407', text: '#fb923c', border: '#7c2d12' },
-  PAUSED:    { bg: '#451a03', text: '#f59e0b', border: '#78350f' },
-  ATTENTION: { bg: '#451a03', text: '#f59e0b', border: '#78350f' },
-  ERROR:     { bg: '#450a0a', text: '#ef4444', border: '#7f1d1d' },
-  OFFLINE:   { bg: '#0d1117', text: '#1f2937', border: '#161b22' },
-};
 
 const STAT_CARDS = [
   { key: 'printing',    label: 'Printing',    color: '#3b82f6', accent: '#1e40af' },
@@ -23,25 +13,7 @@ const STAT_CARDS = [
   { key: 'parts_today', label: 'Parts Today', color: '#a78bfa', accent: '#7c3aed' },
 ];
 
-const LEGEND_ITEMS = [
-  { label: 'Printing', color: '#3b82f6' },
-  { label: 'Awaiting Sign-off', color: '#22c55e' },
-  { label: 'Idle',     color: '#4b5563' },
-  { label: 'Stopped',  color: '#fb923c' },
-  { label: 'Error',    color: '#ef4444' },
-  { label: 'Offline',  color: '#374151' },
-];
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function cellColors(printer) {
-  // Held printer (awaiting operator sign-off) renders as green regardless of status.
-  // Keep this condition identical to Fleet.jsx and Printers.jsx (see CLAUDE.md sync pairs).
-  if (printer.is_held === 1 && (printer.status === 'FINISHED' || printer.status === 'IDLE' || printer.status === 'STOPPED')) {
-    return CELL_COLORS.FINISHED;
-  }
-  return CELL_COLORS[printer.status] || CELL_COLORS.IDLE;
-}
 
 function formatTime(d) {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -75,36 +47,6 @@ function formatMaterial(grams) {
   if (grams < 1000) return `${Math.round(grams)}g`;
   const kg = (grams / 1000).toFixed(2).replace(/\.?0+$/, '');
   return `${kg}kg`;
-}
-
-// ── Row-level status summary badges for the fleet grid ───────────────────────
-
-const ROW_STATUSES = ['PRINTING', 'FINISHED', 'IDLE', 'ERROR', 'STOPPED', 'OFFLINE'];
-
-function RowSummary({ group }) {
-  return (
-    <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
-      {ROW_STATUSES.map(s => {
-        const count = group.filter(p => {
-          const isAwaiting = p.is_held === 1 && (p.status === 'FINISHED' || p.status === 'IDLE' || p.status === 'STOPPED');
-          if (s === 'FINISHED') return isAwaiting;
-          return p.status === s && !isAwaiting;
-        }).length;
-        if (count === 0) return null;
-        const c = CELL_COLORS[s] || CELL_COLORS.IDLE;
-        const label = s === 'FINISHED' ? 'AWAITING' : s;
-        return (
-          <span key={s} style={{
-            fontSize: 10, color: c.text, background: c.bg,
-            border: `1px solid ${c.border}`, borderRadius: 3,
-            padding: '1px 6px', fontWeight: 700,
-          }}>
-            {count} {label}
-          </span>
-        );
-      })}
-    </div>
-  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -160,18 +102,6 @@ export default function Dashboard() {
   }
 
   const { stats, printers, active_projects, recent_activity } = data;
-
-  // Group printers by model for the fleet grid
-  const modelOrder = allModels.map(m => m.model_id);
-  const MODEL_LABELS = Object.fromEntries(allModels.map(m => [m.model_id, m.label]));
-  MODEL_LABELS.other = 'Other';
-  const grouped = modelOrder.reduce((acc, m) => {
-    const g = printers.filter(p => p.model === m);
-    if (g.length) acc[m] = g;
-    return acc;
-  }, {});
-  const others = printers.filter(p => !modelOrder.includes(p.model));
-  if (others.length) grouped['other'] = others;
 
   const utilPct = printers.length > 0
     ? Math.round((stats.printing / printers.length) * 100)
@@ -275,73 +205,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── FLEET GRID ──────────────────────────────────────────────────── */}
-        <div style={{ background: '#111827', borderRadius: 10, padding: '16px 20px' }}>
-          <div style={{
-            fontSize: 11, color: '#374151',
-            textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700,
-            marginBottom: 14,
-          }}>
-            Fleet Status
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {Object.entries(grouped).map(([model, group]) => (
-              <div key={model} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-
-                {/* Model label */}
-                <div style={{ width: 76, flexShrink: 0, textAlign: 'right' }}>
-                  <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
-                    {MODEL_LABELS[model] || model}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#374151' }}>×{group.length}</div>
-                </div>
-
-                {/* Printer cells */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
-                  {group.map(printer => {
-                    const c = cellColors(printer);
-                    return (
-                      <div
-                        key={printer.id}
-                        title={`${printer.name} — ${printer.status}`}
-                        style={{
-                          width: 54, height: 44, borderRadius: 6,
-                          background: c.bg, border: `1px solid ${c.border}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                      >
-                        <span style={{
-                          fontFamily: 'monospace', fontSize: 8, color: c.text,
-                          textAlign: 'center', padding: '0 3px',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          width: '100%',
-                        }}>
-                          {printer.name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Per-row status summary */}
-                <RowSummary group={group} />
-              </div>
-            ))}
-          </div>
-
-          {/* Color legend */}
-          <div style={{
-            display: 'flex', gap: 18, marginTop: 14,
-            paddingTop: 12, borderTop: '1px solid #1e2433',
-          }}>
-            {LEGEND_ITEMS.map(({ label, color }) => (
-              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: '#475569' }}>{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <FleetStatusGrid printers={printers} allModels={allModels} />
 
         {/* ── ACTIVE PROJECTS ─────────────────────────────────────────────── */}
         <div style={{ background: '#111827', borderRadius: 10, padding: '16px 20px' }}>

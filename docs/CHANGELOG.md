@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-09-21: camera feeds stop autoplaying; Webcams page; .local hostname warning
+
+Reported: farm-wide network slowdown (all devices, not just the machine running the app) plus printers configured with a hostname showing OFFLINE despite the same name resolving fine in a browser.
+
+The camera card on the printer detail page rendered `<img src={streamUrl}>` unconditionally whenever a printer had a webcam configured. MJPEG (what every supported connector serves) is a continuous video stream, not a single image: it keeps pulling frames for as long as that `<img>` stays mounted, so a detail page left open in a background tab was a standing video stream over the network for as long as that tab existed, competing for WiFi airtime with every other device on the same access point. That matches "all devices slowed down" far better than anything else touching the network in this app (the 15 s status poller is lightweight JSON, and the poller's own axios calls already time out at a bounded 8 s with no retry). The camera card now defaults to a snapshot (or a placeholder, if the connector has no snapshot endpoint) and only opens the live stream once an operator clicks "Watch Live"; "Stop Live View" closes it again, and switching printers or refetching the page resets back to the snapshot so a stream can't outlive the printer it was opened for.
+
+The in-progress hover-preview feature (camera thumbnail on hovering a printer cell on the Dashboard fleet grid) had the same risk in a worse shape: it fell back to the live `streamUrl` whenever a printer had no `snapshotUrl`, and a hover fires on every mouse pass over the grid. Fixed before it ever shipped: hover previews only ever show a snapshot; a printer with no snapshot endpoint shows a text hint instead of opening its stream. The requested "webcam tab on the left" showing all printers (not just camera-capable ones) with the same hover behavior is now the Webcams page, built on a `FleetStatusGrid` component extracted from the Dashboard so the two pages share one grid implementation instead of drifting into copies.
+
+Separately, `.local` (mDNS) hostnames were already a documented caveat (resolve on Windows/macOS, not inside the published Docker image, which ships with no mDNS resolver), but the Add Printer and printer-edit forms both suggested `octoprint.local` as a placeholder example, actively steering users into the one hostname format that silently breaks under Docker. Fixed the placeholders and added an inline warning under the IP/hostname field the moment a `.local` name is typed, pointing at using the printer's IP address (ideally with a DHCP reservation) instead.
+
+### Changes
+- `client/src/pages/PrinterDetail.jsx`: camera card no longer autoplays; defaults to `snapshotUrl` (or a placeholder), live stream gated behind a "Watch Live" / "Stop Live View" toggle that resets on printer/data refetch; `.local` hostname warning added under the edit form's IP/hostname field, placeholder example changed from `octoprint.local` to `octoprint-01`.
+- `client/src/pages/Settings.jsx`: same `.local` hostname warning and placeholder fix on the Add Printer form's IP/hostname field.
+- `client/src/useCameraHover.jsx`: hover preview shows a snapshot only, never falls back to the live stream; shows a text hint ("Live view only. Open the printer to watch.") when a printer has a camera but no snapshot endpoint.
+- `client/src/components/FleetStatusGrid.jsx`: new, the grouped-by-model printer grid extracted from Dashboard.jsx (cell colors, legend, per-row summary, hover wiring), parameterized by `{ printers, allModels, title, showLegend }` so Dashboard and Webcams render the identical grid.
+- `client/src/pages/Webcams.jsx`: new page, all printers via `GET /api/printers` (polled every 15 s) through `FleetStatusGrid`, no filtering beyond what the grid already does.
+- `client/src/pages/Dashboard.jsx`: fleet grid now renders through `FleetStatusGrid` instead of an inline copy of the same layout.
+- `client/src/App.jsx`: added the Webcams nav item and `/webcams` route.
+- `docs/web-app.md`, `docs/README.md`, `docs/installation.md`: updated for the Webcams page, the camera card's new default-to-snapshot behavior, and the `.local` caveat's real-world symptom (resolves in a browser, shows OFFLINE in the app) with the DHCP-reservation workaround.
+
+Not fixed here: true `.local` resolution from inside the Docker container (would need an mDNS-aware lookup, either an OS-level `avahi`/`libnss-mdns` addition to the image or a new Node dependency such as `multicast-dns` used explicitly by the drivers before connecting). Either path is a new dependency or a Dockerfile/deployment change, which this repo's own rules call out as needing a decision from the project owner rather than being added unilaterally; the IP-address-plus-DHCP-reservation workaround above resolves the immediate outage without one.
+
+---
+
 ## 2026-09-21: fix: PUT/POST /api/printers 500ing since auto_advance shipped
 
 The auto_advance commit added `auto_advance` to `server/routes/printers.js`'s POST/PUT SQL, but this environment had no native toolchain to compile `better-sqlite3` for Node 22, so `npm test` could not actually run locally before that commit shipped, only be syntax-checked. GitHub Actions (which does have a full build toolchain) caught it on both that push and the next one: `server/tests/printers-filaments.test.js` builds its own in-memory `printers` schema and drives the real `routes/printers.js` router directly, and that schema predated `auto_advance`, so every `PUT /api/printers/:id` in that file 500'd with "no such column: auto_advance" instead of the expected 200.

@@ -69,6 +69,7 @@ print-farm-manager/
 │   │       ├── Users.jsx          # Admin: account management
 │   │       ├── Account.jsx        # Self-service API key management
 │   │       ├── Fleet.jsx          # Live printer grid
+│   │       ├── Webcams.jsx        # All-printers grid, hover-to-preview camera only
 │   │       ├── Printers.jsx       # All-printers directory
 │   │       ├── PrinterDetail.jsx  # Per-printer event timeline + notes
 │   │       ├── Decommissioned.jsx # Decommissioned printers + recommission

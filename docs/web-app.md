@@ -5,10 +5,11 @@
 The React single-page application served by Vite. In development, Vite runs on port 5173 and proxies all `/api/*` requests to the Express server on port 3000. The whole app is gated behind `AuthContext` (see [docs/auth.md](auth.md)): a logged-out visitor sees only the Login page, regardless of which URL they land on. The app provides:
 
 - **Login page**: email/password sign-in, a "Sign in with SSO" button when OIDC is configured, and a one-time "create the admin account" form on a fresh install
-- **Dashboard** — TV-optimized command center: fleet utilization, stat cards, printer grid, active project progress, and a needs-attention panel
-- **Fleet page** — live grid of all active printers with status, filterable and searchable
-- **Printers page** — searchable directory of all printers (active and decommissioned); click any row to open the detail view
-- **Printer detail view**: per-machine event timeline, inline note form, printer header, a live camera feed (OctoPrint/Klipper), and a popup for cataloging any print sent straight to the printer outside the farm
+- **Dashboard**: TV-optimized command center: fleet utilization, stat cards, printer grid (hover a printer for a camera preview), active project progress, and a needs-attention panel
+- **Fleet page**: live grid of all active printers with status, filterable and searchable
+- **Webcams page**: the same grouped printer grid as the Dashboard, showing every printer (not just camera-capable ones), for a dedicated hover-to-preview camera view
+- **Printers page**: searchable directory of all printers (active and decommissioned); click any row to open the detail view
+- **Printer detail view**: per-machine event timeline, inline note form, printer header, a camera card (OctoPrint/Klipper) that opens on a snapshot and streams live only once "Watch Live" is clicked, and a popup for cataloging any print sent straight to the printer outside the farm
 - **Settings page** — CSV import UI for the printer registry, with flagged-row resolution
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
@@ -26,13 +27,16 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Account.jsx` | Self-service API key management |
 | `client/src/pages/Users.jsx` | Admin-only account management |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
+| `client/src/pages/Webcams.jsx` | All-printers grid dedicated to the hover camera preview |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
-| `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline, note form, camera feed, catalog-print popup |
+| `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline, note form, camera card, catalog-print popup |
 | `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
 | `client/src/pages/Settings.jsx` | CSV import, flagged-row resolution, printer models |
 | `client/src/pages/Dashboard.jsx` | TV command center dashboard |
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
+| `client/src/components/FleetStatusGrid.jsx` | Grouped-by-model printer grid, shared by Dashboard and Webcams |
+| `client/src/useCameraHover.jsx` | Hover-to-preview camera hook used by `FleetStatusGrid`: lazy-fetches `GET /api/printers/:id/camera` on first hover, shows a snapshot only (never the live stream) |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -49,6 +53,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 │                   │                       │
 │  Dashboard        │                       │
 │  Fleet            │                       │
+│  Webcams          │                       │
 │  Printers         │                       │
 │  Projects         │                       │
 │  Jobs             │                       │
@@ -92,7 +97,7 @@ TV-optimized command center intended to be shown full-screen on a large monitor 
 |---|---|
 | Header | Branding, fleet utilization % (printing / total), live HH:MM:SS clock and date |
 | Hero stat cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) — large tabular numerals |
-| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend |
+| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend. Hovering a cell shows a floating camera snapshot if the printer has one configured (`useCameraHover.jsx`); it never opens the live stream, since a hover fires far too often for that to be a lightweight preview. |
 | Active Projects | All active projects, ordered by dispatch priority (same order as the Projects page), with **all parts** listed: per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
 | Needs Attention | Every printer requiring a human, sorted by priority: AWAITING → ERROR → STOPPED → PAUSED → OFFLINE, then longest-waiting first. Each row shows a reason badge, printer name, and wait time derived from `last_event_at`. Empty state renders a green "✓ All clear" badge. |
 
@@ -108,6 +113,14 @@ The bottom row is a 2-column grid (`2fr 1fr`): Active Projects takes two-thirds,
 | Orange | STOPPED |
 | Red | ERROR |
 | Near-black | OFFLINE |
+
+---
+
+## Webcams Page
+
+`client/src/pages/Webcams.jsx`
+
+Renders `FleetStatusGrid` (the same component the Dashboard's fleet grid uses) against every printer from `GET /api/printers`, polled every 15 seconds, rather than only the subset `GET /api/dashboard` returns. Unlike Fleet or Printers, this page exists purely as a hover surface: there is no filtering, search, or per-printer action, just the grid and the same hover-to-preview camera behavior. Hovering a cell fetches `GET /api/printers/:id/camera` once (cached for the rest of the page visit) and shows a snapshot if one is configured; printers whose connector only exposes a live stream show a text hint instead of opening that stream, since opening a continuous MJPEG connection on every hover would be a standing bandwidth cost with no user intent behind it. Watching a live feed remains an explicit action on the printer's own detail page.
 
 ---
 
@@ -203,7 +216,7 @@ Per-machine history and annotation screen. Reached by clicking a printer card in
 - Note text (if any)
 - Formatted timestamp
 
-**Camera card:** fetched from `GET /api/printers/:id/camera` alongside the rest of the page's data. Renders an `<img>` pointed at the MJPEG stream URL when the printer's connector supports one (OctoPrint, Klipper); nothing is rendered for connectors that don't. See [docs/api.md](api.md).
+**Camera card:** fetched from `GET /api/printers/:id/camera` alongside the rest of the page's data; nothing is rendered for connectors that don't support one. The MJPEG stream URL is continuous video, not a single frame, so it never autoplays: the card defaults to the connector's snapshot URL if it has one (or a placeholder if it doesn't), and a "Watch Live" button swaps in the live `<img src={streamUrl}>`, with "Stop Live View" to close it again without navigating away. Switching printers (or any refetch of the page's data) resets the card back to the snapshot, so a stream is never left running against a printer you've navigated away from. See [docs/api.md](api.md).
 
 **Catalog-print popup:** opens automatically (a fixed-position modal, not a page navigation) when the fetched printer has `needs_catalog: true`, meaning it is `PRINTING` or `FINISHED` with no job the farm dispatched, the signature of a print sent straight to it from outside the farm (e.g. OrcaSlicer). Prompts for a Part (grouped by project, open parts only) and a quantity, then submits to `POST /api/printers/:id/catalog-print`. A "Not now" button dismisses it for the rest of this page visit without submitting; reloading the page re-opens it as long as `needs_catalog` is still true server-side.
 
