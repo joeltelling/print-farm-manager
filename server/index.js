@@ -363,6 +363,101 @@ const server = app.listen(PORT, () => {
     scheduler.scheduleForPrinter(updated);
     res.json(updated);
   });
+
+  // Catalog a print the farm never dispatched: the operator sliced and sent it straight
+  // to the printer (e.g. from OrcaSlicer) instead of going through a Project/Part upload.
+  // Only reachable while GET /api/printers reports needs_catalog: true for this printer
+  // (see the NEEDS_CATALOG_SQL comment in routes/printers.js for exactly what that means
+  // and why it can't collide with the normal awaiting-sign-off flow), and re-checked here
+  // server-side as the mutex against a double-submit race, the same role the synchronous
+  // job INSERT plays in the scheduler's own dispatch path.
+  //
+  // completed_qty analysis (see CLAUDE.md "Part counts are sacred"): the real-world event
+  // backing a credit here is the operator's own one-time submission of this form for a
+  // printer currently showing FINISHED with no job of any kind attached to it. It cannot
+  // double-fire because inserting the job row immediately makes needs_catalog false for
+  // every subsequent check (a job now exists), and the FINISHED branch below is the only
+  // place in this handler that touches completed_qty. The PRINTING branch touches nothing:
+  // the job is created as 'printing' and credited later exactly once, through the existing,
+  // unmodified _handleFinished path when the poller sees the real FINISHED transition,
+  // the same mechanism every normally-dispatched job already goes through.
+  app.post('/api/printers/:id/catalog-print', (req, res) => {
+    const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+    if (!printer) return res.status(404).json({ error: 'Printer not found' });
+
+    const { part_id, parts_per_plate, note } = req.body || {};
+    const qty = parseInt(parts_per_plate, 10);
+    if (!part_id || !qty || qty < 1) {
+      return res.status(400).json({ error: 'part_id and a positive parts_per_plate are required' });
+    }
+
+    const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(part_id);
+    if (!part) return res.status(404).json({ error: 'Part not found' });
+
+    if (!['PRINTING', 'FINISHED'].includes(printer.status)) {
+      return res.status(409).json({ error: `Printer is ${printer.status}, not PRINTING or FINISHED: nothing to catalog` });
+    }
+    const hasUnownedActivity = !db.prepare(`
+      SELECT 1 FROM jobs WHERE printer_id = ? AND status IN ('uploading', 'printing')
+    `).get(printer.id) && !db.prepare(`
+      SELECT 1 FROM jobs j WHERE j.printer_id = ? AND j.status = 'finished'
+        AND NOT EXISTS (SELECT 1 FROM jobs j2 WHERE j2.printer_id = j.printer_id AND j2.id != j.id AND j2.created_at > j.finished_at)
+    `).get(printer.id);
+    if (!hasUnownedActivity) {
+      return res.status(409).json({ error: 'This printer already has a tracked job: nothing to catalog' });
+    }
+
+    const now = Date.now();
+
+    // Reuse the Part's existing gcode for this printer's model if one is already
+    // registered (the common case: the operator just chose to slice and send this one
+    // print manually instead of going through the farm's own dispatch). Otherwise record a
+    // placeholder: there is no file to point at since the farm never received one.
+    let gcode = db.prepare(
+      'SELECT * FROM gcodes WHERE part_id = ? AND printer_model = ?'
+    ).get(part.id, printer.model);
+    if (!gcode) {
+      const result = db.prepare(`
+        INSERT INTO gcodes (part_id, printer_model, filename, filepath, parts_per_plate, created_at)
+        VALUES (?, ?, ?, '', ?, ?)
+      `).run(part.id, printer.model, `External upload via ${printer.name}`, qty, now);
+      gcode = db.prepare('SELECT * FROM gcodes WHERE id = ?').get(result.lastInsertRowid);
+    }
+
+    const wasFinished = printer.status === 'FINISHED';
+    const jobResult = db.prepare(`
+      INSERT INTO jobs (part_id, printer_id, gcode_id, parts_per_plate, status, started_at, finished_at, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(part.id, printer.id, gcode.id, qty, wasFinished ? 'finished' : 'printing', now, wasFinished ? now : null, now);
+
+    events.insert(printer.id, 'note',
+      `Catalogued externally-started print: part "${part.name}", ${qty}/plate${note ? `, ${note}` : ''}`);
+
+    if (wasFinished) {
+      db.prepare(`UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?`).run(qty, now, part.id);
+      const updatedPart = db.prepare('SELECT * FROM parts WHERE id = ?').get(part.id);
+      console.log(`[server] ${printer.name} catalogued job ${jobResult.lastInsertRowid}: Part "${updatedPart.name}" ${updatedPart.completed_qty}/${updatedPart.target_qty}`);
+      if (updatedPart.completed_qty >= updatedPart.target_qty && updatedPart.status === 'open') {
+        db.prepare(`UPDATE parts SET status = 'closed', updated_at = ? WHERE id = ?`).run(now, updatedPart.id);
+        db.prepare(`UPDATE jobs SET status = 'cancelled' WHERE part_id = ? AND status = 'queued'`).run(updatedPart.id);
+        console.log(`[server] Part "${updatedPart.name}" closed (${updatedPart.completed_qty}/${updatedPart.target_qty})`);
+        const openCount = db.prepare(
+          `SELECT COUNT(*) AS count FROM parts WHERE project_id = ? AND status = 'open'`
+        ).get(updatedPart.project_id).count;
+        if (openCount === 0) {
+          db.prepare(`UPDATE projects SET status = 'completed', updated_at = ? WHERE id = ?`).run(now, updatedPart.project_id);
+          console.log(`[server] Project ${updatedPart.project_id} completed!`);
+        }
+      }
+      db.prepare('UPDATE printers SET is_held = 0 WHERE id = ?').run(printer.id);
+      const updated = db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id);
+      scheduler.scheduleForPrinter(updated);
+      return res.json(updated);
+    }
+
+    console.log(`[server] ${printer.name} catalogued job ${jobResult.lastInsertRowid} (still printing): Part "${part.name}"`);
+    res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
+  });
 });
 
 module.exports = { app, server };

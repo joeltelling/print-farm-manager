@@ -41,6 +41,30 @@ module.exports = (db) => {
     'INSERT OR IGNORE INTO printer_groups (name, created_at) VALUES (?, ?)'
   );
 
+  // needs_catalog: true when the printer is actively printing or shows finished, but no
+  // job row exists to own that activity: the signature of a print started outside the
+  // farm (e.g. sliced and sent straight to the printer from OrcaSlicer). Every job the
+  // scheduler itself dispatches gets a job row synchronously before the upload even starts
+  // (see scheduler.js dispatch step 4), so a live/finished printer with no matching job can
+  // only mean the farm never dispatched it. Deliberately excludes the normal
+  // awaiting-sign-off case (a real 'finished' job that no newer job has superseded); that
+  // already has its own Set Ready / Bad Print flow on the Fleet page. The "no newer job"
+  // half of that exclusion mirrors the existing fallback lookup in mark-job-failure below.
+  const NEEDS_CATALOG_SQL = `
+    (
+      p.status IN ('PRINTING', 'FINISHED')
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs j WHERE j.printer_id = p.id AND j.status IN ('uploading', 'printing')
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs j WHERE j.printer_id = p.id AND j.status = 'finished'
+          AND NOT EXISTS (
+            SELECT 1 FROM jobs j2 WHERE j2.printer_id = j.printer_id AND j2.id != j.id AND j2.created_at > j.finished_at
+          )
+      )
+    ) AS needs_catalog
+  `;
+
   // GET /api/printers — list active printers only
   // Includes last_parts_per_plate from the most recent job (finished/printing/failed/cancelled),
   // used by the Fleet UI to pre-fill the confirmed-qty input on held printers.
@@ -65,7 +89,8 @@ module.exports = (db) => {
         ) AS uploading_job_name,
         EXISTS(
           SELECT 1 FROM jobs j WHERE j.printer_id = p.id AND j.status = 'printing'
-        ) AS has_printing_job
+        ) AS has_printing_job,
+        ${NEEDS_CATALOG_SQL}
       FROM printers p
       WHERE p.is_active = 1
       ORDER BY p.name
@@ -109,7 +134,7 @@ module.exports = (db) => {
 
   // GET /api/printers/:id
   router.get('/:id', (req, res) => {
-    const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+    const printer = db.prepare(`SELECT p.*, ${NEEDS_CATALOG_SQL} FROM printers p WHERE p.id = ?`).get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     res.json(printer);
   });

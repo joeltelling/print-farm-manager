@@ -97,6 +97,11 @@ export default function PrinterDetail() {
   const [detailsDraft, setDetailsDraft]     = useState({});
   const [detailsError, setDetailsError]     = useState(null);
   const [savingDetails, setSavingDetails]   = useState(false);
+  const [catalogDismissed, setCatalogDismissed] = useState(false);
+  const [catalogOptions, setCatalogOptions] = useState(null); // { projects, parts }
+  const [catalogForm, setCatalogForm]       = useState({ part_id: '', parts_per_plate: '', note: '' });
+  const [catalogError, setCatalogError]     = useState(null);
+  const [catalogSaving, setCatalogSaving]   = useState(false);
 
   const fetchData = useCallback(async () => {
     const [printerRes, eventsRes, statsRes, modelsRes, typesRes, colorsRes, groupsRes, cameraRes] = await Promise.all([
@@ -125,6 +130,45 @@ export default function PrinterDetail() {
     const res = await fetch(`/api/printers/${id}/jobs?page=${page}`);
     if (res.ok) setJobHistory(await res.json());
   }, [id]);
+
+  // Load the Project/Part picker's options only when the "catalog this print" popup is
+  // actually needed (see needs_catalog in server/routes/printers.js), and only once per
+  // visit to this page: no extra requests on the common case where nothing was
+  // externally dispatched.
+  useEffect(() => {
+    if (printer?.needs_catalog && !catalogOptions && !catalogDismissed) {
+      Promise.all([fetch('/api/projects'), fetch('/api/parts')]).then(async ([projectsRes, partsRes]) => {
+        setCatalogOptions({
+          projects: projectsRes.ok ? await projectsRes.json() : [],
+          parts: partsRes.ok ? await partsRes.json() : [],
+        });
+      });
+    }
+  }, [printer, catalogOptions, catalogDismissed]);
+
+  async function submitCatalog(e) {
+    e.preventDefault();
+    setCatalogSaving(true);
+    setCatalogError(null);
+    try {
+      const res = await fetch(`/api/printers/${id}/catalog-print`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          part_id: catalogForm.part_id,
+          parts_per_plate: catalogForm.parts_per_plate,
+          note: catalogForm.note.trim() || undefined,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setCatalogError(body.error || `Failed (${res.status})`); return; }
+      setCatalogOptions(null);
+      setCatalogForm({ part_id: '', parts_per_plate: '', note: '' });
+      fetchData();
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
 
   useEffect(() => { fetchData(); }, [fetchData]);
   useEffect(() => { fetchJobPage(jobPage); }, [fetchJobPage, jobPage]);
@@ -684,6 +728,117 @@ export default function PrinterDetail() {
               >Next →</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Uncataloged-print popup: opens automatically when this printer is actively printing
+          or shows finished with no job the farm dispatched (see needs_catalog). Lets the
+          operator attach whatever OrcaSlicer, or any other tool outside the farm, sent
+          straight to the printer to a real Part, instead of leaving it untracked forever. */}
+      {printer.needs_catalog && catalogOptions && !catalogDismissed && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 20, backdropFilter: 'blur(3px)',
+          }}
+        >
+          <form
+            onSubmit={submitCatalog}
+            style={{
+              background: '#1e2433', border: '1px solid #334155', borderRadius: 10,
+              padding: '24px 28px', maxWidth: 440, width: '100%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 8 }}>
+              Uncataloged print on {printer.name}
+            </div>
+            <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, marginBottom: 16 }}>
+              This printer is {printer.status === 'PRINTING' ? 'printing' : 'showing a finished print'}, but the farm has no record of dispatching it, likely sliced and sent directly from OrcaSlicer or another tool. Tell us what it is so the count gets tracked.
+            </div>
+
+            <label style={{ display: 'block', fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 6 }}>
+              Part
+            </label>
+            <select
+              required
+              value={catalogForm.part_id}
+              onChange={e => setCatalogForm(f => ({ ...f, part_id: e.target.value }))}
+              disabled={catalogSaving}
+              style={{ ...detailInputStyle, width: '100%', marginBottom: 14, cursor: 'pointer', boxSizing: 'border-box' }}
+            >
+              <option value="">Select a part…</option>
+              {catalogOptions.projects
+                .filter(pr => pr.status !== 'completed')
+                .map(pr => {
+                  const parts = catalogOptions.parts.filter(p => p.project_id === pr.id && p.status === 'open');
+                  if (parts.length === 0) return null;
+                  return (
+                    <optgroup key={pr.id} label={pr.name}>
+                      {parts.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.completed_qty}/{p.target_qty})</option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+            </select>
+
+            <label style={{ display: 'block', fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 6 }}>
+              Quantity on this plate
+            </label>
+            <input
+              type="number"
+              min={1}
+              required
+              value={catalogForm.parts_per_plate}
+              onChange={e => setCatalogForm(f => ({ ...f, parts_per_plate: e.target.value }))}
+              disabled={catalogSaving}
+              style={{ ...detailInputStyle, width: '100%', marginBottom: 14, boxSizing: 'border-box' }}
+            />
+
+            <label style={{ display: 'block', fontSize: 12, color: '#64748b', fontWeight: 600, marginBottom: 6 }}>
+              Note (optional)
+            </label>
+            <textarea
+              rows={2}
+              value={catalogForm.note}
+              onChange={e => setCatalogForm(f => ({ ...f, note: e.target.value }))}
+              disabled={catalogSaving}
+              style={{ ...detailInputStyle, width: '100%', marginBottom: 14, resize: 'vertical', boxSizing: 'border-box' }}
+            />
+
+            {catalogError && (
+              <div style={{ fontSize: 12, color: '#fca5a5', marginBottom: 14 }}>{catalogError}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setCatalogDismissed(true)}
+                disabled={catalogSaving}
+                style={{
+                  background: '#1f2937', color: '#9ca3af', border: '1px solid #374151',
+                  borderRadius: 6, padding: '8px 18px', fontSize: 13, fontWeight: 500,
+                  cursor: catalogSaving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Not now
+              </button>
+              <button
+                type="submit"
+                disabled={catalogSaving || !catalogForm.part_id || !catalogForm.parts_per_plate}
+                style={{
+                  background: catalogSaving || !catalogForm.part_id || !catalogForm.parts_per_plate ? '#374151' : '#1e40af',
+                  color: catalogSaving || !catalogForm.part_id || !catalogForm.parts_per_plate ? '#6b7280' : '#fff',
+                  border: 'none', borderRadius: 6, padding: '8px 18px', fontSize: 13, fontWeight: 600,
+                  cursor: catalogSaving || !catalogForm.part_id || !catalogForm.parts_per_plate ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {catalogSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

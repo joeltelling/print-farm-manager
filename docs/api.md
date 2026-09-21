@@ -149,6 +149,8 @@ Returns all active printers (`is_active = 1`) ordered by name.
 
 `uploading_job_name` is the filename of the printer's active `uploading` job (`null` when none). The Fleet UI uses it with `has_uploading_job` to display an "Uploading" status overlay while a file transfers — the hardware still reports IDLE during transfer, so this is presentation-only and never written back to `status`.
 
+`needs_catalog` is `1` when the printer is `PRINTING` or `FINISHED` but no job row exists to own that activity, the signature of a print started outside the farm (sliced and sent straight to the printer, e.g. from OrcaSlicer, instead of through a Project/Part upload). The printer detail page opens the "catalog this print" popup automatically when this is `1`. See `POST /api/printers/:id/catalog-print` below and `docs/database.md`'s `jobs` section for exactly how it is computed.
+
 ### `GET /api/printers/ams?model=<model_id>`
 
 Returns the live AMS slot list from any connected Bambu printer of the given model. Used by the upload form to populate the slot picker.
@@ -236,6 +238,24 @@ Accepts an optional body:
 If `confirmed_qty` is provided and differs from the `parts_per_plate` of the printer's most recent finished job, the delta is applied to the part's `completed_qty` (e.g. operator confirms 24 of 25 good → `completed_qty` decremented by 1). If the auto-credit had closed the part, it is reopened. Omitting the body leaves `completed_qty` unchanged.
 
 **OFFLINE-with-job exception:** if the printer's current status is `OFFLINE` and it has a `printing` job (no finished job), qty is not credited and the job is not marked finished. The printer is simply unheld and the job continues to its natural finish. This is the "Job OK" path from the Fleet UI — the operator is confirming the job is still running, not that it completed.
+
+Returns the updated printer object.
+
+### `POST /api/printers/:id/catalog-print`
+
+Attaches a print the farm never dispatched (sliced and sent straight to the printer, e.g. from OrcaSlicer) to a real Part, so it gets tracked like any other job. Only meaningful while `GET /api/printers` reports `needs_catalog: true` for this printer; the printer detail page's popup opens automatically in that case.
+
+**Body:**
+```json
+{ "part_id": 12, "parts_per_plate": 5, "note": "optional" }
+```
+
+`part_id` and a positive `parts_per_plate` are required. `404` if the printer or part isn't found, `400` if `parts_per_plate` is missing or not positive, `409` if the printer isn't `PRINTING`/`FINISHED` or already has a tracked job (the double-submit guard, and the same condition `needs_catalog` itself checks).
+
+Reuses the Part's existing gcode for this printer's model if one is already registered; otherwise records a placeholder gcode entry (there is no file to point at, since the farm never received one). Always logs a `note` event on the printer.
+
+- **Printer is `FINISHED`:** credits `completed_qty` by `parts_per_plate` immediately, closes the Part/Project if targets are met (same cascade as `set-ready`'s missed-finish case), releases the hold, and dispatches the next job.
+- **Printer is `PRINTING`:** creates the job as `printing` and stops there. `completed_qty` is credited later, exactly once, through the normal `_handleFinished` path when the poller sees the real `FINISHED` transition; nothing here is touched now.
 
 Returns the updated printer object.
 

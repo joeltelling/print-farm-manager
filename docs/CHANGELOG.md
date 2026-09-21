@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-09-21: catalog prints sent straight to the printer (OrcaSlicer and other direct uploads)
+
+OrcaSlicer's "send to printer" (and any other tool) already uploads straight to a printer's own protocol, bypassing the farm's dispatch entirely, so the farm never had a way to know that print happened. Added detection: `needs_catalog` on the printer row is true when the printer is `PRINTING` or `FINISHED` but no job row owns that activity, the exact signature of a print the farm never dispatched (every farm-dispatched job gets its job row synchronously before the upload even starts). The printer detail page opens a popup automatically in that case, asking which Part and how many parts are on the plate, then `POST /api/printers/:id/catalog-print` attaches it.
+
+Considered relaying uploads through the farm server instead (pointing OrcaSlicer's printer-host setting at the farm, which would then forward to the real printer). Went with detection instead: it needs no new dependency, no per-brand protocol emulation, and the print still starts even if the farm server happens to be down, since it goes straight to the printer either way.
+
+`completed_qty` analysis (this repo's own hardest rule): a `FINISHED` printer with no job credits immediately, gated on the operator's one-time form submission and a server-side re-check that no job already owns the activity (the same role the scheduler's own synchronous job INSERT plays as a dispatch mutex), then follows the identical close-Part/complete-Project cascade `set-ready`'s missed-finish case already uses. A `PRINTING` printer with no job credits nothing at all right now: the job is created as `printing` and picked up later, exactly once, by the existing, unmodified `_handleFinished` path when the poller sees the real `FINISHED` transition, the same mechanism every normally-dispatched job already goes through.
+
+Not yet validated against a live OrcaSlicer upload. The route lives inline in `server/index.js` (closure access to `db` and `scheduler`, matching `set-ready`'s existing pattern) and is covered by a supertest file that replicates its logic against an in-memory DB, following this repo's standard pattern for testing those inline routes (see `set-ready.test.js`); it could not be executed in this environment (no native toolchain here to compile `better-sqlite3` for Node 22, the same pre-existing limitation noted in the previous two entries).
+
+### Changes
+- `server/routes/printers.js`: new `needs_catalog` computed column on `GET /api/printers` and `GET /api/printers/:id`.
+- `server/index.js`: new `POST /api/printers/:id/catalog-print` route.
+- `client/src/pages/PrinterDetail.jsx`: new popup, opens automatically when `needs_catalog` is true, lets the operator pick a Part, enter a quantity and an optional note, and submit.
+- `server/tests/catalog-print.test.js`: new test file.
+- `docs/api.md`: documented `needs_catalog` and the new endpoint.
+
 ## 2026-09-21: accounts, sessions, OIDC single sign-on, and API keys
 
 This app had no authentication at all until now: any client that could reach port 3000 had full read/write access to every printer credential, job, and part count. Adds accounts (email/password plus generic OIDC), admin/operator roles, and long-lived API keys for scripts and external tools, gating every route except health/auth under `requireAuth`.
