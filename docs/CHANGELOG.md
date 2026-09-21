@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-21: fix: PUT/POST /api/printers 500ing since auto_advance shipped
+
+The auto_advance commit added `auto_advance` to `server/routes/printers.js`'s POST/PUT SQL, but this environment had no native toolchain to compile `better-sqlite3` for Node 22, so `npm test` could not actually run locally before that commit shipped, only be syntax-checked. GitHub Actions (which does have a full build toolchain) caught it on both that push and the next one: `server/tests/printers-filaments.test.js` builds its own in-memory `printers` schema and drives the real `routes/printers.js` router directly, and that schema predated `auto_advance`, so every `PUT /api/printers/:id` in that file 500'd with "no such column: auto_advance" instead of the expected 200.
+
+Confirmed via `gh run view --log-failed` against the actual failed CI runs (this machine still can't run `npm test` itself) rather than guessed at. Also swept every test file that builds its own printers schema and drives the real router: `server/tests/printers-decommission.test.js` had the same gap (added defensively, though it doesn't currently exercise POST/PUT) and `server/tests/printers-filaments.test.js` was the only one actually broken. Separately, `server/routes/filaments.js` (rewritten in the filament-colors commit) had no dedicated test file at all; added one now rather than continue relying on `backup-restore.test.js`'s incidental coverage of the schema alone.
+
+This time validated against real CI on a branch before merging to main, instead of pushing straight to main and hoping.
+
+### Changes
+- `server/tests/printers-filaments.test.js`, `server/tests/printers-decommission.test.js`: added `auto_advance INTEGER DEFAULT 0` to each file's own `printers` schema.
+- `server/tests/filaments.test.js`: new file, full coverage of `server/routes/filaments.js` (types CRUD, colors CRUD, `type_ids` validation, the flattened vs. grouped color shapes, and delete/type-list-replace behavior).
+
+---
+
 ## 2026-09-21: filament colors can apply to more than one type
 
 Requested to stop re-entering "Black" once per material. Colors were previously scoped one-to-one with a type (`filament_colors.type_id NOT NULL`, `UNIQUE(type_id, name)`); a color is now its own entity, linked to one or more types through a new `filament_color_types` join table, editable at any time from the Settings admin table (click a color's type list to check/uncheck, Save) rather than only settable once at creation.

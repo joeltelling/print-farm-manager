@@ -28,6 +28,7 @@ beforeAll(() => {
       decommissioned_at INTEGER,
       decommission_note TEXT,
       serial_number    TEXT DEFAULT '',
+      auto_advance     INTEGER DEFAULT 0,
       created_at       INTEGER NOT NULL
     );
     CREATE TABLE projects (
