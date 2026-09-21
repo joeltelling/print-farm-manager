@@ -301,4 +301,48 @@ try {
   }
 } catch (_) {}
 
+// Auth: users, sessions, API keys. New installs start with zero users, and
+// the first person to open the app is walked through creating the first (admin)
+// account via POST /api/auth/bootstrap. password_hash is nullable because an
+// OIDC-only user never sets one; oidc_subject is nullable and unique because
+// only OIDC-linked users have one.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    email         TEXT NOT NULL UNIQUE,
+    name          TEXT NOT NULL,
+    password_hash TEXT,
+    role          TEXT NOT NULL DEFAULT 'operator',
+    oidc_subject  TEXT UNIQUE,
+    created_at    INTEGER NOT NULL,
+    last_login_at INTEGER
+  )`);
+} catch (_) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+    token       TEXT PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    created_at  INTEGER NOT NULL,
+    expires_at  INTEGER NOT NULL
+  )`);
+} catch (_) {}
+
+// key_hash never stores the raw key (same pattern as password_hash). key_prefix
+// is the first 8 characters of the plaintext key, kept only so the Settings UI
+// can show "pfm_ab12cd34..." to help an operator recognize which key is which
+// without ever displaying the full secret again after creation.
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS api_keys (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id),
+    name          TEXT NOT NULL,
+    key_prefix    TEXT NOT NULL,
+    key_hash      TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    last_used_at  INTEGER,
+    revoked_at    INTEGER
+  )`);
+} catch (_) {}
+
 module.exports = db;

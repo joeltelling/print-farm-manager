@@ -8,6 +8,14 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    # Optional single sign-on (see docs/auth.md). All four must be set for
+    # SSO to activate; uncomment and fill in to enable it, or leave commented
+    # out to use local email/password accounts only.
+    # environment:
+    #   - OIDC_ISSUER_URL=https://your-idp.example.com
+    #   - OIDC_CLIENT_ID=your-client-id
+    #   - OIDC_CLIENT_SECRET=your-client-secret
+    #   - OIDC_REDIRECT_URI=http://your-farm-host:3000/api/auth/oidc/callback
     volumes:
       - farm-data:/app/server/data
       - farm-gcode:/app/server/gcode

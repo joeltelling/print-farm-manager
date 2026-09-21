@@ -19,7 +19,11 @@ const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
 const events         = require('./events');
 const backup         = require('./backup');
+const auth           = require('./auth');
 
+const authRouter         = require('./routes/auth')(db);
+const usersRouter        = require('./routes/users')(db);
+const apiKeysRouter      = require('./routes/api-keys')(db);
 const printersRouter     = require('./routes/printers')(db);
 const jobsRouter         = require('./routes/jobs')(db);
 const backupRouter       = require('./routes/backup')(db);
@@ -35,7 +39,30 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Health check: always public, used by uptime checks that never authenticate.
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
+});
+
+// Auth routes: mounted ahead of the global auth gate below because most of
+// them (status, bootstrap, login, OIDC start/callback) are exactly what an
+// unauthenticated visitor must be able to reach. GET /api/auth/me is the one
+// route in this router that does require auth; it applies requireAuth
+// directly on itself (see routes/auth.js) rather than depending on the
+// global gate below, since that gate is registered after this router and
+// would never run for a request this router already finished handling.
+app.use('/api/auth', authRouter);
+
+// Global auth gate: every other /api/* route requires a valid session
+// cookie or API key. Static asset serving and the SPA catch-all below stay
+// unauthenticated at the Express layer; the client redirects to /login itself
+// when GET /api/auth/me comes back 401, and every route that actually reads
+// or writes farm data lives behind this gate regardless.
+app.use('/api', auth.requireAuth(db));
+
 // API routes
+app.use('/api/users',           auth.requireRole('admin'), usersRouter);
+app.use('/api/api-keys',        apiKeysRouter);
 app.use('/api/printers',        printersRouter);
 app.use('/api/printers/:id/jobs', printerJobsRouter);
 app.use('/api/jobs',            jobsRouter);
@@ -45,11 +72,6 @@ app.use('/api/settings',        settingsRouter);
 app.use('/api/models',          modelsRouter);
 app.use('/api/groups',          groupsRouter);
 app.use('/api/filaments',       filamentsRouter);
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
-});
 
 // Server notifications — surfaced in the Settings UI
 app.get('/api/notifications', (_req, res) => res.json(notifications.list()));

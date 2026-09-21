@@ -32,12 +32,14 @@
   "dependencies": {
     "axios": "^1.7.2",
     "basic-ftp": "^5.2.1",
+    "bcryptjs": "^2.4.3",
     "better-sqlite3": "^9.6.0",
     "concurrently": "^8.2.2",
     "express": "^4.19.2",
     "form-data": "^4.0.5",
     "mqtt": "^5.15.1",
     "multer": "^2.2.0",
+    "openid-client": "^5.7.0",
     "papaparse": "^5.4.1",
     "sdcp": "^0.5.4"
   },

@@ -21,6 +21,7 @@ Prefer Docker over a local Node.js install? `docker compose up --build print-far
 |---|---|
 | [docs/installation.md](installation.md) | Windows install guide — prerequisites, setup, auto-start with PM2, updating, troubleshooting |
 | [docs/server.md](server.md) | Express entry point, scheduler wiring, port config, route mounting, startup sequence |
+| [docs/auth.md](auth.md) | Authentication: sessions, API keys, OIDC single sign-on, roles, first-run bootstrap |
 | [docs/database.md](database.md) | SQLite schema — all tables, column types, conventions, migrations |
 | [docs/poller.md](poller.md) | Printer polling loop, concurrency model, event emissions |
 | [docs/api.md](api.md) | All REST endpoints — request/response shapes, error codes |
@@ -38,11 +39,16 @@ print-farm-manager/
 ├── server/
 │   ├── index.js          # Express entry point
 │   ├── db.js             # SQLite connection + schema init + startup migrations
+│   ├── auth.js            # Password hashing, sessions, API keys, requireAuth/requireRole
+│   ├── oidc.js             # Generic OIDC client wrapper (lazy discovery)
 │   ├── poller.js         # Printer polling loop (EventEmitter)
 │   ├── scheduler.js      # Job dispatch engine (EventEmitter)
 │   ├── events.js         # Printer event log helper — insert(printerId, type, note)
 │   ├── notifications.js  # In-memory operator alert store
 │   └── routes/
+│       ├── auth.js        # Bootstrap, login/logout, session check, OIDC start/callback
+│       ├── users.js       # Admin-only account management
+│       ├── api-keys.js    # Self-service API key management
 │       ├── printers.js   # CRUD + CSV import + decommission/recommission
 │       ├── events.js     # GET/POST /api/printers/:id/events
 │       ├── projects.js   # Project CRUD + complete/reactivate/reorder
@@ -57,7 +63,11 @@ print-farm-manager/
 │   ├── src/
 │   │   ├── App.jsx       # Layout + router
 │   │   ├── main.jsx      # React root
+│   │   ├── AuthContext.jsx # Current-user state, checked via GET /api/auth/me
 │   │   └── pages/
+│   │       ├── Login.jsx          # Bootstrap/login form + SSO button
+│   │       ├── Users.jsx          # Admin: account management
+│   │       ├── Account.jsx        # Self-service API key management
 │   │       ├── Fleet.jsx          # Live printer grid
 │   │       ├── Printers.jsx       # All-printers directory
 │   │       ├── PrinterDetail.jsx  # Per-printer event timeline + notes

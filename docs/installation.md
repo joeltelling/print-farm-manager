@@ -229,9 +229,32 @@ To stop the server, press `Ctrl + C` in the terminal.
 
 ---
 
+## First Run: Creating the Admin Account
+
+The first time anyone opens the app (`http://<machine-ip>:3000`), no accounts exist yet, so you land on a "Create the admin account" form instead of a login screen. Fill in a name, email, and password (8 characters minimum) and submit: this becomes the first `admin` account, and you're signed in immediately. There is no other way to create the first account: this form only appears while the user list is empty, and refuses to run again once it isn't (protects against someone else racing to create an account on your farm's first boot).
+
+From there, use **Users** (visible to admins only) to add accounts for other operators. See [docs/auth.md](auth.md) for the full model, roles, API keys, and single sign-on.
+
+### Optional: Single Sign-On (OIDC)
+
+If your team already has an identity provider (Okta, Authentik, Google Workspace, etc.), you can let people sign in through it instead of a local password. Set these four environment variables before starting the server; all four must be present or SSO stays off and the login page shows only the normal form:
+
+```
+OIDC_ISSUER_URL=https://your-idp.example.com
+OIDC_CLIENT_ID=your-client-id
+OIDC_CLIENT_SECRET=your-client-secret
+OIDC_REDIRECT_URI=http://<machine-ip>:3000/api/auth/oidc/callback
+```
+
+Register `OIDC_REDIRECT_URI` as an allowed redirect URI in your identity provider's app settings; it must match exactly. The first time someone signs in via SSO with an email that doesn't match an existing account, a new account is created automatically as `operator`; an admin can promote it from the Users page afterward. See [docs/auth.md](auth.md#oidc-single-sign-on) for how existing accounts are matched.
+
+**PM2** picks up environment variables from the shell it was started in: set them in the same terminal before `pm2 start`, or add an `env` block to a PM2 ecosystem file if you manage one. **Docker**: pass them as `environment:` entries in `docker-compose.yml` or `-e` flags to `docker run`; see the [README's Docker section](../README.md#installation-production).
+
+---
+
 ## First Run: Adding Your First Printer
 
-When you open the app for the first time, the Fleet view will be empty. This is expected — no printers have been configured yet. Follow these steps:
+Once you're signed in, the Fleet view will be empty. This is expected: no printers have been configured yet. Follow these steps:
 
 ### Step 1 — Add a Printer Model
 
