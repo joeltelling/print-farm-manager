@@ -80,6 +80,7 @@ export default function PrinterDetail() {
   const [stats, setStats]       = useState(null);
   const [camera, setCamera]     = useState(null);
   const [cameraError, setCameraError] = useState(false);
+  const [liveView, setLiveView] = useState(false);
   const [jobHistory, setJobHistory] = useState({ jobs: [], page: 1, total_pages: 1, total: 0 });
   const [jobPage, setJobPage]   = useState(1);
   const [loading, setLoading]   = useState(true);
@@ -122,6 +123,7 @@ export default function PrinterDetail() {
     if (colorsRes.ok)   setFilamentColors(await colorsRes.json());
     if (groupsRes.ok)   setGroups((await groupsRes.json()).map(g => g.name));
     setCameraError(false);
+    setLiveView(false);
     setCamera(cameraRes.ok ? await cameraRes.json() : null);
     setLoading(false);
   }, [id]);
@@ -400,9 +402,19 @@ export default function PrinterDetail() {
                   value={detailsDraft.ip}
                   onChange={e => setDetailsDraft(d => ({ ...d, ip: e.target.value }))}
                   disabled={savingDetails}
-                  placeholder="192.168.1.100 or octoprint.local"
+                  placeholder="192.168.1.100 or octoprint-01"
                   style={detailInputStyle}
                 />
+                {/* .local (mDNS) names resolve on Windows/macOS but not inside the published
+                    Docker image (no mDNS resolver): the printer polls as OFFLINE even though
+                    the same name works from a browser on the host. See docs/installation.md. */}
+                {/\.local$/i.test(detailsDraft.ip.trim()) && (
+                  <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, fontWeight: 400 }}>
+                    ".local" only resolves if this app runs directly on Windows or macOS. In the
+                    Docker container, use the printer's plain IP address instead (ideally with a
+                    DHCP reservation), or it will show OFFLINE.
+                  </div>
+                )}
               </label>
               {!NO_API_KEY_TYPES.has(printer.type) && (
                 <label style={detailLabelStyle}>
@@ -565,16 +577,35 @@ export default function PrinterDetail() {
         )}
       </div>
 
-      {/* Camera card: only rendered when the printer's connector supports a live feed */}
+      {/* Camera card: only rendered when the printer's connector supports a live feed.
+          The live feed is an MJPEG stream (continuous video, not a single image) that
+          keeps pulling bandwidth for as long as the <img> stays mounted. It does not
+          autoplay: a snapshot (or, if the connector has none, a placeholder) shows by
+          default, and the operator opts in with "Watch Live". */}
       {camera?.available && (
         <div style={{
           background: '#131720', border: '1px solid #1e2433',
           borderRadius: 8, padding: '14px 18px', marginBottom: 24,
         }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 8 }}>Camera</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8' }}>Camera</div>
+            {!cameraError && (
+              <button
+                onClick={() => setLiveView(v => !v)}
+                style={{
+                  background: liveView ? '#2563eb' : 'transparent',
+                  color: liveView ? '#fff' : '#94a3b8',
+                  border: '1px solid #2d3748', borderRadius: 6,
+                  padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+                }}
+              >
+                {liveView ? 'Stop Live View' : 'Watch Live'}
+              </button>
+            )}
+          </div>
           {cameraError ? (
             <div style={{ fontSize: 13, color: '#64748b' }}>Camera feed unavailable.</div>
-          ) : (
+          ) : liveView ? (
             <img
               key={camera.streamUrl}
               src={camera.streamUrl}
@@ -582,6 +613,23 @@ export default function PrinterDetail() {
               onError={() => setCameraError(true)}
               style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a' }}
             />
+          ) : camera.snapshotUrl ? (
+            <img
+              key={camera.snapshotUrl}
+              src={camera.snapshotUrl}
+              alt={`${printer.name} camera snapshot`}
+              onError={() => setCameraError(true)}
+              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a' }}
+            />
+          ) : (
+            <div style={{
+              width: '100%', maxWidth: 480, height: 140, borderRadius: 6,
+              background: '#0a0f1a', border: '1px dashed #2d3748',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, color: '#475569',
+            }}>
+              No snapshot configured. Click "Watch Live" to start streaming.
+            </div>
           )}
         </div>
       )}
