@@ -226,6 +226,49 @@ describe('checkIfPrinting', () => {
   });
 });
 
+// ─── getCameraUrl ──────────────────────────────────────────────────────────────
+
+describe('getCameraUrl', () => {
+  test('returns resolved stream/snapshot URLs from settings.webcam', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { webcam: { streamUrl: '/webcam/?action=stream', snapshotUrl: '/webcam/?action=snapshot' } },
+    });
+    const result = await octoprint.getCameraUrl(fakePrinter);
+    expect(result).toEqual({
+      streamUrl: 'http://192.168.1.240:5000/webcam/?action=stream',
+      snapshotUrl: 'http://192.168.1.240:5000/webcam/?action=snapshot',
+    });
+  });
+
+  test('passes through an already-absolute stream URL unchanged', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { webcam: { streamUrl: 'http://otherhost:8080/stream', snapshotUrl: null } },
+    });
+    const result = await octoprint.getCameraUrl(fakePrinter);
+    expect(result.streamUrl).toBe('http://otherhost:8080/stream');
+    expect(result.snapshotUrl).toBeNull();
+  });
+
+  test('returns null when no webcam is configured', async () => {
+    axios.get.mockResolvedValueOnce({ data: { webcam: {} } });
+    expect(await octoprint.getCameraUrl(fakePrinter)).toBeNull();
+  });
+
+  test('returns null on network error', async () => {
+    axios.get.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    expect(await octoprint.getCameraUrl(fakePrinter)).toBeNull();
+  });
+
+  test('queries /api/settings with X-Api-Key header', async () => {
+    axios.get.mockResolvedValueOnce({ data: { webcam: {} } });
+    await octoprint.getCameraUrl(fakePrinter);
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://192.168.1.240:5000/api/settings',
+      expect.objectContaining({ headers: { 'X-Api-Key': 'test-key' } })
+    );
+  });
+});
+
 // ─── Driver registry ──────────────────────────────────────────────────────────
 
 describe('driver registry', () => {
@@ -237,5 +280,6 @@ describe('driver registry', () => {
     expect(typeof driver.uploadAndPrint).toBe('function');
     expect(typeof driver.cancelJob).toBe('function');
     expect(typeof driver.checkIfPrinting).toBe('function');
+    expect(typeof driver.getCameraUrl).toBe('function');
   });
 });

@@ -130,4 +130,31 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// ─── Camera ─────────────────────────────────────────────────────────────────
+
+// Returns { streamUrl, snapshotUrl } from OctoPrint's configured webcam, or null
+// if no webcam is configured, the printer is unreachable, or the API key lacks
+// SETTINGS_READ permission. Never throws.
+// Reference: https://docs.octoprint.org/en/main/api/settings.html
+async function getCameraUrl(printer) {
+  try {
+    const res = await axios.get(`http://${printer.ip}/api/settings`, {
+      headers: headers(printer),
+      timeout: 8000,
+    });
+    const webcam = res.data?.webcam || {};
+    if (!webcam.streamUrl) return null;
+
+    // streamUrl/snapshotUrl are commonly relative (e.g. "/webcam/?action=stream"),
+    // proxied through the same host OctoPrint itself is served on.
+    const resolve = (u) => (/^https?:\/\//i.test(u) ? u : `http://${printer.ip}${u}`);
+    return {
+      streamUrl: resolve(webcam.streamUrl),
+      snapshotUrl: webcam.snapshotUrl ? resolve(webcam.snapshotUrl) : null,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl };

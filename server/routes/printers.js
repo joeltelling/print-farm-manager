@@ -423,6 +423,23 @@ module.exports = (db) => {
     res.json({ success: true, job_id: job.id });
   });
 
+  // GET /api/printers/:id/camera: live webcam feed URLs from the printer's driver, if supported.
+  // Returns { available: false } for connectors with no camera support (currently: Prusa, Bambu, Elegoo).
+  router.get('/:id/camera', async (req, res) => {
+    const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
+    if (!printer) return res.status(404).json({ error: 'Printer not found' });
+
+    const { getDriver } = require('../drivers');
+    const driver = getDriver(printer.type);
+    if (typeof driver.getCameraUrl !== 'function') {
+      return res.json({ available: false });
+    }
+
+    const camera = await driver.getCameraUrl(printer);
+    if (!camera) return res.json({ available: false });
+    res.json({ available: true, ...camera });
+  });
+
   // GET /api/printers/:id/raw-status — calls the printer's driver, returns raw response for debugging
   router.get('/:id/raw-status', async (req, res) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);

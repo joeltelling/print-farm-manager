@@ -47,6 +47,17 @@ deleteFile(printer, filename)
   → if exported, the scheduler calls it after a job finishes to clean the
     file off the printer's storage (see bambu.js). Fire-and-forget: errors
     are swallowed by the caller.
+
+getCameraUrl(printer)
+  → { streamUrl, snapshotUrl } | null. If exported, GET /api/printers/:id/camera
+    calls it to power the live webcam panel on the printer detail page.
+    Resolve any relative URL your protocol returns against the correct host
+    from official docs; do not assume it is the same port the rest of your
+    driver talks to (see klipper.js: Moonraker's own API is on :7125, but its
+    webcam URLs resolve against the frontend's port 80). Never throw; return
+    null on any failure or when no camera is configured. Connectors without
+    this export are treated as camera-unsupported: the UI panel simply does
+    not render, no placeholder shown.
 ```
 
 ### The `printer` row

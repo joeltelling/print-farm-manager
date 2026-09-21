@@ -120,4 +120,31 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// ─── Camera ─────────────────────────────────────────────────────────────────
+
+// Returns { streamUrl, snapshotUrl } for the first enabled webcam registered in
+// Moonraker's webcam management API, or null if none is configured or the
+// printer is unreachable. Never throws.
+// Reference: https://moonraker.readthedocs.io/en/latest/external_api/webcams/
+async function getCameraUrl(printer) {
+  try {
+    const res = await axios.get(`${base(printer)}/server/webcams/list`, { timeout: 8000 });
+    const webcams = res.data?.result?.webcams || [];
+    const cam = webcams.find(w => w.enabled) || webcams[0];
+    if (!cam || !cam.stream_url) return null;
+
+    // stream_url/snapshot_url may be a relative path: Moonraker's docs resolve
+    // these against the machine's default web port (80, the Fluidd/Mainsail
+    // frontend), not Moonraker's own port 7125.
+    const host = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/:\d+$/, '');
+    const resolve = (u) => (/^https?:\/\//i.test(u) ? u : `http://${host}${u}`);
+    return {
+      streamUrl: resolve(cam.stream_url),
+      snapshotUrl: cam.snapshot_url ? resolve(cam.snapshot_url) : null,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl };

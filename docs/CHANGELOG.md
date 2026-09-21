@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-21: live camera feed on the printer detail page (OctoPrint, Klipper)
+
+Webcam streaming was previously a parked feature (see CLAUDE.md) with no code in the repo at all. Added it for the two connectors whose camera location is discoverable through a documented API rather than guessed: OctoPrint (`GET /api/settings`, the `webcam.streamUrl`/`webcam.snapshotUrl` fields) and Klipper/Moonraker (`GET /server/webcams/list`). Prusa, Bambu, and Elegoo are intentionally left out of this pass: PrusaLink's camera endpoints and Elegoo's SDCP video field weren't verified against official docs, and Bambu's camera is RTSPS on a nonstandard port, which browsers cannot play directly without a new transcoding dependency (ffmpeg/go2rtc), out of scope here.
+
+Both new driver functions follow the existing optional-export pattern (`deleteFile` on `bambu.js` was the precedent): never throw, return `null` on any failure or unconfigured camera, and the route degrades to `{ available: false }` for any connector that doesn't export `getCameraUrl` at all. No schema change, no new dependency, no change to poller/scheduler/dispatch logic.
+
+Not yet validated against real hardware: implemented from the official OctoPrint and Moonraker API docs (linked in each driver file) and covered by mocked unit tests only. The `octoprint-driver` and `klipper-driver` suites (50 tests) were run directly and pass; the full `npm test` suite was not run in this environment, since this build had no native toolchain available to compile `better-sqlite3` for Node 22 on Windows. `npm run build` for the client was run and succeeds.
+
+### Changes
+- `server/drivers/octoprint.js`: new optional export `getCameraUrl(printer)`, reads `webcam.streamUrl`/`webcam.snapshotUrl` from `GET /api/settings`, resolves relative URLs against the printer's own host.
+- `server/drivers/klipper.js`: new optional export `getCameraUrl(printer)`, reads the first enabled webcam from `GET /server/webcams/list`, resolves relative URLs against the printer's host on port 80 (not Moonraker's own :7125; see docs/driver-authoring.md).
+- `server/routes/printers.js`: new `GET /api/printers/:id/camera` route; calls the printer's driver if it exports `getCameraUrl`, otherwise returns `{ available: false }`.
+- `client/src/pages/PrinterDetail.jsx`: new Camera panel, fetched alongside the rest of the page's data; renders an `<img>` pointed at the MJPEG stream URL when available, nothing when not, and a fallback message if the image fails to load.
+- `server/tests/octoprint-driver.test.js`, `server/tests/klipper-driver.test.js`: unit tests for `getCameraUrl` (resolved/absolute URLs, no camera configured, network error).
+- `docs/api.md`: documented `GET /api/printers/:id/camera`.
+- `docs/driver-authoring.md`: documented the new optional `getCameraUrl` export in the driver contract.
+
+---
+
 ## 2026-09-01: printerIdle bypass let dispatch exceed dispatch_batch_size
 
 Joel batch-confirmed a stack of held printers via Set Ready (N) with `dispatch_batch_size` set to 5, then individually confirmed roughly ten more printers that had shown a false failed-upload hold (the upload attempt was reported failed on our side, but the printer had actually completed the print). Fleet's uploading count briefly showed 7 concurrent uploads against the configured limit of 5.
