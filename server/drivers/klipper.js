@@ -8,12 +8,14 @@
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const { resolveHost } = require('../mdns-resolve');
 
 const PORT = 7125;
 
-function base(printer) {
+async function base(printer) {
   // Strip any accidental protocol prefix or trailing slashes — field expects bare IP.
-  const ip = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const raw = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const ip = await resolveHost(raw);
   return `http://${ip}:${PORT}`;
 }
 
@@ -32,7 +34,7 @@ const STATE_MAP = {
 async function getStatus(printer) {
   try {
     const res = await axios.get(
-      `${base(printer)}/printer/objects/query`,
+      `${await base(printer)}/printer/objects/query`,
       {
         params: { print_stats: '', virtual_sdcard: '', webhooks: '' },
         timeout: 8000,
@@ -88,7 +90,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
   form.append('print', 'true'); // must be a form field, not a query param
 
   await axios.post(
-    `${base(printer)}/server/files/upload`,
+    `${await base(printer)}/server/files/upload`,
     form,
     {
       headers: form.getHeaders(),
@@ -103,7 +105,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
 async function cancelJob(printer) {
   try {
-    await axios.post(`${base(printer)}/printer/print/cancel`, null, { timeout: 10000 });
+    await axios.post(`${await base(printer)}/printer/print/cancel`, null, { timeout: 10000 });
   } catch (err) {
     console.warn(`[klipper] Cancel failed for ${printer.name}: ${err.message}`);
   }
@@ -128,7 +130,7 @@ async function checkIfPrinting(printer) {
 // Reference: https://moonraker.readthedocs.io/en/latest/external_api/webcams/
 async function getCameraUrl(printer) {
   try {
-    const res = await axios.get(`${base(printer)}/server/webcams/list`, { timeout: 8000 });
+    const res = await axios.get(`${await base(printer)}/server/webcams/list`, { timeout: 8000 });
     const webcams = res.data?.result?.webcams || [];
     const cam = webcams.find(w => w.enabled) || webcams[0];
     if (!cam || !cam.stream_url) return null;
@@ -136,7 +138,8 @@ async function getCameraUrl(printer) {
     // stream_url/snapshot_url may be a relative path: Moonraker's docs resolve
     // these against the machine's default web port (80, the Fluidd/Mainsail
     // frontend), not Moonraker's own port 7125.
-    const host = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/:\d+$/, '');
+    const rawHost = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/:\d+$/, '');
+    const host = await resolveHost(rawHost);
     const resolve = (u) => (/^https?:\/\//i.test(u) ? u : `http://${host}${u}`);
     return {
       streamUrl: resolve(cam.stream_url),

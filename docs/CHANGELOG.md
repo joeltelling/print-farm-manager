@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-09-21: resolve .local (mDNS) printer hostnames from inside Docker
+
+Requested as a follow-up to the previous entry's `.local` warning: rather than only warning users away from `.local` hostnames under Docker, make them actually work there.
+
+Every driver's connection-forming call (`axios` requests for Prusa/OctoPrint/Klipper, the SDCP WebSocket connect for Centauri Carbon, the MQTT connects for Centauri Carbon 2 and Bambu, and Bambu's FTPS access) now resolves `printer.ip` through `server/mdns-resolve.js` first. It sends its own mDNS query over UDP multicast using the `multicast-dns` package, rather than asking the OS resolver to do it, so `.local` names resolve the same way whether the app runs on Windows, macOS, or inside the container that has no mDNS resolver at the OS level. A hostname that isn't `.local` is returned unchanged with no query sent; a `.local` name that fails to resolve (multicast blocked on this network, printer offline, no response inside a 3 second timeout) also falls back to the original value unchanged, so the caller sees exactly the connection failure it already knows how to handle, not a new error shape. Resolved addresses are cached for 5 minutes so the poller's 15 second cycle does not send a fresh mDNS query for every `.local` printer on every tick, and concurrent lookups for the same hostname share one in-flight query instead of firing duplicates.
+
+Two of the driver's connection-cache functions (`elegoo-centauri2.js`'s and `bambu.js`'s "get or create connection" helpers) were synchronous before this, relying on that synchronicity so two calls racing for the same not-yet-connected printer would always see the first call's cache entry before either could start a second connection. Awaiting the mDNS lookup inside connection creation introduced a genuine await point where that race becomes possible, so both now store the in-flight creation Promise in the cache immediately (before awaiting anything), the same pattern `mdns-resolve.js` itself uses to dedupe concurrent lookups, rather than only caching the finished connection.
+
+`multicast-dns` opens a real UDP socket on first use. Constructing it eagerly at module load would mean requiring any driver opens a network socket even for an install with no `.local` printer, so it is created lazily on the first `.local` hostname actually encountered.
+
+Not hardware-validated: this changes how a hostname resolves to an address, not any printer protocol payload, so no protocol doc reading was needed, but no physical printer was reachable from this environment to confirm an actual `.local` printer connects end to end through a running Docker container.
+
+### Changes
+- `server/mdns-resolve.js`: new, `resolveHost()` and its mDNS query/cache/dedupe logic.
+- `server/drivers/prusa.js`, `octoprint.js`, `klipper.js`, `elegoo-centauri.js`: each connection-forming call now resolves `printer.ip` through `resolveHost()` first.
+- `server/drivers/elegoo-centauri2.js`, `bambu.js`: connection creation is now async (the mDNS lookup happens before `mqtt.connect`); both add an in-flight-creation cache to close the resulting race between concurrent callers.
+- `server/tests/mdns-resolve.test.js`: new, full coverage of `resolveHost()` against a mocked `multicast-dns` (passthrough, resolution, port preservation, caching, case-insensitive matching, timeout fallback, concurrent-lookup dedupe).
+- `server/tests/bambu-driver.test.js`: updated for connection creation no longer being synchronous: the test's own `pushStatus()` helper and every call site that relied on `getStatus()` registering the mocked MQTT client's handlers synchronously now await it, matching how the poller and scheduler already call these functions.
+- `package.json`: added `multicast-dns` as a runtime dependency.
+- `client/src/pages/Settings.jsx`, `PrinterDetail.jsx`: the `.local` hostname warning added in the previous entry is softened to an informational note now that `.local` names work, pointing at the IP-address fallback only for the case where a network blocks mDNS multicast.
+- `docs/installation.md`, `docs/driver-authoring.md`: updated for `.local` support and the `resolveHost()` convention new drivers should follow.
+
+---
+
 ## 2026-09-21: camera feeds stop autoplaying; Webcams page; .local hostname warning
 
 Reported: farm-wide network slowdown (all devices, not just the machine running the app) plus printers configured with a hostname showing OFFLINE despite the same name resolving fine in a browser.

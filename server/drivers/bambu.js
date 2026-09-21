@@ -26,25 +26,37 @@
 const mqtt     = require('mqtt');
 const ftp      = require('basic-ftp');
 const path     = require('path');
+const { resolveHost } = require('../mdns-resolve');
 
 // Map of printer.id → { client, latestPrint, connected }
 const connections = new Map();
-
-// ─── Connection management ────────────────────────────────────────────────────
+// Map of printer.id to an in-flight Promise<conn>. Resolving a .local hostname is an
+// await point that didn't exist before; without this, two calls racing for the same
+// not-yet-connected printer would each connect and the first MQTT client would leak.
+const connecting = new Map();
 
 // Returns (or creates) the connection object for a printer.
 // The MQTT connection is established in the background — callers should
 // check conn.connected before sending commands.
-function getOrCreateConnection(printer) {
+async function getOrCreateConnection(printer) {
   if (connections.has(printer.id)) {
     return connections.get(printer.id);
   }
+  let promise = connecting.get(printer.id);
+  if (!promise) {
+    promise = createConnection(printer).finally(() => connecting.delete(printer.id));
+    connecting.set(printer.id, promise);
+  }
+  return promise;
+}
 
+async function createConnection(printer) {
+  const ip     = await resolveHost(printer.ip);
   const serial = printer.serial_number;
   const conn   = { client: null, latestPrint: null, connected: false };
   connections.set(printer.id, conn);
 
-  const client = mqtt.connect(`mqtts://${printer.ip}:8883`, {
+  const client = mqtt.connect(`mqtts://${ip}:8883`, {
     username:          'bblp',
     password:          printer.api_key, // access code from printer WiFi settings
     rejectUnauthorized: false,          // Bambu uses a self-signed TLS certificate — intentional
@@ -157,7 +169,7 @@ async function getStatus(printer) {
     return { status: 'OFFLINE', progress: null, timeRemaining: null, currentFile: null };
   }
 
-  const conn = getOrCreateConnection(printer);
+  const conn = await getOrCreateConnection(printer);
 
   if (!conn.connected || !conn.latestPrint) {
     // Not yet connected or no status received — report OFFLINE, connection is
@@ -262,12 +274,13 @@ async function uploadAndPrint(printer, gcodeFullPath, _filename, options = {}) {
   // .3mf files go to the SD card root.
   console.log(`[bambu] Uploading ${onPrinterFilename} to ${printer.name} via FTPS…`);
 
+  const ip = await resolveHost(printer.ip);
   const ftpClient = new ftp.Client();
   ftpClient.ftp.verbose = !!process.env.DEBUG_BAMBU;
 
   try {
     await ftpClient.access({
-      host:    printer.ip,
+      host:    ip,
       port:    990,
       user:    'bblp',
       password: printer.api_key,
@@ -282,7 +295,7 @@ async function uploadAndPrint(printer, gcodeFullPath, _filename, options = {}) {
   }
 
   // ── MQTT print trigger ───────────────────────────────────────────────────
-  const conn = getOrCreateConnection(printer);
+  const conn = await getOrCreateConnection(printer);
 
   if (!conn.connected) {
     throw new Error(`Bambu printer ${printer.name} MQTT not connected — cannot trigger print`);
@@ -333,12 +346,13 @@ async function deleteFile(printer, filename) {
   // All Bambu uploads are .3mf files at the SD card root.
   const remotePath = filename;
 
+  const ip = await resolveHost(printer.ip);
   const ftpClient = new ftp.Client();
   ftpClient.ftp.verbose = !!process.env.DEBUG_BAMBU;
 
   try {
     await ftpClient.access({
-      host:    printer.ip,
+      host:    ip,
       port:    990,
       user:    'bblp',
       password: printer.api_key,

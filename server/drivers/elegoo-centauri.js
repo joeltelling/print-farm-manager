@@ -11,6 +11,7 @@
 // SDCPPrinterMQTT which requires 'mqtt-server' (an optional peer dep we don't need).
 const SDCPPrinterWS = require('sdcp/SDCPPrinterWS');
 const path = require('path');
+const { resolveHost } = require('../mdns-resolve');
 
 // Map of printer.id → SDCPPrinterWS instance
 const connections = new Map();
@@ -24,8 +25,9 @@ async function getConnection(printer) {
     return connections.get(printer.id);
   }
 
+  const ip = await resolveHost(printer.ip);
   const client = new SDCPPrinterWS({
-    MainboardIP: printer.ip,
+    MainboardIP: ip,
   });
 
   client.AutoReconnect = 5000; // reconnect every 5s on drop
@@ -42,7 +44,7 @@ async function getConnection(printer) {
     if (process.env.DEBUG_ELEGOO) console.warn(`[elegoo] ${printer.name} error:`, err?.message || err);
   });
 
-  await client.Connect(printer.ip);
+  await client.Connect(ip);
   connections.set(printer.id, client);
   console.log(`[elegoo] Connected to ${printer.name} (${printer.ip})`);
   return client;

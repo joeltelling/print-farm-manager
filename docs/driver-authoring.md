@@ -67,7 +67,7 @@ Fields your driver can rely on:
 | Field | Meaning |
 |---|---|
 | `printer.id` | Stable numeric ID. Use as the key for any module-level connection Map. |
-| `printer.ip` | Host, possibly with a port (`192.168.1.50:5000`). Never assume port 80 is implied if your protocol uses another port; either document a fixed port (Klipper uses 7125) or accept host:port in this field (OctoPrint pattern). |
+| `printer.ip` | Host, possibly with a port (`192.168.1.50:5000`). Never assume port 80 is implied if your protocol uses another port; either document a fixed port (Klipper uses 7125) or accept host:port in this field (OctoPrint pattern). May be a `.local` (mDNS) hostname: run it through `resolveHost()` from `server/mdns-resolve.js` before connecting (`const ip = await resolveHost(printer.ip);`, then build the connection from `ip` instead of `printer.ip` directly). It returns the input unchanged for anything that isn't `.local`, so it is safe to call unconditionally; every existing driver does. Without it, a `.local` name works from a browser on the host but times out from inside the published Docker image, which has no mDNS resolver. |
 | `printer.api_key` | Whatever secret your protocol needs. The column name is historical: Bambu stores its LAN access code here, Elegoo SDCP and Klipper store `''`. |
 | `printer.serial_number` | Used by protocols that need a device ID (Bambu MQTT topics, CC2). `''` otherwise. |
 | `printer.name` | Operator-facing display name. Use it in log lines. |

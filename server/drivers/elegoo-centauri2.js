@@ -25,9 +25,15 @@ const crypto       = require('crypto');
 const fs           = require('fs');
 const path         = require('path');
 const EventEmitter = require('events');
+const { resolveHost } = require('../mdns-resolve');
 
 // Map<printerId, ConnectionState>
 const connections = new Map();
+// Map<printerId, Promise<ConnectionState>>: in-flight creations, so two calls to
+// getConn() racing for the same not-yet-connected printer (the mDNS lookup inside
+// createConnection is an await point that didn't exist before) await the same
+// connection instead of each creating and leaking their own MQTT client.
+const connecting = new Map();
 
 // Monotonically increasing request ID — matched to pending responses
 let _reqId = 0;
@@ -68,10 +74,11 @@ function mapPrintStatus(s) {
 
 // ─── Connection management ────────────────────────────────────────────────────
 
-function createConnection(printer) {
+async function createConnection(printer) {
   const clientId   = genClientId();
   const serial     = printer.serial_number;
   const accessCode = printer.api_key || '123456';
+  const ip         = await resolveHost(printer.ip);
 
   const emitter = new EventEmitter();
   const conn = {
@@ -85,7 +92,7 @@ function createConnection(printer) {
     printerName:     printer.name,
   };
 
-  const client = mqtt.connect(`mqtt://${printer.ip}:1883`, {
+  const client = mqtt.connect(`mqtt://${ip}:1883`, {
     clientId,
     username:        'elegoo',
     password:        accessCode,
@@ -182,7 +189,12 @@ function waitRegistered(conn, timeoutMs = 8_000) {
 // Get (or create) a connected, registered MQTT session for this printer.
 async function getConn(printer) {
   if (!connections.has(printer.id)) {
-    connections.set(printer.id, createConnection(printer));
+    let promise = connecting.get(printer.id);
+    if (!promise) {
+      promise = createConnection(printer).finally(() => connecting.delete(printer.id));
+      connecting.set(printer.id, promise);
+    }
+    connections.set(printer.id, await promise);
   }
   const conn = connections.get(printer.id);
 
@@ -270,13 +282,14 @@ async function getStatus(printer) {
 //   - Each response is JSON { error_code: 0 } on success, non-zero on failure
 //   - X-Token = access code (printer.api_key)
 async function uploadAndPrint(printer, gcodeFullPath, filename) {
+  const ip          = await resolveHost(printer.ip);
   const fileBuffer = fs.readFileSync(gcodeFullPath);
   const totalBytes = fileBuffer.length;
   const md5        = crypto.createHash('md5').update(fileBuffer).digest('hex');
   const accessCode = printer.api_key || '';
   const CHUNK_SIZE = 1024 * 1024; // 1 MB — official Elegoo max chunk size
 
-  console.log(`[elegoo2] ${printer.name}: uploading "${filename}" (${(totalBytes / 1048576).toFixed(1)} MB) via chunked PUT to http://${printer.ip}/upload`);
+  console.log(`[elegoo2] ${printer.name}: uploading "${filename}" (${(totalBytes / 1048576).toFixed(1)} MB) via chunked PUT to http://${ip}/upload`);
 
   // Keep-alive agent: all chunk requests reuse the same TCP connection.
   // The CC2's embedded HTTP server requires this — it times out (408) on new connections mid-transfer.
@@ -310,7 +323,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
         }, 180_000);
 
         const req = http.request(
-          { hostname: printer.ip, port: 80, path: '/upload', method: 'PUT', headers, agent },
+          { hostname: ip, port: 80, path: '/upload', method: 'PUT', headers, agent },
           (res) => {
             const parts = [];
             res.on('data', d => parts.push(d));
