@@ -78,6 +78,8 @@ export default function PrinterDetail() {
   const [printer, setPrinter]   = useState(null);
   const [events, setEvents]     = useState([]);
   const [stats, setStats]       = useState(null);
+  const [camera, setCamera]     = useState(null);
+  const [cameraError, setCameraError] = useState(false);
   const [jobHistory, setJobHistory] = useState({ jobs: [], page: 1, total_pages: 1, total: 0 });
   const [jobPage, setJobPage]   = useState(1);
   const [loading, setLoading]   = useState(true);
@@ -97,7 +99,7 @@ export default function PrinterDetail() {
   const [savingDetails, setSavingDetails]   = useState(false);
 
   const fetchData = useCallback(async () => {
-    const [printerRes, eventsRes, statsRes, modelsRes, typesRes, colorsRes, groupsRes] = await Promise.all([
+    const [printerRes, eventsRes, statsRes, modelsRes, typesRes, colorsRes, groupsRes, cameraRes] = await Promise.all([
       fetch(`/api/printers/${id}`),
       fetch(`/api/printers/${id}/events`),
       fetch(`/api/printers/${id}/jobs/stats`),
@@ -105,6 +107,7 @@ export default function PrinterDetail() {
       fetch('/api/filaments/types'),
       fetch('/api/filaments/colors'),
       fetch('/api/groups'),
+      fetch(`/api/printers/${id}/camera`),
     ]);
     if (printerRes.ok)  setPrinter(await printerRes.json());
     if (eventsRes.ok)   setEvents(await eventsRes.json());
@@ -113,6 +116,8 @@ export default function PrinterDetail() {
     if (typesRes.ok)    setFilamentTypes(await typesRes.json());
     if (colorsRes.ok)   setFilamentColors(await colorsRes.json());
     if (groupsRes.ok)   setGroups((await groupsRes.json()).map(g => g.name));
+    setCameraError(false);
+    setCamera(cameraRes.ok ? await cameraRes.json() : null);
     setLoading(false);
   }, [id]);
 
@@ -497,6 +502,27 @@ export default function PrinterDetail() {
           </div>
         )}
       </div>
+
+      {/* Camera card: only rendered when the printer's connector supports a live feed */}
+      {camera?.available && (
+        <div style={{
+          background: '#131720', border: '1px solid #1e2433',
+          borderRadius: 8, padding: '14px 18px', marginBottom: 24,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', marginBottom: 8 }}>Camera</div>
+          {cameraError ? (
+            <div style={{ fontSize: 13, color: '#64748b' }}>Camera feed unavailable.</div>
+          ) : (
+            <img
+              key={camera.streamUrl}
+              src={camera.streamUrl}
+              alt={`${printer.name} camera feed`}
+              onError={() => setCameraError(true)}
+              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a' }}
+            />
+          )}
+        </div>
+      )}
 
       {/* Stats card */}
       {stats && (

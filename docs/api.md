@@ -76,6 +76,22 @@ Returns `[]` if no active Bambu printer of that model is connected or the model 
 
 Returns a single printer by ID. `404` if not found.
 
+### `GET /api/printers/:id/camera`
+
+Returns live webcam feed URLs for a printer, if its connector supports one. `404` if the printer is not found.
+
+**Response, camera available:**
+```json
+{ "available": true, "streamUrl": "http://192.168.1.250/webcam/?action=stream", "snapshotUrl": "http://192.168.1.250/webcam/?action=snapshot" }
+```
+
+**Response, no camera (unsupported connector, none configured on the printer, or unreachable):**
+```json
+{ "available": false }
+```
+
+Currently implemented for `klipper` (via Moonraker's `/server/webcams/list`) and `octoprint` (via `/api/settings`'s `webcam` section). Other connectors always return `available: false`. `snapshotUrl` may be `null` even when `streamUrl` is present.
+
 ### `POST /api/printers`
 
 Create a single printer.
