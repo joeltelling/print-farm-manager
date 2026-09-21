@@ -405,14 +405,16 @@ export default function PrinterDetail() {
                   placeholder="192.168.1.100 or octoprint-01"
                   style={detailInputStyle}
                 />
-                {/* .local (mDNS) names resolve on Windows/macOS but not inside the published
-                    Docker image (no mDNS resolver): the printer polls as OFFLINE even though
-                    the same name works from a browser on the host. See docs/installation.md. */}
+                {/* .local (mDNS) names are resolved by the app itself (server/mdns-resolve.js),
+                    independent of the OS resolver, so this works in the Docker image too. It
+                    does depend on mDNS multicast reaching the app, which most networks allow
+                    but some restrictive setups block. See docs/installation.md. */}
                 {/\.local$/i.test(detailsDraft.ip.trim()) && (
-                  <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 4, fontWeight: 400 }}>
-                    ".local" only resolves if this app runs directly on Windows or macOS. In the
-                    Docker container, use the printer's plain IP address instead (ideally with a
-                    DHCP reservation), or it will show OFFLINE.
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 400 }}>
+                    ".local" names are supported. If this printer ever shows OFFLINE and its IP
+                    resolves fine elsewhere, your network may be blocking mDNS multicast; using
+                    the printer's IP address instead (ideally with a DHCP reservation) is a
+                    reliable fallback.
                   </div>
                 )}
               </label>

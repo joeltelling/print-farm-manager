@@ -61,8 +61,11 @@ function nextPrinter() {
 
 // Establish a connection for the printer (populates the internal Map)
 // then inject a status push to set conn.latestPrint.
-function pushStatus(printer, printData) {
-  bambu.getStatus(printer); // creates connection, registers message handler
+// Connection setup now resolves the printer's hostname (server/mdns-resolve.js)
+// before calling mqtt.connect, so it is no longer synchronous: getStatus must be
+// awaited before the mocked mqtt client's 'message' handler is guaranteed to exist.
+async function pushStatus(printer, printData) {
+  await bambu.getStatus(printer); // creates connection, registers message handler
   expect(messageHandler).not.toBeNull();
   messageHandler(null, Buffer.from(JSON.stringify({ print: printData })));
 }
@@ -82,15 +85,15 @@ describe('getAmsSlots', () => {
     expect(bambu.getAmsSlots(nextPrinter())).toBeNull();
   });
 
-  test('returns null when connected but no status received yet', () => {
+  test('returns null when connected but no status received yet', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer); // creates connection; latestPrint is still null
+    await bambu.getStatus(printer); // creates connection; latestPrint is still null
     expect(bambu.getAmsSlots(printer)).toBeNull();
   });
 
-  test('returns loaded AMS trays, skipping empty slots', () => {
+  test('returns loaded AMS trays, skipping empty slots', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, {
+    await pushStatus(printer, {
       ams: {
         ams: [{
           id: '0',
@@ -110,9 +113,9 @@ describe('getAmsSlots', () => {
     expect(slots.find(s => s.slot === 0 && s.type)).toBeUndefined();
   });
 
-  test('always includes external spool as slot -1', () => {
+  test('always includes external spool as slot -1', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, {
+    await pushStatus(printer, {
       ams:     { ams: [] },
       vt_tray: { tray_type: 'ABS', tray_color: '000000FF' },
     });
@@ -121,17 +124,17 @@ describe('getAmsSlots', () => {
     );
   });
 
-  test('includes external spool even when no filament is loaded', () => {
+  test('includes external spool even when no filament is loaded', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, { ams: { ams: [] }, vt_tray: {} });
+    await pushStatus(printer, { ams: { ams: [] }, vt_tray: {} });
     const ext = bambu.getAmsSlots(printer).find(s => s.slot === -1);
     expect(ext).toBeDefined();
     expect(ext.type).toBe('');
   });
 
-  test('computes compound slot IDs for multi-unit AMS', () => {
+  test('computes compound slot IDs for multi-unit AMS', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, {
+    await pushStatus(printer, {
       ams: {
         ams: [
           { id: '0', tray: [{ id: '0', tray_type: 'PLA',  tray_color: 'FFFF00FF' }] },
@@ -155,31 +158,31 @@ describe('getAmsSlots', () => {
 describe('getStatus — FAILED: user cancel vs real failure', () => {
   test('FAILED with cancel code 50348044 maps to STOPPED', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, { gcode_state: 'FAILED', print_error: 50348044 });
+    await pushStatus(printer, { gcode_state: 'FAILED', print_error: 50348044 });
     expect((await bambu.getStatus(printer)).status).toBe('STOPPED');
   });
 
   test('FAILED with print_error 0 (settled cancel) maps to STOPPED', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, { gcode_state: 'FAILED', print_error: 0 });
+    await pushStatus(printer, { gcode_state: 'FAILED', print_error: 0 });
     expect((await bambu.getStatus(printer)).status).toBe('STOPPED');
   });
 
   test('FAILED with no print_error field maps to STOPPED', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, { gcode_state: 'FAILED' });
+    await pushStatus(printer, { gcode_state: 'FAILED' });
     expect((await bambu.getStatus(printer)).status).toBe('STOPPED');
   });
 
   test('FAILED with a different nonzero print_error maps to ERROR', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, { gcode_state: 'FAILED', print_error: 117473285 });
+    await pushStatus(printer, { gcode_state: 'FAILED', print_error: 117473285 });
     expect((await bambu.getStatus(printer)).status).toBe('ERROR');
   });
 
   test('RUNNING with a nonzero print_error stays PRINTING', async () => {
     const printer = nextPrinter();
-    pushStatus(printer, { gcode_state: 'RUNNING', print_error: 50348044, mc_percent: 40 });
+    await pushStatus(printer, { gcode_state: 'RUNNING', print_error: 50348044, mc_percent: 40 });
     expect((await bambu.getStatus(printer)).status).toBe('PRINTING');
   });
 });
@@ -189,7 +192,7 @@ describe('getStatus — FAILED: user cancel vs real failure', () => {
 describe('uploadAndPrint — .3mf (project_file)', () => {
   test('uses project_file MQTT command', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: 0 });
@@ -199,7 +202,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('URL is ftp:///filename (per OpenBambuAPI spec)', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: 0 });
@@ -209,7 +212,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('AMS slot 0: use_ams true, ams_mapping [0]', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: 0 });
@@ -221,7 +224,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('AMS slot 3: ams_mapping is [3]', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: 3 });
@@ -231,7 +234,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('external spool (amsSlot: -1): use_ams false, ams_mapping empty array', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: -1 });
@@ -243,7 +246,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('null amsSlot defaults to use_ams false (external spool)', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: null });
@@ -253,7 +256,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('omitting options entirely defaults to use_ams false', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf');
@@ -263,7 +266,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 
   test('uploads to FTP root (no ensureDir for .3mf)', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
 
     await bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf', { amsSlot: 0 });
 
@@ -276,7 +279,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
     mockMqttClient.on = jest.fn((event, handler) => {
       if (event === 'message') messageHandler = handler;
     });
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
 
     await expect(
       bambu.uploadAndPrint(printer, '/tmp/1234_part.3mf', 'part.3mf')
@@ -298,7 +301,7 @@ describe('uploadAndPrint — .3mf (project_file)', () => {
 describe('uploadAndPrint — non-.3mf rejection', () => {
   test('throws for .gcode with descriptive message', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
 
     await expect(
       bambu.uploadAndPrint(printer, '/tmp/1234_part.gcode', 'part.gcode')
@@ -307,7 +310,7 @@ describe('uploadAndPrint — non-.3mf rejection', () => {
 
   test('throws for .bgcode with descriptive message', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
 
     await expect(
       bambu.uploadAndPrint(printer, '/tmp/1234_part.bgcode', 'part.bgcode')
@@ -316,7 +319,7 @@ describe('uploadAndPrint — non-.3mf rejection', () => {
 
   test('does not attempt FTP upload when file is rejected', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
 
     await expect(
       bambu.uploadAndPrint(printer, '/tmp/1234_part.gcode', 'part.gcode')
@@ -327,7 +330,7 @@ describe('uploadAndPrint — non-.3mf rejection', () => {
 
   test('does not publish MQTT when file is rejected', async () => {
     const printer = nextPrinter();
-    bambu.getStatus(printer);
+    await bambu.getStatus(printer);
     mockPublish.mockClear();
 
     await expect(

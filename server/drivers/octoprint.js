@@ -11,6 +11,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const { resolveHost } = require('../mdns-resolve');
 
 function headers(printer) {
   return { 'X-Api-Key': printer.api_key };
@@ -29,9 +30,10 @@ function headers(printer) {
 // poller.js only reacts to it once since the DB status only changes on the transition.
 async function getStatus(printer) {
   try {
+    const ip = await resolveHost(printer.ip);
     const [printerRes, jobRes] = await Promise.all([
-      axios.get(`http://${printer.ip}/api/printer`, { headers: headers(printer), timeout: 8000 }),
-      axios.get(`http://${printer.ip}/api/job`, { headers: headers(printer), timeout: 8000 }),
+      axios.get(`http://${ip}/api/printer`, { headers: headers(printer), timeout: 8000 }),
+      axios.get(`http://${ip}/api/job`, { headers: headers(printer), timeout: 8000 }),
     ]);
 
     const flags = printerRes.data?.state?.flags || {};
@@ -71,6 +73,7 @@ async function getStatus(printer) {
 // which needs a header on the upload and Moonraker which needs a separate print field).
 // Throws UPLOAD_CONFLICT if OctoPrint refuses because the same file is mid-print.
 async function uploadAndPrint(printer, gcodeFullPath, filename) {
+  const ip = await resolveHost(printer.ip);
   const form = new FormData();
   form.append('file', fs.createReadStream(gcodeFullPath), { filename });
   form.append('select', 'true');
@@ -78,7 +81,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
   try {
     await axios.post(
-      `http://${printer.ip}/api/files/local`,
+      `http://${ip}/api/files/local`,
       form,
       {
         headers: { ...headers(printer), ...form.getHeaders() },
@@ -102,8 +105,9 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
 async function cancelJob(printer) {
   try {
+    const ip = await resolveHost(printer.ip);
     await axios.post(
-      `http://${printer.ip}/api/job`,
+      `http://${ip}/api/job`,
       { command: 'cancel' },
       { headers: headers(printer), timeout: 10000 }
     );
@@ -119,7 +123,8 @@ async function cancelJob(printer) {
 // request timed out but the printer received the file and started printing anyway.
 async function checkIfPrinting(printer) {
   try {
-    const response = await axios.get(`http://${printer.ip}/api/printer`, {
+    const ip = await resolveHost(printer.ip);
+    const response = await axios.get(`http://${ip}/api/printer`, {
       headers: headers(printer),
       timeout: 8000,
     });
@@ -138,7 +143,8 @@ async function checkIfPrinting(printer) {
 // Reference: https://docs.octoprint.org/en/main/api/settings.html
 async function getCameraUrl(printer) {
   try {
-    const res = await axios.get(`http://${printer.ip}/api/settings`, {
+    const ip = await resolveHost(printer.ip);
+    const res = await axios.get(`http://${ip}/api/settings`, {
       headers: headers(printer),
       timeout: 8000,
     });
@@ -147,7 +153,7 @@ async function getCameraUrl(printer) {
 
     // streamUrl/snapshotUrl are commonly relative (e.g. "/webcam/?action=stream"),
     // proxied through the same host OctoPrint itself is served on.
-    const resolve = (u) => (/^https?:\/\//i.test(u) ? u : `http://${printer.ip}${u}`);
+    const resolve = (u) => (/^https?:\/\//i.test(u) ? u : `http://${ip}${u}`);
     return {
       streamUrl: resolve(webcam.streamUrl),
       snapshotUrl: webcam.snapshotUrl ? resolve(webcam.snapshotUrl) : null,

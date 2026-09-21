@@ -6,6 +6,7 @@
 
 const axios = require('axios');
 const fs = require('fs');
+const { resolveHost } = require('../mdns-resolve');
 
 // ─── Status ─────────────────────────────────────────────────────────────────
 
@@ -14,7 +15,8 @@ const fs = require('fs');
 // progress and timeRemaining are null when not printing.
 async function getStatus(printer) {
   try {
-    const response = await axios.get(`http://${printer.ip}/api/v1/status`, {
+    const ip = await resolveHost(printer.ip);
+    const response = await axios.get(`http://${ip}/api/v1/status`, {
       headers: { 'X-Api-Key': printer.api_key },
       timeout: 8000,
     });
@@ -37,12 +39,14 @@ async function getStatus(printer) {
 // filename is the bare filename to use on the printer (e.g. "part.bgcode").
 // Throws UPLOAD_CONFLICT if a transfer is already in progress on the printer.
 async function uploadAndPrint(printer, gcodeFullPath, filename) {
+  const ip = await resolveHost(printer.ip);
+
   // Delete any existing copy on the USB drive to avoid stale file conflicts.
   // A 409 means a file transfer is already in progress — propagate as UPLOAD_CONFLICT
   // so the caller can apply a longer retry delay.
   try {
     await axios.delete(
-      `http://${printer.ip}/api/v1/files/usb/${encodeURIComponent(filename)}`,
+      `http://${ip}/api/v1/files/usb/${encodeURIComponent(filename)}`,
       { headers: { 'X-Api-Key': printer.api_key }, timeout: 10000 }
     );
     console.log(`[prusa] Deleted existing ${filename} from ${printer.name}`);
@@ -64,7 +68,7 @@ async function uploadAndPrint(printer, gcodeFullPath, filename) {
 
   try {
     await axios.put(
-      `http://${printer.ip}/api/v1/files/usb/${encodeURIComponent(filename)}`,
+      `http://${ip}/api/v1/files/usb/${encodeURIComponent(filename)}`,
       fileStream,
       {
         headers: {
@@ -105,7 +109,8 @@ async function cancelJob(_printer) {
 // request timed out but the printer received the file and started printing anyway.
 async function checkIfPrinting(printer) {
   try {
-    const response = await axios.get(`http://${printer.ip}/api/v1/status`, {
+    const ip = await resolveHost(printer.ip);
+    const response = await axios.get(`http://${ip}/api/v1/status`, {
       headers: { 'X-Api-Key': printer.api_key },
       timeout: 8000,
     });
