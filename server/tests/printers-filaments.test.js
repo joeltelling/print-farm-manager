@@ -30,6 +30,7 @@ beforeAll(() => {
       serial_number     TEXT DEFAULT '',
       loaded_material   TEXT,
       loaded_color      TEXT,
+      auto_advance      INTEGER DEFAULT 0,
       created_at        INTEGER NOT NULL
     );
     CREATE TABLE printer_events (
