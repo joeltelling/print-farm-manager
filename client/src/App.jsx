@@ -8,16 +8,25 @@ import Projects from './pages/Projects';
 import Jobs from './pages/Jobs';
 import Settings from './pages/Settings';
 import Decommissioned from './pages/Decommissioned';
+import Login from './pages/Login';
+import Users from './pages/Users';
+import Account from './pages/Account';
+import { useAuth } from './AuthContext';
 
-const NAV_ITEMS = [
-  { to: '/',               label: 'Dashboard' },
-  { to: '/fleet',          label: 'Fleet' },
-  { to: '/printers',       label: 'Printers',      end: true },
-  { to: '/projects',       label: 'Projects' },
-  { to: '/jobs',           label: 'Jobs' },
-  { to: '/decommissioned', label: 'Decommissioned' },
-  { to: '/settings',       label: 'Settings' },
-];
+function navItems(role) {
+  const items = [
+    { to: '/',               label: 'Dashboard' },
+    { to: '/fleet',          label: 'Fleet' },
+    { to: '/printers',       label: 'Printers',      end: true },
+    { to: '/projects',       label: 'Projects' },
+    { to: '/jobs',           label: 'Jobs' },
+    { to: '/decommissioned', label: 'Decommissioned' },
+    { to: '/settings',       label: 'Settings' },
+  ];
+  if (role === 'admin') items.push({ to: '/users', label: 'Users' });
+  items.push({ to: '/account', label: 'Account' });
+  return items;
+}
 
 const navLinkStyle = ({ isActive }) => ({
   display: 'block',
@@ -33,9 +42,12 @@ const navLinkStyle = ({ isActive }) => ({
 });
 
 export default function App() {
+  const { user, logout } = useAuth();
+
   // Operator-configurable farm name (Settings → Farm Name)
   const [farmName, setFarmName] = useState('Print Farm');
   useEffect(() => {
+    if (!user) return; // unauthenticated: /api/settings is behind the auth gate too
     fetch('/api/settings')
       .then(r => r.json())
       .then(data => { if (data.farm_name) setFarmName(data.farm_name); })
@@ -46,7 +58,13 @@ export default function App() {
     const onFarmNameChanged = (e) => setFarmName(e.detail);
     window.addEventListener('farmNameChanged', onFarmNameChanged);
     return () => window.removeEventListener('farmNameChanged', onFarmNameChanged);
-  }, []);
+  }, [user]);
+
+  // undefined = still checking the session; null = confirmed logged out.
+  if (user === undefined) return null;
+  if (user === null) return <Login />;
+
+  const NAV_ITEMS = navItems(user.role);
 
   return (
     <BrowserRouter>
@@ -76,6 +94,15 @@ export default function App() {
               {item.label}
             </NavLink>
           ))}
+          <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #1e2433' }}>
+            <div style={{ padding: '0 6px 6px', fontSize: 11, color: '#64748b' }}>{user.name}</div>
+            <button
+              onClick={logout}
+              style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#94a3b8', padding: '8px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}
+            >
+              Sign out
+            </button>
+          </div>
         </nav>
 
         {/* Top nav bar (mobile) */}
@@ -99,6 +126,12 @@ export default function App() {
               {item.label}
             </NavLink>
           ))}
+          <button
+            onClick={logout}
+            style={{ marginLeft: 'auto', background: '#1e2433', border: 'none', color: '#94a3b8', padding: '5px 10px', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}
+          >
+            Sign out
+          </button>
         </nav>
 
         {/* Main content */}
@@ -112,6 +145,8 @@ export default function App() {
             <Route path="/jobs"            element={<Jobs />} />
             <Route path="/decommissioned"  element={<Decommissioned />} />
             <Route path="/settings"        element={<Settings />} />
+            {user.role === 'admin' && <Route path="/users" element={<Users />} />}
+            <Route path="/account"         element={<Account />} />
           </Routes>
         </main>
       </div>

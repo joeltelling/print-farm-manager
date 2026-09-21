@@ -6,15 +6,111 @@ In **development** (`npm run dev`) the Vite dev server at port 5173 proxies all 
 
 All request bodies are JSON (`Content-Type: application/json`) unless noted otherwise. All responses are JSON. Timestamps are Unix epoch milliseconds.
 
+**Authentication:** every route below requires a signed-in session cookie or an `Authorization: Bearer <api_key>` header, except `GET /api/health` and the routes under Auth marked public. See [docs/auth.md](auth.md) for the full model. An unauthenticated request gets `401 { "error": "Not authenticated" }`.
+
 ---
 
 ## Health
 
 ### `GET /api/health`
 
+Public, no authentication required.
+
 ```json
 { "status": "ok", "timestamp": 1774903214349 }
 ```
+
+---
+
+## Auth
+
+Full model, OIDC configuration, and the bootstrap/login/session flow: [docs/auth.md](auth.md). `status`, `bootstrap`, `login`, `logout`, `oidc/login`, and `oidc/callback` are public; `me` requires auth.
+
+### `GET /api/auth/status`
+
+Public.
+
+```json
+{ "needsBootstrap": false, "oidcEnabled": true }
+```
+
+### `POST /api/auth/bootstrap`
+
+Public, but only accepted while zero users exist (`403` otherwise). Creates the first account, always as `admin`, and signs it in.
+
+**Body:** `{ "email": "...", "name": "...", "password": "..." }`, all required, password minimum 8 characters.
+
+Returns `201` with the created user (no `password_hash`) and sets the session cookie. `400` on a missing field or a short password.
+
+### `POST /api/auth/login`
+
+Public.
+
+**Body:** `{ "email": "...", "password": "..." }`
+
+Returns `200` with the user and sets the session cookie. `401 { "error": "Invalid email or password" }` on any mismatch (unknown email and wrong password are indistinguishable on purpose).
+
+### `POST /api/auth/logout`
+
+Public (reads whatever session cookie the request carries, if any). Deletes the session row and clears the cookie. Always returns `200 { "ok": true }`.
+
+### `GET /api/auth/me`
+
+Requires auth. Returns the current user, resolved from either the session cookie or an API key. `401` if neither is valid.
+
+### `GET /api/auth/oidc/login`
+
+Public. Redirects to the configured OIDC provider. `404 { "error": "OIDC is not configured on this server" }` if the `OIDC_*` environment variables aren't set.
+
+### `GET /api/auth/oidc/callback`
+
+Public. This is the redirect target the IdP calls back to: exchanges the authorization code, resolves or provisions a local user (always as `operator` when newly provisioned; see [docs/auth.md](auth.md)), sets the session cookie, and redirects to `/`. Returns a plain-text `400` or `502` on an expired/invalid flow or an IdP error, rather than JSON, since this endpoint is only ever reached via browser redirect, never called directly by the client.
+
+---
+
+## Users
+
+Admin only (`403` for an operator, including a well-formed session). See [docs/auth.md](auth.md) for the role model.
+
+### `GET /api/users`
+
+```json
+[{ "id": 1, "email": "joel@farm.local", "name": "Joel", "role": "admin", "oidc_subject": null, "created_at": 1774903214349, "last_login_at": 1774903214349 }]
+```
+
+### `POST /api/users`
+
+**Body:** `{ "email": "...", "name": "...", "role": "operator", "password": "..." }`, `email` and `name` required, `role` defaults to `operator`, `password` is optional (omit for an SSO-only account). Returns `201`, `400` on a bad role or a short password, `409` if the email already exists.
+
+### `PUT /api/users/:id`
+
+Partial update (`COALESCE`, omitted fields unchanged). **Body:** any of `name`, `role`, `password`. `404` if not found, `409` if this would demote the last remaining admin.
+
+### `DELETE /api/users/:id`
+
+`404` if not found, `409` if deleting your own currently-signed-in account or the last remaining admin. On success, also deletes that user's sessions and API keys.
+
+---
+
+## API Keys
+
+Self-service: every route operates on the signed-in user's own keys, except deletion, which an admin may also do to someone else's key. See [docs/auth.md](auth.md).
+
+### `GET /api/api-keys`
+
+Returns the current user's keys. `key_hash` is never included.
+
+```json
+[{ "id": 1, "name": "OrcaSlicer", "key_prefix": "pfm_ab12cd34", "created_at": 1774903214349, "last_used_at": 1774903214349, "revoked_at": null }]
+```
+
+### `POST /api/api-keys`
+
+**Body:** `{ "name": "..." }`. Returns `201` with the full plaintext key in the `key` field, the only time it is ever available; the client must show it once and cannot retrieve it again.
+
+### `DELETE /api/api-keys/:id`
+
+Revokes (soft delete, the row and its `last_used_at` history are kept). `404` if not found, `403` if it belongs to someone else and you aren't an admin.
 
 ---
 

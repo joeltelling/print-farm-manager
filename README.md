@@ -6,12 +6,13 @@ No cloud. No subscriptions. No vendor lock-in.
 
 ![Dashboard — live fleet status and active projects](docs/images/dashboard.png)
 
-> **Security note:** This app has no built-in authentication. It is designed to run on a trusted local network only. Do not expose port 3000 (or 5173 in dev) to the internet — your printer API keys are served to any client that can reach the server. Run it behind your router's firewall or a local VPN.
+> **Security note:** Accounts and sessions are required for every page and API route (see [docs/auth.md](docs/auth.md)), but this app is still designed to run on a trusted local network, not the open internet: printer credentials and G-code live in the same database a compromised account would reach. Do not expose port 3000 (or 5173 in dev) to the internet. Run it behind your router's firewall or a local VPN.
 
 ---
 
 ## What It Does
 
+- **Accounts and API keys**: email/password or single sign-on (any OIDC provider) for people, long-lived keys for scripts and slicers, admin/operator roles
 - **Live fleet view** — see every printer's status, progress, and time remaining at a glance, auto-refreshing every 15 seconds
 - **Automated job dispatch** — define projects and parts, upload G-code, and let the scheduler assign jobs to idle printers automatically
 - **Operator confirmation flow** — every finished print requires a human sign-off before the next job dispatches, preventing runaway failures
@@ -44,6 +45,8 @@ No cloud. No subscriptions. No vendor lock-in.
 | [Node.js](https://nodejs.org) + [Express](https://expressjs.com) | HTTP API server |
 | [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) | Embedded SQLite database — synchronous, zero configuration |
 | [axios](https://axios-http.com) | HTTP communication with Prusa, Klipper, and OctoPrint printers |
+| [bcryptjs](https://github.com/dcodeIO/bcrypt.js) | Password and API key hashing (pure JS, no native build alongside better-sqlite3's) |
+| [openid-client](https://github.com/panva/openid-client) | Generic OIDC single sign-on (v5, the CommonJS-compatible major version) |
 | [mqtt](https://github.com/mqttjs/MQTT.js) | MQTT over TLS for Bambu printer communication |
 | [basic-ftp](https://github.com/patrickjuchli/basic-ftp) | FTPS file transfer to Bambu printers |
 | [sdcp](https://github.com/blakejrobinson/sdcp) | WebSocket protocol driver for Elegoo SDCP printers |
@@ -130,7 +133,9 @@ docker compose up -d
 
 This same file works as a drop-in stack in Portainer (**Stacks → Add stack → Web editor**, paste it in, deploy) — no repo checkout needed there either.
 
-Open `http://localhost:3000` in a browser, or replace `localhost` with the machine's LAN IP to access it from any device on the network.
+Open `http://localhost:3000` in a browser, or replace `localhost` with the machine's LAN IP to access it from any device on the network. The first visitor creates the admin account, see [docs/auth.md](docs/auth.md).
+
+**Optional single sign-on:** add an `environment:` block with four `OIDC_*` variables to enable it, see the commented-out example in [`docker-compose.yml`](docker-compose.yml) and [docs/installation.md](docs/installation.md#optional-single-sign-on-oidc) for details.
 
 **Updating** to the latest published image:
 
@@ -221,6 +226,8 @@ print-farm-manager/
 ├── server/
 │   ├── index.js          # Express entry point
 │   ├── db.js             # SQLite schema + migrations
+│   ├── auth.js            # Sessions, API keys, password hashing (docs/auth.md)
+│   ├── oidc.js             # Generic OIDC single sign-on
 │   ├── poller.js         # 15-second printer poll loop
 │   ├── scheduler.js      # Job dispatch engine
 │   └── drivers/          # Per-brand printer drivers

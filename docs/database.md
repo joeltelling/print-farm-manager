@@ -188,6 +188,53 @@ CREATE TABLE IF NOT EXISTS printer_events (
 
 **Backfill migration:** on first server start after this table was introduced, any printer with `is_active = 0` and `decommissioned_at` set automatically receives a synthetic `decommission` event using the stored timestamp and note — idempotent across restarts.
 
+### users
+
+One row per account. `password_hash` is null for an OIDC-only account (never set a local password); `oidc_subject` is null until that user's identity is linked to an SSO provider. See [docs/auth.md](auth.md) for the full auth model.
+
+```sql
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  email         TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  password_hash TEXT,                       -- bcrypt hash; null for OIDC-only accounts
+  role          TEXT NOT NULL DEFAULT 'operator',  -- admin | operator
+  oidc_subject  TEXT UNIQUE,                -- IdP's "sub" claim once SSO-linked; null otherwise
+  created_at    INTEGER NOT NULL,
+  last_login_at INTEGER
+);
+```
+
+### sessions
+
+A logged-in browser session. The `token` itself is the opaque value stored in the `pfm_session` httpOnly cookie; the row is looked up on every authenticated request rather than trusting a signed/stateless token, so revoking a session (logout, user deletion) takes effect immediately.
+
+```sql
+CREATE TABLE IF NOT EXISTS sessions (
+  token       TEXT PRIMARY KEY,             -- random 32-byte hex, doubles as the cookie value
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  created_at  INTEGER NOT NULL,
+  expires_at  INTEGER NOT NULL              -- created_at + 30 days
+);
+```
+
+### api_keys
+
+A long-lived credential that authenticates as its owning user (full access, not scoped) via `Authorization: Bearer <key>`. Same never-store-the-secret pattern as `users.password_hash`: only `key_hash` (bcrypt) is persisted. `key_prefix` is the first 12 characters of the plaintext, kept so the Settings UI can show "pfm_ab12cd34..." without ever displaying the full key again after creation.
+
+```sql
+CREATE TABLE IF NOT EXISTS api_keys (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL REFERENCES users(id),
+  name          TEXT NOT NULL,              -- operator-chosen label, e.g. "OrcaSlicer"
+  key_prefix    TEXT NOT NULL,              -- "pfm_" + 8 hex chars, for display only
+  key_hash      TEXT NOT NULL,              -- bcrypt hash of the full key; plaintext is never stored
+  created_at    INTEGER NOT NULL,
+  last_used_at  INTEGER,
+  revoked_at    INTEGER                     -- soft delete; null while active
+);
+```
+
 ## Conventions
 
 - All IDs: `INTEGER PRIMARY KEY AUTOINCREMENT`

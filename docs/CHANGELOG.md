@@ -2,6 +2,41 @@
 
 ---
 
+## 2026-09-21: accounts, sessions, OIDC single sign-on, and API keys
+
+This app had no authentication at all until now: any client that could reach port 3000 had full read/write access to every printer credential, job, and part count. Adds accounts (email/password plus generic OIDC), admin/operator roles, and long-lived API keys for scripts and external tools, gating every route except health/auth under `requireAuth`.
+
+First run creates zero users; `GET /api/auth/status` reports `needsBootstrap: true` and the login page shows a one-time "create the admin account" form instead. `POST /api/auth/bootstrap` is rejected the instant any user exists, so there is exactly one way to become the first admin and it only works once. Passwords are bcrypt-hashed (12 rounds); sessions are a random opaque token in an httpOnly cookie, looked up against a `sessions` table on every request (not a signed/stateless token), so a logout or account deletion takes effect immediately rather than waiting out an expiry.
+
+OIDC is entirely config-driven (`OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_REDIRECT_URI`) via `openid-client` v5, the CJS-compatible major version, since v6 is ESM-only and this codebase is `require()` throughout. Missing any of the four env vars means SSO stays off with no code change needed; the client and IdP discovery are both loaded lazily on first use, matching the lazy-driver-registry pattern in `server/drivers/index.js`. A new OIDC identity links onto an existing account by matching email, or auto-provisions a new one, always as `operator`, never `admin`, so SSO can never silently grant elevated access.
+
+API keys (`Authorization: Bearer <key>`) act as their owning user for every request: full access, not scoped. Generated and revoked from Account to API Keys. Same never-store-the-secret pattern as passwords: only a bcrypt hash and a 12-character display prefix are persisted, and the plaintext is shown exactly once, at creation.
+
+No route's request/response shape changed and no `completed_qty` code path was touched: this only adds a gate in front of existing routes, all of which already look up their own rows the same way they did before. Not yet validated against a live deployment behind a real OIDC provider; the callback/token-exchange path is implemented from `openid-client`'s own v5 documentation (linked in `server/oidc.js`) and covered by mocked/in-memory-DB tests only. The DB-backed route tests (`auth-routes`, `users-routes`, `api-keys-routes`) could not be executed in this environment (no native toolchain here to compile `better-sqlite3` for Node 22 on Windows, a pre-existing limitation, not something this change introduced) but follow the exact in-memory-SQLite plus supertest pattern every other route test in this repo uses. The DB-independent pieces (password hashing, API key generation, cookie parsing, the `requireAuth`/`requireRole` middleware logic) were run directly and pass (16 tests). `npm run build` for the client was run and succeeds.
+
+### Changes
+- `server/db.js`: new `users`, `sessions`, `api_keys` tables (additive `CREATE TABLE IF NOT EXISTS`, no migration of existing tables).
+- `server/auth.js`: new module, password hashing (bcryptjs), session create/destroy/lookup, API key generation/lookup, cookie parse/set/clear, `requireAuth`/`requireRole` middleware.
+- `server/oidc.js`: new module, lazy OIDC discovery/client via `openid-client` v5, authorization URL generation with PKCE, callback token exchange.
+- `server/routes/auth.js`: new router, `status`, `bootstrap`, `login`, `logout`, `me`, `oidc/login`, `oidc/callback`.
+- `server/routes/users.js`: new router, admin-only account CRUD, with guards against demoting/deleting the last admin.
+- `server/routes/api-keys.js`: new router, self-service key create/list/revoke.
+- `server/index.js`: mounts the new routers; the auth router is mounted ahead of a global `requireAuth` gate applied to every other `/api/*` route.
+- `client/src/AuthContext.jsx`: new, checks `GET /api/auth/me` on mount, exposes `{ user, setUser, logout }`.
+- `client/src/pages/Login.jsx`: new, bootstrap form on first run, login form otherwise, SSO button when OIDC is configured.
+- `client/src/pages/Users.jsx`: new, admin account management page.
+- `client/src/pages/Account.jsx`: new, self-service API key management.
+- `client/src/App.jsx`, `client/src/main.jsx`: wrapped in `AuthProvider`; renders `Login` when logged out; adds Users (admin only) and Account nav items plus a sign-out button.
+- `package.json`: new dependencies `bcryptjs`, `openid-client`.
+- `docs/auth.md`: new, full auth model, roles, OIDC configuration and account-matching order.
+- `docs/database.md`, `docs/api.md`, `docs/README.md`: documented the new tables, routes, and files.
+- `docs/installation.md`: new "First Run: Creating the Admin Account" and "Optional: Single Sign-On (OIDC)" sections.
+- `README.md`: updated the security note (auth now exists, LAN-only guidance stays), added the two new dependencies, an OIDC mention in the Docker section, and the new server files to the project structure tree.
+- `docker-compose.yml`: commented-out `OIDC_*` environment example on the production service.
+- `server/tests/auth-helpers.test.js`, `server/tests/auth-routes.test.js`, `server/tests/users-routes.test.js`, `server/tests/api-keys-routes.test.js`: new test files.
+
+---
+
 ## 2026-09-21: live camera feed on the printer detail page (OctoPrint, Klipper)
 
 Webcam streaming was previously a parked feature (see CLAUDE.md) with no code in the repo at all. Added it for the two connectors whose camera location is discoverable through a documented API rather than guessed: OctoPrint (`GET /api/settings`, the `webcam.streamUrl`/`webcam.snapshotUrl` fields) and Klipper/Moonraker (`GET /server/webcams/list`). Prusa, Bambu, and Elegoo are intentionally left out of this pass: PrusaLink's camera endpoints and Elegoo's SDCP video field weren't verified against official docs, and Bambu's camera is RTSPS on a nonstandard port, which browsers cannot play directly without a new transcoding dependency (ffmpeg/go2rtc), out of scope here.
