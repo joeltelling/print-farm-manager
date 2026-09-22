@@ -17,7 +17,7 @@ Administrator-managed canonical lists of filament types and filament colors. The
 |-------------|---------|-------|
 | `id`        | INTEGER | PK, autoincrement |
 | `name`      | TEXT    | Unique across the whole library, e.g. "Black", "Galaxy Red". A color is a single entity now, not one row per type: see `filament_color_types` below. |
-| `hex_color` | TEXT    | Optional hex code, e.g. "#FF0000". Shown as a color swatch in the Settings table, and read by the scheduler's optional color-tolerance fallback (`server/color-distance.js`, the `color_tolerance` setting): a color with no hex set can never participate in a tolerant match, only an exact name match. |
+| `hex_color` | TEXT    | Optional hex code, e.g. "#FF0000". Shown as a color swatch in the Settings table, and read by the scheduler's optional color-tolerance fallback (`server/color-distance.js`, the `color_tolerance` setting): a color with no hex set can never participate in a tolerant match, only an exact name match. Always saved normalized (a leading `#` added if missing, lowercased) by `server/routes/filaments.js`'s `POST`/`PUT /api/filaments/colors`, via `color-distance.js`'s `normalizeHex`; a value that isn't a valid 3- or 6-digit hex color is rejected with `400` rather than saved as something the browser silently can't render as a swatch. |
 
 ### `filament_color_types`
 
@@ -70,15 +70,15 @@ Returns one row per color, with every linked type nested as an array. Used only 
 
 ### `POST /api/filaments/colors`
 Create a new color with its initial set of types.
-- Body: `{ "name": "Galaxy Red", "hex_color": "#C0392B", "type_ids": [1, 2] }`, `hex_color` is optional, `type_ids` requires at least one id and every id must exist.
+- Body: `{ "name": "Galaxy Red", "hex_color": "#C0392B", "type_ids": [1, 2] }`, `hex_color` is optional (accepts a leading `#` or not, 3- or 6-digit, any case; normalized before saving), `type_ids` requires at least one id and every id must exist.
 - Returns: the created color with its `types` array (201)
-- Errors: 400 if name or type_ids missing/empty, or a type_id doesn't exist; 409 if the name already exists (edit the existing color instead of creating a duplicate)
+- Errors: 400 if name or type_ids missing/empty, a type_id doesn't exist, or hex_color isn't a valid hex color; 409 if the name already exists (edit the existing color instead of creating a duplicate)
 
 ### `PUT /api/filaments/colors/:id`
-Partial update. `name`/`hex_color` use the usual COALESCE (omitted fields unchanged). If `type_ids` is present in the body, it **replaces** the color's full type list (the same replace-the-whole-set convention `gcodes.allowed_groups` uses), not a merge: send every type the color should still have, not just the ones being added.
+Partial update. `name` uses the usual COALESCE (omitted stays unchanged). `hex_color` uses the "present in body wins" rule instead (an omitted field is unchanged, but an explicit empty string clears it back to unset, same as `loaded_material`/`loaded_color` elsewhere in this app) and is normalized/validated the same way `POST` does. If `type_ids` is present in the body, it **replaces** the color's full type list (the same replace-the-whole-set convention `gcodes.allowed_groups` uses), not a merge: send every type the color should still have, not just the ones being added.
 - Body: `{ "type_ids": [1, 3] }` (name/hex_color omitted here, so unchanged)
 - Returns: the updated color with its `types` array
-- Errors: 404 if not found, 400 if `type_ids` is present but empty or contains an unknown id, 409 on a name collision
+- Errors: 404 if not found, 400 if `type_ids` is present but empty or contains an unknown id, or hex_color is present but not a valid hex color; 409 on a name collision
 
 ### `DELETE /api/filaments/colors/:id`
 Remove a filament color by ID (also removes its `filament_color_types` rows). Not blocked by anything referencing it, same non-blocking behavior as before.

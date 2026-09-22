@@ -130,6 +130,24 @@ describe('POST /api/filaments/colors', () => {
     const res = await request(app).post('/api/filaments/colors').send({ name: 'Black', type_ids: [typeId] });
     expect(res.status).toBe(409);
   });
+
+  // A hex value missing its leading "#" (or otherwise malformed) is not invalid
+  // SQL, so it would previously save silently; as a bare CSS `background` value
+  // it's just ignored by the browser, so the swatch never renders with no
+  // visible error anywhere. See server/color-distance.js's normalizeHex.
+  test('adds a missing leading # instead of saving it unusably', async () => {
+    const typeId = seedType('PLA');
+    const res = await request(app).post('/api/filaments/colors').send({ name: 'Black', hex_color: 'ff0000', type_ids: [typeId] });
+    expect(res.status).toBe(201);
+    expect(res.body.hex_color).toBe('#ff0000');
+  });
+
+  test('400s on a hex_color that is not a hex color at all', async () => {
+    const typeId = seedType('PLA');
+    const res = await request(app).post('/api/filaments/colors').send({ name: 'Black', hex_color: 'red', type_ids: [typeId] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/hex color/i);
+  });
 });
 
 describe('GET /api/filaments/colors', () => {
@@ -177,6 +195,31 @@ describe('PUT /api/filaments/colors/:id', () => {
     expect(res.body.name).toBe('Black');
     expect(res.body.hex_color).toBe('#111');
     expect(res.body.types).toEqual([{ id: typeId, name: 'PLA' }]);
+  });
+
+  test('adds a missing leading # on update too', async () => {
+    const typeId = seedType('PLA');
+    const created = await request(app).post('/api/filaments/colors').send({ name: 'Black', hex_color: '#000', type_ids: [typeId] });
+    const res = await request(app).put(`/api/filaments/colors/${created.body.id}`).send({ hex_color: '00ff00' });
+    expect(res.status).toBe(200);
+    expect(res.body.hex_color).toBe('#00ff00');
+  });
+
+  test('400s on update when hex_color is not a hex color at all', async () => {
+    const typeId = seedType('PLA');
+    const created = await request(app).post('/api/filaments/colors').send({ name: 'Black', hex_color: '#000', type_ids: [typeId] });
+    const res = await request(app).put(`/api/filaments/colors/${created.body.id}`).send({ hex_color: 'not-a-color' });
+    expect(res.status).toBe(400);
+    // Unchanged, not corrupted, by the rejected request
+    expect(db.prepare('SELECT hex_color FROM filament_colors WHERE id = ?').get(created.body.id).hex_color).toBe('#000');
+  });
+
+  test('clears hex_color when an empty string is sent', async () => {
+    const typeId = seedType('PLA');
+    const created = await request(app).post('/api/filaments/colors').send({ name: 'Black', hex_color: '#000', type_ids: [typeId] });
+    const res = await request(app).put(`/api/filaments/colors/${created.body.id}`).send({ hex_color: '' });
+    expect(res.status).toBe(200);
+    expect(res.body.hex_color).toBeNull();
   });
 
   test('replaces the full type list when type_ids is provided', async () => {

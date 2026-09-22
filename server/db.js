@@ -290,6 +290,28 @@ try {
   }
 } catch (_) {}
 
+// One-time backfill: normalize any filament_colors.hex_color saved before
+// routes/filaments.js validated the format (e.g. "ff0000" with no leading "#",
+// or a 3-digit shorthand). An un-normalized value is not invalid SQL, so it
+// saved silently, but a CSS `background` set to a bare hex string with no "#"
+// is silently ignored by the browser: the color swatch just never renders,
+// with no visible error anywhere. Runs every startup but is a no-op once
+// every row is already normalized (color-distance.js's normalizeHex).
+try {
+  const { normalizeHex } = require('./color-distance');
+  const rows = db.prepare("SELECT id, hex_color FROM filament_colors WHERE hex_color IS NOT NULL").all();
+  const update = db.prepare('UPDATE filament_colors SET hex_color = ? WHERE id = ?');
+  let fixed = 0;
+  for (const row of rows) {
+    const normalized = normalizeHex(row.hex_color);
+    if (normalized !== row.hex_color) {
+      update.run(normalized, row.id); // normalized is null when the stored value can't be parsed as a hex color at all
+      fixed++;
+    }
+  }
+  if (fixed > 0) console.log(`[db] Normalized ${fixed} filament_colors.hex_color value(s) saved before format validation existed`);
+} catch (_) {}
+
 // Settings table — key/value store for operator-configurable options
 try {
   db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
