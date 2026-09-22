@@ -1,4 +1,5 @@
 import useCameraHover from '../useCameraHover';
+import { webUiLink } from '../webUiLink';
 
 // Extracted from Dashboard.jsx so the Webcams page can show the identical
 // grouped-by-model printer grid, with the same hover-to-preview camera behavior,
@@ -104,19 +105,19 @@ export default function FleetStatusGrid({ printers, allModels, title = 'Fleet St
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
               {group.map(printer => {
                 const c = cellColors(printer);
-                const isKlipper = printer.type === 'klipper';
+                const link = webUiLink(printer);
                 return (
                   <div
                     key={printer.id}
-                    title={isKlipper ? `${printer.name}: ${printer.status} (click to open Mainsail)` : `${printer.name}: ${printer.status}`}
+                    title={link ? `${printer.name}: ${printer.status} (click to open ${link.label.replace(' ↗', '')})` : `${printer.name}: ${printer.status}`}
                     onMouseEnter={e => onEnter(printer, e)}
                     onMouseLeave={onLeave}
-                    onClick={isKlipper ? () => window.open(`http://${printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`, '_blank') : undefined}
+                    onClick={link ? () => window.open(link.url, '_blank') : undefined}
                     style={{
                       width: 54, height: 44, borderRadius: 6,
                       background: c.bg, border: `1px solid ${c.border}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: isKlipper ? 'pointer' : 'default',
+                      cursor: link ? 'pointer' : 'default',
                     }}
                   >
                     <span style={{

@@ -31,8 +31,10 @@ Full model, OIDC configuration, and the bootstrap/login/session flow: [docs/auth
 Public.
 
 ```json
-{ "needsBootstrap": false, "oidcEnabled": true }
+{ "needsBootstrap": false, "oidcEnabled": true, "autoSsoRedirect": false }
 ```
+
+`autoSsoRedirect` is the `auto_sso_redirect` setting AND `oidcEnabled`: it is always `false` if OIDC isn't actually configured, regardless of the raw setting value, so the client never redirects into a login flow that 404s. See [docs/auth.md](auth.md).
 
 ### `POST /api/auth/bootstrap`
 
@@ -151,6 +153,8 @@ Returns all active printers (`is_active = 1`) ordered by name.
 
 `needs_catalog` is `1` when the printer is `PRINTING` or `FINISHED` but no job row exists to own that activity, the signature of a print started outside the farm (sliced and sent straight to the printer, e.g. from OrcaSlicer, instead of through a Project/Part upload). The printer detail page opens the "catalog this print" popup automatically when this is `1`. See `POST /api/printers/:id/catalog-print` below and `docs/database.md`'s `jobs` section for exactly how it is computed.
 
+`lanes` is every `printer_lanes` row for that printer (`[]` if none), e.g. `[{ "lane_index": 0, "material": "PLA", "color": "Black" }]`, synced from klipper-filament-sync (see `docs/database.md`'s `printer_lanes` section). The Fleet cards, Webcams page, and Dashboard/Webcams hover preview show it when present, falling back to `loaded_material`/`loaded_color` otherwise.
+
 ### `GET /api/printers/ams?model=<model_id>`
 
 Returns the live AMS slot list from any connected Bambu printer of the given model. Used by the upload form to populate the slot picker.
@@ -252,7 +256,7 @@ Create a single printer.
 }
 ```
 
-Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname, including a `.local` (mDNS) name, as well as a numeric address; see `docs/installation.md`'s credential table for the one remaining caveat (the original Elegoo Centauri Carbon's UDP discovery needing an IPv4 address). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`), `camera_uid`, `camera_rotation` (`0`/`90`/`180`/`270`, defaults to `0`), `camera_flip_h`, `camera_flip_v` (booleans, default `false`).
+Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname, including a `.local` (mDNS) name, as well as a numeric address; see `docs/installation.md`'s credential table for the one remaining caveat (the original Elegoo Centauri Carbon's UDP discovery needing an IPv4 address). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`), `camera_uid`, `camera_rotation` (`0`/`90`/`180`/`270`, defaults to `0`), `camera_flip_h`, `camera_flip_v` (booleans, default `false`), `octoeverywhere_url`.
 
 `model` must be one of: `mk4`, `mk4s`, `c1`, `c1l`, `xl`.
 
@@ -260,11 +264,13 @@ Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname, including a
 
 `camera_uid`/`camera_rotation`/`camera_flip_h`/`camera_flip_v` are the display preferences `GET /:id/camera` returns; see `docs/database.md`'s printers table for what each one does.
 
+`octoeverywhere_url` is an optional operator-supplied [OctoEverywhere](https://octoeverywhere.com) URL. When set, the "open web interface" links on Fleet and the Dashboard fleet grid use it instead of `http://<ip>`, for reaching the printer off the local network. Purely a link choice: unrelated to polling, dispatch, or connector behavior. See `docs/database.md`'s printers table.
+
 Returns `201` with the created printer object. Returns `409` if `name` already exists.
 
 ### `PUT /api/printers/:id`
 
-Partial update: only fields provided are changed (uses `COALESCE`, except `auto_advance`, `camera_uid`, `camera_rotation`, `camera_flip_h`, and `camera_flip_v`, which use the same "present in body wins" rule as `loaded_material`/`loaded_color` so an explicit falsy value, like unchecking a flip flag or clearing the selected camera, actually takes effect rather than a plain `COALESCE` silently keeping the old value). All fields from POST are accepted, plus `is_held` (`0` or `1`).
+Partial update: only fields provided are changed (uses `COALESCE`, except `auto_advance`, `camera_uid`, `camera_rotation`, `camera_flip_h`, `camera_flip_v`, and `octoeverywhere_url`, which use the same "present in body wins" rule as `loaded_material`/`loaded_color` so an explicit falsy value, like unchecking a flip flag, clearing the selected camera, or clearing the OctoEverywhere URL, actually takes effect rather than a plain `COALESCE` silently keeping the old value). All fields from POST are accepted, plus `is_held` (`0` or `1`).
 
 Returns `404` if not found, `409` on name conflict.
 
@@ -733,8 +739,9 @@ Body: `{ "value": "..." }`. Allowed keys:
 |---|---|---|
 | `dispatch_batch_size` | integer 1-100 | How many printers the scheduler keeps uploading or printing at once (a concurrency target, not a fixed group size; it draws deeper into the ready queue to fill the target if some printers have no dispatchable candidate) |
 | `farm_name` | ≤ 40 chars | Sidebar branding (falls back to "Print Farm") |
+| `auto_sso_redirect` | `"0"` or `"1"` | Admin-only (`403` for a non-admin, even with a valid session). Whether the login page skips the local form and redirects straight to the OIDC provider; see [docs/auth.md](auth.md). |
 
-Returns `400` for unknown keys or failed validation.
+Returns `400` for unknown keys or failed validation, `403` if a non-admin sends `auto_sso_redirect`.
 
 ---
 

@@ -35,6 +35,7 @@ beforeAll(() => {
       camera_rotation   INTEGER DEFAULT 0,
       camera_flip_h     INTEGER DEFAULT 0,
       camera_flip_v     INTEGER DEFAULT 0,
+      octoeverywhere_url TEXT,
       created_at        INTEGER NOT NULL
     );
     CREATE TABLE printer_events (
@@ -275,6 +276,45 @@ describe('PUT /api/printers/:id: camera settings', () => {
       .send({ camera_flip_h: false });
     expect(res.status).toBe(200);
     expect(res.body.camera_flip_h).toBe(0);
+  });
+});
+
+// ── PUT /api/printers/:id: octoeverywhere_url ──────────────────────────────
+// Same "present in body wins" concern as the other optional connection fields:
+// an explicit empty string must clear a previously-set URL, not be ignored.
+
+describe('PUT /api/printers/:id: octoeverywhere_url', () => {
+  let printerId;
+
+  beforeAll(() => {
+    const row = db.prepare(
+      "INSERT INTO printers (name, ip, api_key, model, is_active, created_at) VALUES ('OctoEverywhereEditMe', '10.0.0.3', '', 'mk4s', 1, ?)"
+    ).run(Date.now());
+    printerId = row.lastInsertRowid;
+  });
+
+  test('sets octoeverywhere_url', async () => {
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ octoeverywhere_url: 'https://abc123.octoeverywhere.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.octoeverywhere_url).toBe('https://abc123.octoeverywhere.com');
+  });
+
+  test('omitting the field leaves it unchanged', async () => {
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ serial_number: 'SN-OE' });
+    expect(res.status).toBe(200);
+    expect(res.body.octoeverywhere_url).toBe('https://abc123.octoeverywhere.com');
+  });
+
+  test('clears octoeverywhere_url when empty string is sent', async () => {
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ octoeverywhere_url: '' });
+    expect(res.status).toBe(200);
+    expect(res.body.octoeverywhere_url).toBeNull();
   });
 });
 

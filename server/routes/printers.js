@@ -95,6 +95,20 @@ module.exports = (db) => {
       WHERE p.is_active = 1
       ORDER BY p.name
     `).all();
+
+    // Per-lane filament state (klipper-filament-sync, see server/poller.js _syncLanes)
+    // is attached here so the Fleet cards, Webcams page, and Dashboard hover preview
+    // can show it without each fetching it separately. Batched, not a per-row
+    // subquery, matching the same pattern in routes/parts.js dispatch-status.
+    if (printers.length > 0) {
+      const laneRows = db.prepare(
+        `SELECT * FROM printer_lanes WHERE printer_id IN (${printers.map(() => '?').join(',')}) ORDER BY lane_index`
+      ).all(...printers.map(p => p.id));
+      const lanesByPrinter = {};
+      for (const lane of laneRows) (lanesByPrinter[lane.printer_id] ||= []).push(lane);
+      for (const p of printers) p.lanes = lanesByPrinter[p.id] || [];
+    }
+
     res.json(printers);
   });
 
@@ -205,14 +219,15 @@ module.exports = (db) => {
     if (!normalized || !db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(normalized)) {
       return res.status(400).json({ error: `Unknown model "${model}". Add it in Settings → Printer Models first.` });
     }
-    const { loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v } = req.body;
+    const { loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v, octoeverywhere_url } = req.body;
     try {
       const result = db.prepare(`
-        INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v, octoeverywhere_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(name, ip, api_key || '', serial_number || '', group_name || null, printerType, normalized,
              loaded_material || null, loaded_color || null, auto_advance ? 1 : 0,
-             camera_uid || null, camera_rotation || 0, camera_flip_h ? 1 : 0, camera_flip_v ? 1 : 0, Date.now());
+             camera_uid || null, camera_rotation || 0, camera_flip_h ? 1 : 0, camera_flip_v ? 1 : 0,
+             octoeverywhere_url?.trim() || null, Date.now());
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer creation into a reported error.
       if (group_name && group_name.trim()) {
@@ -232,7 +247,7 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
 
-    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v } = req.body;
+    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v, octoeverywhere_url } = req.body;
     let normalized = undefined;
     if (model !== undefined) {
       normalized = normalizeModel(model);
@@ -258,6 +273,9 @@ module.exports = (db) => {
     const newCameraRotation = 'camera_rotation' in req.body ? (camera_rotation || 0) : printer.camera_rotation;
     const newCameraFlipH    = 'camera_flip_h' in req.body ? (camera_flip_h ? 1 : 0) : printer.camera_flip_h;
     const newCameraFlipV    = 'camera_flip_v' in req.body ? (camera_flip_v ? 1 : 0) : printer.camera_flip_v;
+    // Same "present in body wins" rule: clearing the field means submitting '', which
+    // a COALESCE(?, col) would treat as "unchanged" instead of clearing it.
+    const newOctoeverywhereUrl = 'octoeverywhere_url' in req.body ? (octoeverywhere_url?.trim() || null) : printer.octoeverywhere_url;
 
     // Compute effective new values for all tracked fields (COALESCE: body wins, else keep existing)
     const after = {
@@ -274,6 +292,7 @@ module.exports = (db) => {
       camera_rotation: newCameraRotation,
       camera_flip_h:   newCameraFlipH,
       camera_flip_v:   newCameraFlipV,
+      octoeverywhere_url: newOctoeverywhereUrl,
     };
 
     const FIELD_LABELS = {
@@ -282,6 +301,7 @@ module.exports = (db) => {
       loaded_material: 'Material', loaded_color: 'Color', auto_advance: 'Auto-advance',
       camera_uid: 'Camera', camera_rotation: 'Camera rotation',
       camera_flip_h: 'Camera flip (horizontal)', camera_flip_v: 'Camera flip (vertical)',
+      octoeverywhere_url: 'OctoEverywhere URL',
     };
 
     try {
@@ -302,11 +322,12 @@ module.exports = (db) => {
             camera_uid = ?,
             camera_rotation = ?,
             camera_flip_h = ?,
-            camera_flip_v = ?
+            camera_flip_v = ?,
+            octoeverywhere_url = ?
         WHERE id = ?
       `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
              newMaterial, newColor, newAutoAdvance,
-             newCameraUid, newCameraRotation, newCameraFlipH, newCameraFlipV, req.params.id);
+             newCameraUid, newCameraRotation, newCameraFlipH, newCameraFlipV, newOctoeverywhereUrl, req.params.id);
 
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer update into a reported error.

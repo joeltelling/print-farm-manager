@@ -4,6 +4,7 @@ import PollTimer from '../components/PollTimer';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
+import { webUiLink } from '../webUiLink';
 
 const STATUS_COLORS = {
   PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
@@ -132,18 +133,21 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {printer.name}
         </span>
-        {printer.type === 'klipper' && (
-          <a
-            href={`http://${printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`}
-            target="_blank"
-            rel="noreferrer"
-            onClick={e => e.stopPropagation()}
-            title="Open Mainsail"
-            style={{ color: '#60a5fa', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}
-          >
-            Mainsail ↗
-          </a>
-        )}
+        {(() => {
+          const link = webUiLink(printer);
+          return link && (
+            <a
+              href={link.url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={e => e.stopPropagation()}
+              title={`Open ${link.label.replace(' ↗', '')}`}
+              style={{ color: '#60a5fa', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}
+            >
+              {link.label}
+            </a>
+          );
+        })()}
         <span style={{ background: style.bg, color: style.text, borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
           {style.label}
         </span>
