@@ -1,6 +1,9 @@
 // Tests for POST /api/printers/test-connection: the "Test Connection" button's
-// backend. It never touches the database (no printer needs to exist to test
-// connection settings against it), so drivers are mocked and `db` is unused.
+// backend. The route itself never touches the database, but mounting the real
+// printers router still needs one: it prepares a printer_groups statement at
+// setup time (see registerGroup in routes/printers.js), so a stub object throws
+// before any request is even sent. Drivers are mocked; the in-memory db exists
+// only to satisfy that prepare() call.
 
 jest.mock('../drivers', () => ({
   getDriver: jest.fn(),
@@ -8,15 +11,18 @@ jest.mock('../drivers', () => ({
 
 const request  = require('supertest');
 const express  = require('express');
+const Database = require('better-sqlite3');
 const { getDriver } = require('../drivers');
 
 let app;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE printer_groups (name TEXT PRIMARY KEY, created_at INTEGER NOT NULL)');
   app = express();
   app.use(express.json());
-  app.use('/api/printers', require('../routes/printers')({}));
+  app.use('/api/printers', require('../routes/printers')(db));
 });
 
 describe('POST /api/printers/test-connection', () => {
