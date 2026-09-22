@@ -379,25 +379,27 @@ Returns all events for a printer, newest first.
     "printer_id": 57,
     "event_type": "job_failed",
     "note": "Job 304 — part: Left Bracket",
-    "created_at": 1775001234567
+    "created_at": 1775001234567,
+    "user_id": 3,
+    "user_name": "Joel"
   }
 ]
 ```
 
-Event types: `decommission`, `recommission`, `job_finished`, `job_failed`, `note`.
+Event types: `decommission`, `recommission`, `job_finished`, `job_failed`, `confirmed`, `info_changed`, `note`. `user_id`/`user_name` identify which signed-in user performed an operator-triggered event; both are `null` for a system-generated event (`job_finished` and friends, written by `scheduler.js` itself) or for any event written before this column existed. See `docs/database.md`'s `printer_events` section.
 
 Returns `404` if the printer does not exist.
 
 ### `POST /api/printers/:id/events`
 
-Adds a freeform operator note to the printer's event log.
+Adds a freeform operator note to the printer's event log, attributed to the signed-in user.
 
 **Body:**
 ```json
 { "note": "Nozzle replaced, tension checked — cleared to run." }
 ```
 
-Returns `201` with the created event object. Returns `400` if `note` is missing or blank. Returns `404` if the printer does not exist.
+Returns `201` with the created event object (including `user_id`/`user_name`). Returns `400` if `note` is missing or blank. Returns `404` if the printer does not exist.
 
 ### `GET /api/printers/:id/raw-status`
 

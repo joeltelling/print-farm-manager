@@ -7,6 +7,7 @@ const Database = require('better-sqlite3');
 
 let db;
 let app;
+let currentUser = { id: 1, name: 'Maeve', role: 'operator' };
 
 beforeAll(() => {
   db = new Database(':memory:');
@@ -33,7 +34,9 @@ beforeAll(() => {
       printer_id  INTEGER NOT NULL,
       event_type  TEXT NOT NULL,
       note        TEXT,
-      created_at  INTEGER NOT NULL
+      created_at  INTEGER NOT NULL,
+      user_id     INTEGER,
+      user_name   TEXT
     );
     CREATE TABLE printer_models (
       model_id  TEXT PRIMARY KEY,
@@ -50,6 +53,10 @@ beforeAll(() => {
   // Wire the full printers router (which mounts the events sub-router inside it)
   app = express();
   app.use(express.json());
+  // Stand-in for the real requireAuth gate (see server/index.js): every route
+  // here is mounted behind it in production, so req.user is always populated.
+  // Mutated per test to simulate "who is making this request".
+  app.use((req, res, next) => { req.user = currentUser; next(); });
 
   // events.js requires('./db') at module load — override with in-memory db
   // by manually wiring the events route here using the same pattern as the router
@@ -187,5 +194,19 @@ describe('POST /api/printers/:id/events', () => {
     const getRes = await request(app).get(`/api/printers/${id}/events`);
     expect(getRes.body).toHaveLength(1);
     expect(getRes.body[0].note).toBe('Hotend cleaned');
+  });
+
+  // Attribution: who added this note, not just what it says.
+  test('attributes the event to the signed-in user', async () => {
+    currentUser = { id: 7, name: 'Joel', role: 'admin' };
+    const id = seedPrinter(`EventsPrinter_attrib_${Date.now()}`);
+    const res = await request(app)
+      .post(`/api/printers/${id}/events`)
+      .send({ note: 'Bed leveled' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user_id).toBe(7);
+    expect(res.body.user_name).toBe('Joel');
+    currentUser = { id: 1, name: 'Maeve', role: 'operator' };
   });
 });

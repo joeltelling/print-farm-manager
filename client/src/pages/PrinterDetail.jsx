@@ -34,6 +34,7 @@ const EVENT_META = {
   job_failed:    { label: 'Job Failed',      bg: '#78350f', color: '#fcd34d' },
   note:          { label: 'Note',            bg: '#1e2433', color: '#94a3b8' },
   info_changed:  { label: 'Info Updated',   bg: '#1e2a3a', color: '#7dd3fc' },
+  confirmed:     { label: 'Confirmed',      bg: '#14532d', color: '#86efac' },
 };
 
 function EventBadge({ type }) {
@@ -910,7 +911,10 @@ export default function PrinterDetail() {
                   {ev.note}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: '#475569' }}>{formatTimestamp(ev.created_at)}</div>
+              <div style={{ fontSize: 11, color: '#475569' }}>
+                {formatTimestamp(ev.created_at)}
+                {ev.user_name && <span> · {ev.user_name}</span>}
+              </div>
             </div>
           </div>
         ))}

@@ -196,9 +196,11 @@ Permanent audit log for each printer. Events are never deleted and survive print
 CREATE TABLE IF NOT EXISTS printer_events (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   printer_id  INTEGER NOT NULL,   -- no FK — history survives printer deletion
-  event_type  TEXT NOT NULL,      -- decommission | recommission | job_finished | job_failed | note
-  note        TEXT,               -- human-readable detail; null for recommission
-  created_at  INTEGER NOT NULL
+  event_type  TEXT NOT NULL,      -- decommission | recommission | job_finished | job_failed | confirmed | note
+  note        TEXT,               -- human-readable detail; null for recommission/confirmed
+  created_at  INTEGER NOT NULL,
+  user_id     INTEGER,            -- migration; no FK, see below
+  user_name   TEXT                -- migration; snapshot, not joined at read time
 );
 ```
 
@@ -208,11 +210,15 @@ CREATE TABLE IF NOT EXISTS printer_events (
 |---|---|---|
 | `job_finished` | `scheduler.js` `_handleFinished` | `"Job N — Part Name (M parts)"` |
 | `job_failed` | `printers.js` `mark-job-failure` | Job ID + part name, or `"No tracked job"` |
-| `decommission` | `printers.js` decommission route | Operator's decommission note (if any) |
-| `recommission` | `index.js` recommission route | `null` |
+| `decommission` | `printers.js` decommission route(s) | Operator's decommission note (if any) |
+| `recommission` | `index.js` recommission route | Operator's note (if any) |
+| `confirmed` | `index.js` set-ready / set-ready-batch routes | `null`: the operator's sign-off action itself, `job_finished` already recorded what the hardware did |
+| `info_changed` | `printers.js` `PUT /:id` | One row per changed field, `"Label: old → new"` |
 | `note` | Events route (`POST /api/printers/:id/events`) | Operator-entered text |
 
 **Backfill migration:** on first server start after this table was introduced, any printer with `is_active = 0` and `decommissioned_at` set automatically receives a synthetic `decommission` event using the stored timestamp and note — idempotent across restarts.
+
+**`user_id`/`user_name`** (migration): which signed-in user performed an operator-triggered event (everything in the table above except the scheduler's own automatic `job_finished`/`offline_with_job`/`recovered`/`job_cancelled`, which stay attributed to nobody: a system transition, not an operator action). No FK on `user_id`, and `user_name` is a snapshot taken at insert time rather than joined at read time: this table's existing "history survives" guarantee (no FK on `printer_id` either) extends to a user being renamed or deleted later too. `server/events.js`'s `insert(printerId, eventType, note, user)` takes the acting `req.user` (or an equivalent `{id, name}`) as its optional fourth argument; omitted (or `null`) means a system-generated event. Both columns are `null` on any event written before this migration ran.
 
 ### users
 
