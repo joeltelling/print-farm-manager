@@ -6,8 +6,20 @@ services:
     image: print-farm-manager:latest
     container_name: print-farm-manager
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # Host networking, not a published port: mDNS (.local hostname) resolution for
+    # printers (server/mdns-resolve.js) sends real UDP multicast, which Docker's
+    # default bridge network forwards unreliably (works for some printers, not
+    # others, inconsistently between polls). Host networking puts the container
+    # directly on the host's real network interface, the same as any other process
+    # on the host, which is the standard fix for this class of problem. The app
+    # still listens on port 3000 exactly as before; there is just no docker-proxy
+    # NAT hop in front of it anymore, so `ports:` is meaningless here and Compose
+    # would ignore it. Reach the app at <host-ip>:3000, not a container name: a
+    # host-networked container has no normal internal Docker network address, so
+    # a reverse proxy on this same Docker host must point at the host's own IP
+    # (or `host.docker.internal` if that proxy's engine provides it) instead of
+    # `print-farm-manager:3000`.
+    network_mode: host
     # Optional single sign-on (see docs/auth.md). All four must resolve to a
     # non-empty value for SSO to activate. Values come from a local .env file
     # (see .env.example) next to this docker-compose.yml, which Compose loads
