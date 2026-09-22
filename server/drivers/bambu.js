@@ -27,6 +27,7 @@ const mqtt     = require('mqtt');
 const ftp      = require('basic-ftp');
 const path     = require('path');
 const { resolveHost } = require('../mdns-resolve');
+const { describeConnectionError } = require('../connection-test-helpers');
 
 // Map of printer.id → { client, latestPrint, connected }
 const connections = new Map();
@@ -396,4 +397,38 @@ async function checkIfPrinting(printer) {
   return status === 'PRINTING' || status === 'PAUSED';
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile };
+// ─── Test connection ─────────────────────────────────────────────────────────
+
+// One-off reachability check for the "Test Connection" button: just the MQTT
+// handshake. Opens and tears down its own client (reconnectPeriod: 0, so it never
+// retries in the background), never reading or writing the module-level
+// `connections`/`connecting` caches. Never throws.
+async function testConnection(printer) {
+  const ip = await resolveHost(printer.ip);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const client = mqtt.connect(`mqtts://${ip}:8883`, {
+      username:           'bblp',
+      password:           printer.api_key,
+      rejectUnauthorized: false,
+      connectTimeout:     8_000,
+      reconnectPeriod:    0,
+    });
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      client.end(true);
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({ ok: false, message: 'Connection timed out' }), 8_000);
+
+    client.on('connect', () => finish({ ok: true, message: ip !== printer.ip ? `Connected (resolved to ${ip})` : 'Connected' }));
+    client.on('error', (err) => finish({ ok: false, message: describeConnectionError(err) }));
+  });
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getAmsSlots, deleteFile, testConnection };

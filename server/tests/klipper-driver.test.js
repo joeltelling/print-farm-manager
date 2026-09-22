@@ -255,6 +255,23 @@ describe('getCameraUrl', () => {
   });
 });
 
+// ─── Test connection ──────────────────────────────────────────────────────────
+
+describe('testConnection', () => {
+  test('reports ok on a successful request', async () => {
+    axios.get.mockResolvedValue({ data: {} });
+    const result = await klipper.testConnection(fakePrinter);
+    expect(result).toEqual({ ok: true, message: 'Connected' });
+  });
+
+  test('reports the connection refused reason', async () => {
+    axios.get.mockRejectedValue(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+    const result = await klipper.testConnection(fakePrinter);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/refused/i);
+  });
+});
+
 // ─── Driver registry ──────────────────────────────────────────────────────────
 
 describe('driver registry', () => {
@@ -267,5 +284,6 @@ describe('driver registry', () => {
     expect(typeof driver.cancelJob).toBe('function');
     expect(typeof driver.checkIfPrinting).toBe('function');
     expect(typeof driver.getCameraUrl).toBe('function');
+    expect(typeof driver.testConnection).toBe('function');
   });
 });

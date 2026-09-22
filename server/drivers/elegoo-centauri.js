@@ -12,6 +12,7 @@
 const SDCPPrinterWS = require('sdcp/SDCPPrinterWS');
 const path = require('path');
 const { resolveHost } = require('../mdns-resolve');
+const { describeConnectionError } = require('../connection-test-helpers');
 
 // Map of printer.id → SDCPPrinterWS instance
 const connections = new Map();
@@ -229,4 +230,32 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// ─── Test connection ─────────────────────────────────────────────────────────
+
+// One-off reachability check for the "Test Connection" button. Opens and tears down
+// its own SDCPPrinterWS instance: never reads or writes the module-level `connections`
+// cache other pollers/dispatches share, and never leaves a background reconnect loop
+// running (no AutoReconnect is set on this throwaway client). Never throws.
+async function testConnection(printer) {
+  const ip = await resolveHost(printer.ip);
+  const client = new SDCPPrinterWS({ MainboardIP: ip });
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { client.Disconnect?.(); } catch (_) {}
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({ ok: false, message: 'Connection timed out' }), 8000);
+
+    client.Connect(ip)
+      .then(() => finish({ ok: true, message: ip !== printer.ip ? `Connected (resolved to ${ip})` : 'Connected' }))
+      .catch((err) => finish({ ok: false, message: describeConnectionError(err) }));
+  });
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, testConnection };
