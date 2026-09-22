@@ -26,6 +26,7 @@ const fs           = require('fs');
 const path         = require('path');
 const EventEmitter = require('events');
 const { resolveHost } = require('../mdns-resolve');
+const { describeConnectionError } = require('../connection-test-helpers');
 
 // Map<printerId, ConnectionState>
 const connections = new Map();
@@ -405,4 +406,39 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// ─── Test connection ─────────────────────────────────────────────────────────
+
+// One-off reachability check for the "Test Connection" button: just the MQTT
+// handshake, not the full registration flow. Opens and tears down its own client
+// (reconnectPeriod: 0, so it never retries in the background), never reading or
+// writing the module-level `connections`/`connecting` caches. Never throws.
+async function testConnection(printer) {
+  const ip = await resolveHost(printer.ip);
+  const accessCode = printer.api_key || '123456';
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const client = mqtt.connect(`mqtt://${ip}:1883`, {
+      clientId:        genClientId(),
+      username:        'elegoo',
+      password:        accessCode,
+      connectTimeout:  8_000,
+      reconnectPeriod: 0,
+    });
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      client.end(true);
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish({ ok: false, message: 'Connection timed out' }), 8_000);
+
+    client.on('connect', () => finish({ ok: true, message: ip !== printer.ip ? `Connected (resolved to ${ip})` : 'Connected' }));
+    client.on('error', (err) => finish({ ok: false, message: describeConnectionError(err) }));
+  });
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, testConnection };

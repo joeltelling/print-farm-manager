@@ -96,6 +96,8 @@ export default function PrinterDetail() {
   const [groups, setGroups]                 = useState([]);
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsDraft, setDetailsDraft]     = useState({});
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult]         = useState(null); // { ok, message } | null
   const [detailsError, setDetailsError]     = useState(null);
   const [savingDetails, setSavingDetails]   = useState(false);
   const [catalogDismissed, setCatalogDismissed] = useState(false);
@@ -251,6 +253,30 @@ export default function PrinterDetail() {
   function cancelEditDetails() {
     setEditingDetails(false);
     setDetailsError(null);
+    setTestResult(null);
+  }
+
+  async function handleTestConnection() {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/printers/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: printer.type,
+          ip: detailsDraft.ip.trim(),
+          api_key: detailsDraft.api_key.trim(),
+          serial_number: detailsDraft.serial_number.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setTestResult(res.ok ? data : { ok: false, message: data.error || `Failed (${res.status})` });
+    } catch (err) {
+      setTestResult({ ok: false, message: err.message });
+    } finally {
+      setTestingConnection(false);
+    }
   }
 
   async function submitEditDetails(e) {
@@ -281,6 +307,7 @@ export default function PrinterDetail() {
       }
       setPrinter(await res.json());
       setEditingDetails(false);
+      setTestResult(null);
     } finally {
       setSavingDetails(false);
     }
@@ -400,7 +427,7 @@ export default function PrinterDetail() {
                 <input
                   autoFocus
                   value={detailsDraft.ip}
-                  onChange={e => setDetailsDraft(d => ({ ...d, ip: e.target.value }))}
+                  onChange={e => { setDetailsDraft(d => ({ ...d, ip: e.target.value })); setTestResult(null); }}
                   disabled={savingDetails}
                   placeholder="192.168.1.100 or octoprint-01"
                   style={detailInputStyle}
@@ -417,6 +444,26 @@ export default function PrinterDetail() {
                     reliable fallback.
                   </div>
                 )}
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, fontWeight: 400 }}>
+                  <button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={testingConnection || !detailsDraft.ip?.trim()}
+                    style={{
+                      background: 'transparent', color: '#94a3b8', border: '1px solid #2d3748',
+                      borderRadius: 6, padding: '4px 10px', fontSize: 12,
+                      cursor: testingConnection || !detailsDraft.ip?.trim() ? 'default' : 'pointer',
+                      opacity: testingConnection || !detailsDraft.ip?.trim() ? 0.6 : 1,
+                    }}
+                  >
+                    {testingConnection ? 'Testing...' : 'Test Connection'}
+                  </button>
+                  {testResult && (
+                    <span style={{ fontSize: 12, color: testResult.ok ? '#22c55e' : '#ef4444' }}>
+                      {testResult.ok ? '✓' : '✗'} {testResult.message}
+                    </span>
+                  )}
+                </div>
               </label>
               {!NO_API_KEY_TYPES.has(printer.type) && (
                 <label style={detailLabelStyle}>

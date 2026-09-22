@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-09-21: Test Connection button; Webcams page redesigned as a snapshot gallery
+
+Requested while troubleshooting printers that connect inconsistently by hostname: a way to check reachability against exactly what is typed into the form right now, without saving first and without digging through server logs.
+
+Every connector now exports `testConnection(printer)` (`server/connection-test-helpers.js` holds the shared error-to-message mapping), wired to a new `POST /api/printers/test-connection` that accepts `{ type, ip, api_key, serial_number }` directly, no printer ID or saved row required. Unlike `getStatus`, which must swallow every failure into the canonical `OFFLINE` status, this surfaces the real reason: hostname did not resolve, connection refused, timed out, or the API key was rejected. For the two connectors with a persistent cached connection that a synchronous check previously relied on being safe (`elegoo-centauri2.js`, `bambu.js`), `testConnection` opens and tears down its own throwaway connection rather than touching the shared cache, so testing never disturbs a real connection already in use or requires a printer to exist yet. Buttons on both the Add Printer form and the printer-edit form call it directly against the current form fields.
+
+Separately, the Webcams page (added two entries ago as a hover-preview grid mirroring the Dashboard) is rebuilt as a plain snapshot gallery: one still image per printer, refreshed every 30 seconds, with no color-coded status highlighting. Requested as a correction: the fleet-status framing wasn't wanted for a page whose whole purpose is looking at cameras. Each printer's camera info is still looked up once per page visit, but the snapshot `<img>` tags get a fresh cache-busting query param on an interval instead of waiting for a hover; the same bandwidth discipline as before still applies, a single-shot request each refresh, never the continuous MJPEG stream.
+
+Not hardware-validated: `testConnection` reuses each driver's already-validated connection logic (same host resolution, same protocol calls as `getStatus`), just with the error surfaced instead of swallowed, but no physical printer was reachable from this environment to confirm the exact failure-reason strings against real hardware.
+
+### Changes
+- `server/connection-test-helpers.js`: new, `describeConnectionError()` maps a caught error to a short operator-facing message, shared by every driver's `testConnection`.
+- `server/drivers/prusa.js`, `octoprint.js`, `klipper.js`: added `testConnection`, a lightweight reachability check reusing the same endpoint `getStatus` already calls.
+- `server/drivers/elegoo-centauri.js`: added `testConnection`, opens and tears down its own `SDCPPrinterWS` instance.
+- `server/drivers/elegoo-centauri2.js`, `bambu.js`: added `testConnection`, opens and tears down its own MQTT client (`reconnectPeriod: 0`); switched their persistent connection-cache helpers from synchronous to async now that hostname resolution (mDNS) is an await point, and added an in-flight-creation cache to close the resulting race between concurrent callers.
+- `server/routes/printers.js`: new `POST /api/printers/test-connection`.
+- `server/tests/mdns-resolve.test.js` (from the previous entry), `prusa-driver.test.js`, `octoprint-driver.test.js`, `klipper-driver.test.js`, `elegoo-driver.test.js`, `bambu-driver.test.js`: added `testConnection` coverage.
+- `server/tests/elegoo-centauri2-driver.test.js`: new, coverage for `testConnection` only; this driver has no test file for its other functions yet, a pre-existing gap out of scope here.
+- `server/tests/printers-test-connection.test.js`: new, full route coverage (validation, unsupported connector, success and failure results, field defaults).
+- `client/src/pages/Settings.jsx`, `PrinterDetail.jsx`: added the Test Connection button and inline result under the IP/hostname field on both the Add Printer and printer-edit forms.
+- `client/src/pages/Webcams.jsx`: rebuilt as a snapshot gallery; no longer uses `FleetStatusGrid`.
+- `docs/api.md`, `docs/driver-authoring.md`, `docs/web-app.md`: documented the new endpoint, the `testConnection` driver contract, and the Webcams page's new design.
+
+---
+
 ## 2026-09-21: resolve .local (mDNS) printer hostnames from inside Docker
 
 Requested as a follow-up to the previous entry's `.local` warning: rather than only warning users away from `.local` hostnames under Docker, make them actually work there.

@@ -190,6 +190,31 @@ export default function Settings() {
   const [addResult, setAddResult] = useState(null);
   const [addError, setAddError] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState(null); // { ok, message } | null
+
+  async function handleTestConnection() {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/printers/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: addForm.type,
+          ip: addForm.ip.trim(),
+          api_key: addForm.api_key.trim(),
+          serial_number: addForm.serial_number.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setTestResult(res.ok ? data : { ok: false, message: data.error || `Failed (${res.status})` });
+    } catch (err) {
+      setTestResult({ ok: false, message: err.message });
+    } finally {
+      setTestingConnection(false);
+    }
+  }
 
   // Keep the Model select's value valid whenever the available models change for the
   // selected brand — e.g. adding a printer model in the section above while this form is
@@ -229,6 +254,7 @@ export default function Settings() {
       if (!res.ok) throw new Error(data.error || 'Add failed');
       setAddResult(data);
       setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false });
+      setTestResult(null);
     } catch (err) {
       setAddError(err.message);
     } finally {
@@ -945,6 +971,7 @@ export default function Settings() {
                   const t = e.target.value;
                   const first = allModels.find(m => m.connector === t);
                   setAddForm(p => ({ ...p, type: t, model: first?.model_id || '', serial_number: '' }));
+                  setTestResult(null);
                 }}
                 style={inputStyle}
               >
@@ -984,7 +1011,7 @@ export default function Settings() {
               <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>IP Address or Hostname *</label>
               <input
                 value={addForm.ip}
-                onChange={e => setAddForm(p => ({ ...p, ip: e.target.value }))}
+                onChange={e => { setAddForm(p => ({ ...p, ip: e.target.value })); setTestResult(null); }}
                 required
                 placeholder="192.168.1.100 or octoprint-01"
                 style={inputStyle}
@@ -1001,6 +1028,26 @@ export default function Settings() {
                   reliable fallback.
                 </div>
               )}
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection || !addForm.ip.trim()}
+                  style={{
+                    background: 'transparent', color: '#94a3b8', border: '1px solid #2d3748',
+                    borderRadius: 6, padding: '4px 10px', fontSize: 12,
+                    cursor: testingConnection || !addForm.ip.trim() ? 'default' : 'pointer',
+                    opacity: testingConnection || !addForm.ip.trim() ? 0.6 : 1,
+                  }}
+                >
+                  {testingConnection ? 'Testing...' : 'Test Connection'}
+                </button>
+                {testResult && (
+                  <span style={{ fontSize: 12, color: testResult.ok ? '#22c55e' : '#ef4444' }}>
+                    {testResult.ok ? '✓' : '✗'} {testResult.message}
+                  </span>
+                )}
+              </div>
             </div>
             {(addForm.type === 'bambu' || addForm.type === 'elegoo-centauri2') && (
               <div>

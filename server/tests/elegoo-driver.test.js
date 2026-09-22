@@ -257,6 +257,24 @@ describe('checkIfPrinting', () => {
   });
 });
 
+// ─── Test connection ──────────────────────────────────────────────────────────
+
+describe('testConnection', () => {
+  test('reports ok on a successful connect and disconnects the throwaway client', async () => {
+    const result = await elegoo.testConnection(nextPrinter());
+    expect(result.ok).toBe(true);
+    expect(mockClient.Disconnect).toHaveBeenCalled();
+  });
+
+  test('reports the connect error and still disconnects', async () => {
+    mockClient.Connect.mockRejectedValueOnce(new Error('connect ETIMEDOUT'));
+    const result = await elegoo.testConnection(nextPrinter());
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/ETIMEDOUT/);
+    expect(mockClient.Disconnect).toHaveBeenCalled();
+  });
+});
+
 // ─── Driver registry ──────────────────────────────────────────────────────────
 
 describe('driver registry (drivers/index.js)', () => {
@@ -268,6 +286,7 @@ describe('driver registry (drivers/index.js)', () => {
     expect(typeof driver.uploadAndPrint).toBe('function');
     expect(typeof driver.checkIfPrinting).toBe('function');
     expect(typeof driver.cancelJob).toBe('function');
+    expect(typeof driver.testConnection).toBe('function');
   });
 
   test('getDriver("prusa") still works alongside elegoo-centauri', () => {

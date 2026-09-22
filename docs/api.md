@@ -190,6 +190,27 @@ Returns live webcam feed URLs for a printer, if its connector supports one. `404
 
 Currently implemented for `klipper` (via Moonraker's `/server/webcams/list`) and `octoprint` (via `/api/settings`'s `webcam` section). Other connectors always return `available: false`. `snapshotUrl` may be `null` even when `streamUrl` is present.
 
+### `POST /api/printers/test-connection`
+
+One-off reachability check against connection settings, without creating, saving, or looking up a printer by ID: the "Test Connection" button on the Add Printer and printer-edit forms. Implemented for every connector (unlike `GET /:id/camera` above, which only supports two).
+
+**Body:**
+```json
+{ "type": "octoprint", "ip": "octoprint.local:5000", "api_key": "aK3jR7xQ2pLm9vN", "serial_number": "" }
+```
+
+Required: `type`, `ip`. `api_key` and `serial_number` default to `""` if omitted (fine for connector types that don't need them).
+
+**Response, always `200`:**
+```json
+{ "ok": true, "message": "Connected" }
+```
+```json
+{ "ok": false, "message": "Hostname did not resolve" }
+```
+
+`400` only for a malformed request: missing `type`/`ip`, or a `type` that is not a registered connector. A reachability failure is still a `200` with `ok: false`, the same way a driver's `getStatus` treats an unreachable printer as a normal outcome (`OFFLINE`) rather than an error. `message` on success notes when `ip` was a `.local` name and what it resolved to. Never touches a driver's cached persistent connection (Bambu, Centauri Carbon, Centauri Carbon 2): each connector's `testConnection()` opens and tears down its own one-off connection.
+
 ### `POST /api/printers`
 
 Create a single printer.
@@ -206,7 +227,7 @@ Create a single printer.
 }
 ```
 
-Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname as well as a numeric address; see `docs/installation.md`'s credential table for the two caveats (`.local` names and the original Elegoo Centauri Carbon). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`).
+Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname, including a `.local` (mDNS) name, as well as a numeric address; see `docs/installation.md`'s credential table for the one remaining caveat (the original Elegoo Centauri Carbon's UDP discovery needing an IPv4 address). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`).
 
 `model` must be one of: `mk4`, `mk4s`, `c1`, `c1l`, `xl`.
 
