@@ -2,6 +2,32 @@
 
 ---
 
+## 2026-09-22: attribute operator actions in printer_events to the signed-in user
+
+Requested: the event timeline says what happened (decommissioned, confirmed, a note) but not who did it, now that the farm has multiple named accounts (admin/operator) instead of one shared login.
+
+`printer_events` gains `user_id`/`user_name`, written by every operator-triggered event: recommission, decommission (both routes), mark-job-failure, an edited field (`info_changed`), a freeform note, and set-ready/set-ready-batch (which previously logged nothing of their own, see below). Not written by the scheduler's own automatic events (`job_finished`, `offline_with_job`, `recovered`, `job_cancelled`): those are the hardware/system telling the farm what happened, not an operator action, so they stay unattributed. No FK on `user_id`, and `user_name` is a snapshot taken at insert time rather than joined at read time, matching this table's existing "history survives" guarantee (no FK on `printer_id` either): an event still shows who did it even if that user is later renamed or removed.
+
+Set Ready (single and batch) previously credited quantity and released the hold without writing any event of its own: the only related history was `job_finished`, written earlier by the scheduler the moment the hardware reported FINISHED, which records what the printer did, not the operator's later sign-off. Added a `confirmed` event type specifically for that sign-off action, since attributing "who confirmed this" needed an event to attribute it to in the first place.
+
+`server/events.js`'s `insert(printerId, eventType, note, user)` takes the acting user as an optional fourth argument now; every call site that has `req.user` available (every route here is mounted behind the auth gate) passes it through.
+
+### Changes
+- `server/db.js`: `printer_events.user_id`/`user_name` migration.
+- `server/events.js`: `insert()` accepts an optional `user`.
+- `server/index.js`: set-ready and set-ready-batch now log a `confirmed` event; recommission and the catalog-print note pass `req.user` through.
+- `server/routes/printers.js`: decommission, complete-and-decommission, mark-job-failure, and info_changed all pass `req.user` through.
+- `server/routes/events.js`: the freeform-note endpoint's insert includes `user_id`/`user_name`.
+- `client/src/pages/PrinterDetail.jsx`: `confirmed` added to the event-badge color map; the timeline shows the acting user's name next to the timestamp when the event has one.
+- `server/tests/events-module.test.js`: new, direct coverage of `events.js`'s `insert()` (including the new `user` param), with `../db` mocked to a real in-memory database instead of the production one.
+- `server/tests/events-route.test.js`: attribution coverage for `routes/events.js`'s own freeform-note insert (a separate code path from `events.js`); added the `printer_events` table's user columns and a `req.user`-injecting stand-in middleware, matching the pattern other route tests already use.
+- `server/tests/backup-restore.test.js`: seeded a `printer_events` row with `user_id`/`user_name` and extended the existing "migrated columns" export/restore tests to cover it.
+- `docs/database.md`, `docs/api.md`, `docs/web-app.md`: documented the new columns, event type, and the timeline's display of the acting user.
+
+Known gap: `server/events.js` reaches the real production database directly (`require('./db')`) rather than taking a `db` parameter like every route factory in this codebase does, a pre-existing design from before this change; `events-module.test.js` above works around it with a mock rather than fixing it. The routes that call `events.insert()` (`index.js`, `routes/printers.js`) still each mount their own throwaway in-memory database for their own tests, so those tests can't observe what that call actually wrote to `printer_events`: they can only confirm the request that triggers it still succeeds. Fixing the underlying design (turning `events.js` into a factory like every other module here) would mean touching every one of its call sites for a problem this task didn't create; flagging it rather than fixing it out of scope.
+
+---
+
 ## 2026-09-22: loaded-color swatches on Fleet/PrinterDetail, pinned printers
 
 Two of a batch of requested quality-of-life items.
@@ -17,6 +43,9 @@ Two of a batch of requested quality-of-life items.
 - `client/src/pages/Fleet.jsx`: swatch on the loaded-material badge; pin toggle button and the Pinned section.
 - `client/src/pages/PrinterDetail.jsx`: swatch on the header's Loaded line.
 - `docs/web-app.md`: documented both features and the three new files.
+
+---
+
 ## 2026-09-22: fix filament color swatches not rendering for a hex value missing its `#`
 
 Reported: "swatches seem to not work" after the color-swatch and color-tolerance work shipped earlier today. `routes/filaments.js` never validated `hex_color` on save, only trimmed it: a value typed into the free-text hex field (next to the `<input type="color">` picker, which always emits a normalized value on its own) without a leading `#`, like `ff0000`, saved without error. A bare hex string with no `#` is not valid CSS for a `background` value, so the browser silently ignores it: no error anywhere, the swatch just never shows a color. The scheduler's color-tolerance fallback (shipped alongside the swatch work) would have had the same problem reading that value back out, just less visibly.

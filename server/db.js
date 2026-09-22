@@ -109,6 +109,16 @@ try { db.exec('ALTER TABLE gcodes ADD COLUMN required_color TEXT'); } catch (_) 
 try { db.exec('ALTER TABLE projects ADD COLUMN required_material TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE projects ADD COLUMN required_color TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE projects ADD COLUMN allowed_groups TEXT'); } catch (_) {}
+// Which signed-in user performed an operator-triggered printer_events row (Set
+// Ready, Bad Print, decommission, recommission, a note, an edited field). NULL
+// on a system-generated event (scheduler.js's own job_finished/offline_with_job/
+// recovered/job_cancelled): those aren't an operator action to attribute. No FK
+// on user_id, and user_name is a snapshot taken at insert time rather than
+// joined at read time, so this table's existing "history survives" guarantee
+// (see printer_id having no FK either) extends to a user being renamed or
+// deleted later: the event still shows who did it at the time.
+try { db.exec('ALTER TABLE printer_events ADD COLUMN user_id INTEGER'); } catch (_) {}
+try { db.exec('ALTER TABLE printer_events ADD COLUMN user_name TEXT'); } catch (_) {}
 
 // Printer models — source of truth for which models this farm supports.
 // New installs start empty; operator adds models in Settings.

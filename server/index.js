@@ -147,6 +147,7 @@ const server = app.listen(PORT, () => {
     const placeholders = ids.map(() => '?').join(',');
     db.prepare(`UPDATE printers SET is_held = 0 WHERE id IN (${placeholders})`).run(...ids);
     const printers = db.prepare(`SELECT * FROM printers WHERE id IN (${placeholders}) AND is_active = 1`).all(...ids);
+    for (const p of printers) events.insert(p.id, 'confirmed', null, req.user);
     const batchSetting = db.prepare("SELECT value FROM settings WHERE key = 'dispatch_batch_size'").get();
     const batchSize = batchSetting ? parseInt(batchSetting.value, 10) : 10;
     console.log(`[server] Batch set-ready: ${printers.length} printer(s), target concurrency ${batchSize}`);
@@ -166,7 +167,7 @@ const server = app.listen(PORT, () => {
       SET is_active = 1, is_held = 0, decommissioned_at = NULL, decommission_note = NULL
       WHERE id = ?
     `).run(printer.id);
-    events.insert(printer.id, 'recommission', req.body?.note ?? null);
+    events.insert(printer.id, 'recommission', req.body?.note ?? null, req.user);
     const updated = db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id);
     console.log(`[server] ${printer.name} recommissioned — dispatching...`);
     scheduler.scheduleForPrinter(updated);
@@ -358,6 +359,11 @@ const server = app.listen(PORT, () => {
     }
 
     db.prepare('UPDATE printers SET is_held = 0 WHERE id = ?').run(printer.id);
+    // A dedicated event, distinct from job_finished (which scheduler.js already
+    // logged automatically the moment the hardware reported FINISHED): that one
+    // records what the printer did, this one records the operator's own sign-off
+    // action, which is what attributing "who did this" actually means here.
+    events.insert(printer.id, 'confirmed', null, req.user);
     const updated = db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id);
     console.log(`[server] ${printer.name} set ready by operator — dispatching...`);
     scheduler.scheduleForPrinter(updated);
@@ -431,7 +437,7 @@ const server = app.listen(PORT, () => {
     `).run(part.id, printer.id, gcode.id, qty, wasFinished ? 'finished' : 'printing', now, wasFinished ? now : null, now);
 
     events.insert(printer.id, 'note',
-      `Catalogued externally-started print: part "${part.name}", ${qty}/plate${note ? `, ${note}` : ''}`);
+      `Catalogued externally-started print: part "${part.name}", ${qty}/plate${note ? `, ${note}` : ''}`, req.user);
 
     if (wasFinished) {
       db.prepare(`UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?`).run(qty, now, part.id);

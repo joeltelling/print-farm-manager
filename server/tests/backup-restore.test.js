@@ -121,7 +121,9 @@ beforeEach(() => {
       printer_id  INTEGER NOT NULL,
       event_type  TEXT NOT NULL,
       note        TEXT,
-      created_at  INTEGER NOT NULL
+      created_at  INTEGER NOT NULL,
+      user_id     INTEGER,
+      user_name   TEXT
     );
     CREATE TABLE printer_models (
       model_id   TEXT PRIMARY KEY,
@@ -164,6 +166,11 @@ beforeEach(() => {
 
   db.prepare(`INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, 'PLA', 'Black', ?)`).run(now);
   db.prepare(`INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 1, 'PETG', 'Red', ?)`).run(now);
+
+  db.prepare(`
+    INSERT INTO printer_events (printer_id, event_type, note, created_at, user_id, user_name)
+    VALUES (1, 'decommission', 'confirmed good print', ?, 7, 'Joel')
+  `).run(now);
 
   db.prepare(`
     INSERT INTO projects (name, description, status, priority, created_at, updated_at, required_material, required_color, allowed_groups)
@@ -249,6 +256,10 @@ describe('Backup export/restore — column round-trip regression', () => {
       required_material: 'PETG',
       required_color: 'Red',
     });
+    expect(res.body.printer_events[0]).toMatchObject({
+      user_id: 7,
+      user_name: 'Joel',
+    });
   });
 
   test('restore preserves every migrated column, not just the base schema', async () => {
@@ -303,6 +314,13 @@ describe('Backup export/restore — column round-trip regression', () => {
       expect(gcode.allowed_groups).toBe('["Bambu Farm"]');
       expect(gcode.required_material).toBe('PETG');
       expect(gcode.required_color).toBe('Red');
+
+      // restore explicitly wipes and reinserts printer_events (no FK to printers to
+      // cascade through, unlike printer_lanes), so this proves that reinsert step
+      // carries user_id/user_name, not just the pre-existing event_type/note fields.
+      const event = db.prepare("SELECT * FROM printer_events WHERE printer_id = 1 AND event_type = 'decommission'").get();
+      expect(event.user_id).toBe(7);
+      expect(event.user_name).toBe('Joel');
     } finally {
       fs.unlinkSync(backupFile);
     }

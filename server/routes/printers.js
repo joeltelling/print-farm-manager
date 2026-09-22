@@ -341,7 +341,7 @@ module.exports = (db) => {
         const newVal = after[field]   ?? null;
         if (oldVal !== newVal) {
           const fmt = v => (v == null ? '(none)' : v);
-          events.insert(printer.id, 'info_changed', `${label}: ${fmt(oldVal)} → ${fmt(newVal)}`);
+          events.insert(printer.id, 'info_changed', `${label}: ${fmt(oldVal)} → ${fmt(newVal)}`, req.user);
         }
       }
 
@@ -368,7 +368,7 @@ module.exports = (db) => {
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     const now = Date.now();
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ? WHERE id = ?').run(now, printer.id);
-    events.insert(printer.id, 'decommission', req.body?.note ?? null);
+    events.insert(printer.id, 'decommission', req.body?.note ?? null, req.user);
     console.log(`[printers] ${printer.name} decommissioned`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
   });
@@ -449,7 +449,7 @@ module.exports = (db) => {
 
     const decommNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, is_held = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, decommNote, printer.id);
-    events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print — taken offline for maintenance');
+    events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print, taken offline for maintenance', req.user);
     console.log(`[printers] ${printer.name} decommissioned after confirmed good print`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
   });
@@ -504,7 +504,7 @@ module.exports = (db) => {
       const now = Date.now();
       const noJobNote = req.body?.note ?? null;
       db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, noJobNote, printer.id);
-      events.insert(printer.id, 'job_failed', noJobNote ?? 'No tracked job — printer decommissioned for investigation');
+      events.insert(printer.id, 'job_failed', noJobNote ?? 'No tracked job, printer decommissioned for investigation', req.user);
       console.log(`[printers] ${printer.name} decommissioned (no tracked job to mark failed)`);
       return res.json({ success: true, job_id: null });
     }
@@ -544,7 +544,7 @@ module.exports = (db) => {
     const eventNote = failNote
       ? `Job ${job.id} — part: ${failedPart?.name ?? 'unknown'} — ${failNote}`
       : `Job ${job.id} — part: ${failedPart?.name ?? 'unknown'}`;
-    events.insert(printer.id, 'job_failed', eventNote);
+    events.insert(printer.id, 'job_failed', eventNote, req.user);
 
     console.log(`[printers] Job ${job.id} marked failed — ${printer.name} decommissioned pending investigation`);
     res.json({ success: true, job_id: job.id });

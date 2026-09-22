@@ -23,8 +23,8 @@ module.exports = (db) => {
       return res.status(400).json({ error: 'note is required' });
     }
     const result = db.prepare(
-      'INSERT INTO printer_events (printer_id, event_type, note, created_at) VALUES (?, ?, ?, ?)'
-    ).run(req.params.id, 'note', note.trim(), Date.now());
+      'INSERT INTO printer_events (printer_id, event_type, note, created_at, user_id, user_name) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(req.params.id, 'note', note.trim(), Date.now(), req.user?.id ?? null, req.user?.name ?? null);
     res.status(201).json(
       db.prepare('SELECT * FROM printer_events WHERE id = ?').get(result.lastInsertRowid)
     );

@@ -227,9 +227,9 @@ For `klipper` and `octoprint` printers, a **Camera** section (rotation, flip hor
 **Add note form:** freeform textarea → `POST /api/printers/:id/events`. Submitted note appears immediately at the top of the timeline.
 
 **Event timeline:** all `printer_events` rows for this printer, newest first. Each entry shows:
-- Color-coded type badge (`Job Finished` / `Job Failed` / `Decommissioned` / `Recommissioned` / `Note`)
+- Color-coded type badge (`Job Finished` / `Job Failed` / `Decommissioned` / `Recommissioned` / `Confirmed` / `Info Updated` / `Note`)
 - Note text (if any)
-- Formatted timestamp
+- Formatted timestamp, followed by the acting user's name when the event has one (`user_name`): blank for a system-generated event like `Job Finished`, which the scheduler writes on its own
 
 **Camera card:** fetched from `GET /api/printers/:id/camera` alongside the rest of the page's data; nothing is rendered for connectors that don't support one. The MJPEG stream URL is continuous video, not a single frame, so it never autoplays: the card defaults to the connector's snapshot URL if it has one (or a placeholder if it doesn't), and a "Watch Live" button swaps in the live `<img src={streamUrl}>`, with "Stop Live View" to close it again without navigating away. Switching printers (or any refetch of the page's data) resets the card back to the snapshot, so a stream is never left running against a printer you've navigated away from. Both the snapshot and the live image get `client/src/cameraTransform.js`'s rotation/flip CSS transform applied, from the response's `rotation`/`flipH`/`flipV` fields. See [docs/api.md](api.md).
 
