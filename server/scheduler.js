@@ -4,6 +4,7 @@ const path = require('path');
 const { getDriver } = require('./drivers');
 const notifications = require('./notifications');
 const events = require('./events');
+const { colorsClose } = require('./color-distance');
 
 const GCODE_DIR = path.join(__dirname, 'gcode');
 
@@ -27,6 +28,18 @@ class JobScheduler extends EventEmitter {
     // Prevents stale failed jobs from a previous session being credited when a
     // Bambu printer transitions OFFLINE → FINISHED on reconnect.
     this.startedAt = 0;
+
+    // Exposed to the candidate query below as a SQL function so the tolerant
+    // color fallback can stay a single query per attempt instead of pulling
+    // every candidate into JS to filter. Registered on whatever db instance
+    // this scheduler was built with (production db.js's shared connection, or
+    // a test's own in-memory one) rather than in db.js itself, so a test never
+    // needs to remember to register it separately just to construct a
+    // JobScheduler. Re-registering under the same name on the same connection
+    // (e.g. a test file building more than one JobScheduler) just replaces it.
+    this.db.function('color_close', { deterministic: true }, (hexA, hexB, tolerance) =>
+      colorsClose(hexA, hexB, tolerance) ? 1 : 0
+    );
   }
 
   start() {
@@ -302,21 +315,81 @@ class JobScheduler extends EventEmitter {
       return null;
     }
 
+    // Walk candidates for an exact color match first: unchanged from before
+    // color tolerance existed. Only if that finds nothing at all does a tolerant
+    // pass run (the color_tolerance setting, admin-configurable from Settings),
+    // so a job that could go to an exact-match printer is never diverted to a
+    // same-family-but-different-shade one instead. Material is never loosened,
+    // only color.
+    const exact = this._reserveCandidate(printer, driver, false, 0);
+    if (exact) return exact;
+
+    const toleranceSetting = this.db.prepare("SELECT value FROM settings WHERE key = 'color_tolerance'").get();
+    const tolerance = toleranceSetting ? parseInt(toleranceSetting.value, 10) || 0 : 0;
+    if (tolerance > 0) {
+      const tolerant = this._reserveCandidate(printer, driver, true, tolerance);
+      if (tolerant) {
+        console.log(`[scheduler] ${printer.name} matched via color tolerance (${tolerance})`);
+        return tolerant;
+      }
+    }
+
+    console.log(`[scheduler] No candidate found for ${printer.name} (model: ${printer.model}), no open parts with matching G-code in an active project`);
+    return null;
+  }
+
+  // One color-matching pass of the candidate walk: same priority-ordered,
+  // ceiling-checked, file-existence-checked loop for both the exact and
+  // tolerant attempts in _reserveJob, differing only in the color clause the
+  // query uses. See _reserveJob for why exact always runs first.
+  //
+  // Tolerant mode adds two joins (this printer's own loaded_color's hex, and
+  // each lane's color's hex, both from filament_colors) so color_close(),
+  // registered on this.db in the constructor, can compare RGB distance
+  // in-query instead of pulling every candidate into JS to filter. This mirror
+  // (SQL here, plain JS in routes/parts.js's dispatch-status) both read
+  // server/color-distance.js's colorsClose, so the two can't drift on what
+  // "close enough" means; keep both in sync (see CLAUDE.md's sync-pairs table).
+  _reserveCandidate(printer, driver, tolerant, tolerance) {
+    const printerColorHex = tolerant
+      ? this.db.prepare('SELECT hex_color FROM filament_colors WHERE name = ?').get(printer.loaded_color)?.hex_color ?? null
+      : null;
+
+    const colorJoin = tolerant
+      ? 'LEFT JOIN filament_colors req_fc ON req_fc.name = COALESCE(gcodes.required_color, projects.required_color)'
+      : '';
+    const colorClause = tolerant
+      ? `(
+           COALESCE(gcodes.required_color, projects.required_color) IS NULL
+           OR COALESCE(gcodes.required_color, projects.required_color) = ?
+           OR color_close(req_fc.hex_color, ?, ?) = 1
+         )`
+      : '(COALESCE(gcodes.required_color, projects.required_color) IS NULL OR COALESCE(gcodes.required_color, projects.required_color) = ?)';
+    const laneJoin = tolerant ? 'LEFT JOIN filament_colors lane_fc ON lane_fc.name = pl.color' : '';
+    const laneColorClause = tolerant
+      ? `(
+           COALESCE(gcodes.required_color, projects.required_color) IS NULL
+           OR pl.color = COALESCE(gcodes.required_color, projects.required_color)
+           OR color_close(req_fc.hex_color, lane_fc.hex_color, ?) = 1
+         )`
+      : '(COALESCE(gcodes.required_color, projects.required_color) IS NULL OR pl.color = COALESCE(gcodes.required_color, projects.required_color))';
+
     // Walk candidates in priority order (project priority → part sort_order) until
     // we find a part that still needs a job, skipping any whose active jobs already
     // cover the remaining qty (ceiling). This allows a printer to fall through to
     // the next part in the list when the highest-priority part is fully covered.
     const skippedPartIds = [];
-    let candidate = null;
-    let jobId = null;
-    let gcodeFullPath = null;
 
     while (true) {
       const excludeClause = skippedPartIds.length > 0
         ? `AND parts.id NOT IN (${skippedPartIds.map(() => '?').join(',')})`
         : '';
 
-      candidate = this.db.prepare(`
+      const params = tolerant
+        ? [printer.model, printer.group_name, printer.loaded_material, printer.loaded_color, printerColorHex, tolerance, printer.id, tolerance, ...skippedPartIds]
+        : [printer.model, printer.group_name, printer.loaded_material, printer.loaded_color, printer.id, ...skippedPartIds];
+
+      const candidate = this.db.prepare(`
         SELECT
           parts.id          AS part_id,
           parts.target_qty,
@@ -330,6 +403,7 @@ class JobScheduler extends EventEmitter {
         FROM parts
         JOIN gcodes   ON gcodes.part_id    = parts.id
         JOIN projects ON projects.id       = parts.project_id
+        ${colorJoin}
         WHERE parts.status    = 'open'
           AND projects.status = 'active'
           AND gcodes.printer_model = ?
@@ -348,23 +422,22 @@ class JobScheduler extends EventEmitter {
           AND (
             (
               (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR COALESCE(gcodes.required_material, projects.required_material) = ?)
-              AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR COALESCE(gcodes.required_color, projects.required_color) = ?)
+              AND ${colorClause}
             )
             OR EXISTS (
-              SELECT 1 FROM printer_lanes pl WHERE pl.printer_id = ?
+              SELECT 1 FROM printer_lanes pl
+                ${laneJoin}
+                WHERE pl.printer_id = ?
                 AND (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR pl.material = COALESCE(gcodes.required_material, projects.required_material))
-                AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR pl.color = COALESCE(gcodes.required_color, projects.required_color))
+                AND ${laneColorClause}
             )
           )
           ${excludeClause}
         ORDER BY projects.priority ASC, projects.created_at ASC, parts.sort_order ASC, parts.created_at ASC
         LIMIT 1
-      `).get(printer.model, printer.group_name, printer.loaded_material, printer.loaded_color, printer.id, ...skippedPartIds);
+      `).get(...params);
 
-      if (!candidate) {
-        console.log(`[scheduler] No candidate found for ${printer.name} (model: ${printer.model}) — no open parts with matching G-code in an active project`);
-        return null;
-      }
+      if (!candidate) return null;
 
       // Synchronously insert a job as 'uploading' — this acts as a dispatch lock
       // so concurrent printerIdle events for printers of the same model don't
@@ -373,7 +446,7 @@ class JobScheduler extends EventEmitter {
         INSERT INTO jobs (part_id, printer_id, gcode_id, parts_per_plate, status, created_at)
         VALUES (?, ?, ?, ?, 'uploading', ?)
       `).run(candidate.part_id, printer.id, candidate.gcode_id, candidate.parts_per_plate, Date.now());
-      jobId = jobRow.lastInsertRowid;
+      const jobId = jobRow.lastInsertRowid;
 
       // Ceiling check: are the parts already in progress enough to cover what's needed?
       //
@@ -406,7 +479,7 @@ class JobScheduler extends EventEmitter {
       // probe job, notify the operator, and fall through to the next part so the
       // printer can still pick up other work. No job record is left behind.
       const gcodeFilename = candidate.filepath.split(/[\\/]/).pop();
-      gcodeFullPath = path.join(GCODE_DIR, gcodeFilename);
+      const gcodeFullPath = path.join(GCODE_DIR, gcodeFilename);
       if (!fs.existsSync(gcodeFullPath)) {
         this.db.prepare('DELETE FROM jobs WHERE id = ?').run(jobId);
         const part = this.db.prepare('SELECT parts.name, projects.name AS project_name FROM parts JOIN projects ON projects.id = parts.project_id WHERE parts.id = ?').get(candidate.part_id);
@@ -419,10 +492,8 @@ class JobScheduler extends EventEmitter {
       }
 
       // Candidate has room and file exists — proceed with upload
-      break;
+      return { jobId, candidate, driver, gcodeFullPath };
     }
-
-    return { jobId, candidate, driver, gcodeFullPath };
   }
 
   // Perform the actual upload for an already-reserved job (see _reserveJob). This is

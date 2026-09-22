@@ -372,6 +372,11 @@ export default function Settings() {
   const [batchSize, setBatchSize] = useState('');
   const [batchSizeError, setBatchSizeError] = useState(null);
 
+  // Color tolerance: RGB-distance fallback the scheduler uses only when no printer
+  // has the exact required color loaded (server/color-distance.js, server/scheduler.js).
+  const [colorTolerance, setColorTolerance] = useState('');
+  const [colorToleranceError, setColorToleranceError] = useState(null);
+
   // Farm name — shown in the sidebar; picked up on next page load
   const [farmName, setFarmName] = useState('');
   const [farmNameError, setFarmNameError] = useState(null);
@@ -391,6 +396,7 @@ export default function Settings() {
         if (data.dispatch_batch_size) setBatchSize(data.dispatch_batch_size);
         if (data.farm_name) setFarmName(data.farm_name);
         setAutoSsoRedirect(data.auto_sso_redirect === '1');
+        setColorTolerance(data.color_tolerance ?? '0');
       })
       .catch(() => {});
     if (user?.role === 'admin') {
@@ -430,6 +436,22 @@ export default function Settings() {
       showToast('Saved');
     } catch (err) {
       setBatchSizeError(err.message);
+    }
+  }
+
+  async function handleSaveColorTolerance() {
+    setColorToleranceError(null);
+    try {
+      const res = await fetch('/api/settings/color_tolerance', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: colorTolerance }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      showToast('Saved');
+    } catch (err) {
+      setColorToleranceError(err.message);
     }
   }
 
@@ -878,7 +900,16 @@ export default function Settings() {
                   </td>
                   <td style={{ padding: '6px 8px', color: '#e2e8f0' }}>
                     {c.name}
-                    {c.hex_color && <span style={{ color: '#475569', fontSize: 11, marginLeft: 8, fontFamily: 'monospace' }}>{c.hex_color}</span>}
+                    {c.hex_color && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginLeft: 8 }}>
+                        <span style={{
+                          display: 'inline-block', width: 12, height: 12, borderRadius: 3,
+                          background: c.hex_color, border: '1px solid rgba(255,255,255,0.15)',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.4)', flexShrink: 0,
+                        }} />
+                        <span style={{ color: '#475569', fontSize: 11, fontFamily: 'monospace' }}>{c.hex_color}</span>
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: '6px 8px', color: '#64748b', fontSize: 12, maxWidth: 260 }}>
                     {editingColorTypes === c.id ? (
@@ -1528,6 +1559,52 @@ export default function Settings() {
         {batchSizeError && (
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{batchSizeError}</div>
         )}
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #2d3748' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0', marginBottom: 4 }}>Color tolerance</div>
+          <p style={{ color: '#64748b', fontSize: 13, marginBottom: 12 }}>
+            When a job needs a color no printer has loaded exactly, the scheduler falls back to
+            any printer loaded with a close enough color instead of leaving the job queued
+            (only when no exact match is available; material always has to match exactly).
+            Closeness is measured against each color's hex code in the Filament Library above,
+            so both colors need one set. 0 turns this off.
+          </p>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+                Tolerance (0-450)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={450}
+                list="color-tolerance-suggestions"
+                value={colorTolerance}
+                onChange={e => setColorTolerance(e.target.value)}
+                style={{ ...inputStyle, width: 80 }}
+              />
+              <datalist id="color-tolerance-suggestions">
+                <option value="0">Off: exact match only</option>
+                <option value="15">Very close: barely distinguishable</option>
+                <option value="40">Same color family</option>
+                <option value="80">Loose match</option>
+              </datalist>
+            </div>
+            <button
+              onClick={handleSaveColorTolerance}
+              style={{
+                background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6,
+                padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                alignSelf: 'flex-end',
+              }}
+            >
+              Save
+            </button>
+          </div>
+          {colorToleranceError && (
+            <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{colorToleranceError}</div>
+          )}
+        </div>
       </section>
 
       {/* Farm Backup / Restore */}

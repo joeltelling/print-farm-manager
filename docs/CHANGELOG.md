@@ -2,6 +2,42 @@
 
 ---
 
+## 2026-09-22: scheduler color tolerance fallback
+
+Requested: let the scheduler dispatch to a printer whose loaded color is close but not an exact match, instead of leaving a job queued whenever nothing has the precise color, with an admin-adjustable tolerance and an exact match always preferred when one is available.
+
+`color_tolerance` is a new settings row (0-450, default 0/off; not admin-only, same permission level as `dispatch_batch_size`), compared against plain RGB Euclidean distance between two colors' `filament_colors.hex_color` values (`server/color-distance.js`; ~442 is the maximum possible, black vs white). The scheduler's candidate query (`server/scheduler.js`) always tries an exact color match first, completely unchanged from before this existed; only if that finds nothing at all does a second, tolerant pass run, so a job that could go to an exact-match printer is never diverted to a same-family-but-different-shade one instead. Material is never loosened, only color. The tolerant pass registers a `color_close()` SQL function on the scheduler's own db connection (via better-sqlite3's `db.function()`) so the comparison stays inside one query per attempt rather than pulling every candidate into JS to filter. `GET /api/parts/:id/dispatch-status` mirrors the same rule in plain JS (it already worked that way, unlike the scheduler's single SQL query) and flags a tolerant-only match in its `notes` so an operator can see why a color isn't an exact one. A color with no `hex_color` set can never participate in a tolerant match on either side, only an exact name match, same as today.
+
+Not hardware-validated: the matching logic is covered by unit tests (`server/tests/color-distance.test.js`, dependency-free) and scheduler/dispatch-status tests, but no physical dispatch to a tolerance-matched printer was run from this environment.
+
+### Changes
+- `server/color-distance.js`: new, `hexDistance`/`colorsClose` (plain RGB Euclidean distance).
+- `server/scheduler.js`: `_reserveJob` tries an exact color match, then a tolerant one if `color_tolerance > 0`; registers `color_close()` on `this.db`; candidate-walking loop extracted into `_reserveCandidate(printer, driver, tolerant, tolerance)` so both passes share it.
+- `server/routes/settings.js`: `color_tolerance` added to `ALLOWED_KEYS`, validated as an integer 0-450.
+- `server/routes/parts.js`: `GET /:id/dispatch-status` mirrors the tolerant fallback and notes when a match used it.
+- `client/src/pages/Settings.jsx`: Color tolerance number input (with suggested values) in the Dispatch Settings section, saved immediately.
+- `server/tests/color-distance.test.js`: new, pure-function coverage.
+- `server/tests/scheduler-targeting.test.js`, `dispatch-status.test.js`, `settings.test.js`: color-tolerance coverage (exact-wins, tolerant match, out-of-tolerance, tolerance-off, missing-hex, lane color, material-still-exact).
+- `server/tests/scheduler-file.test.js`, `set-ready.test.js`: added the `settings` table their schemas were missing, needed once `_reserveJob`'s exact-fail path started querying it unconditionally.
+- `docs/api.md`, `docs/filaments.md`, `docs/web-app.md`: documented the setting, the dispatch-status note, and the UI.
+
+---
+
+## 2026-09-22: fleet grid layout for sparse model groups; filament color swatch
+
+Requested together: the Dashboard/Webcams fleet grid showed one full-width row per printer model, which looked mostly empty for a fleet with many models and only one or two printers each ("9 groups, only 1 has more than 1 printer"), and a long model name could visually collide with the printer boxes next to it in that same fixed-width layout; separately, a filament color's hex code was shown as plain text with no visual swatch next to it.
+
+`FleetStatusGrid.jsx` (shared by the Dashboard and Webcams pages) now renders each model as a self-contained chip: the label sits above its own cell row instead of squeezed into a fixed 76px side column, and chips flow via `flexWrap` instead of stacking one per line. A fleet with many single-printer models now packs several chips per row instead of one sparse row each, and a long model name wraps freely on its own line instead of fighting the cells for space. The color legend and per-model status badges are unchanged in content, just repositioned under each chip's cells.
+
+The Filament Library table in Settings now shows a small colored square next to a color's hex code (in addition to the existing round swatch in its own column), so the hex text reads as an actual color at a glance instead of a string of characters.
+
+### Changes
+- `client/src/components/FleetStatusGrid.jsx`: model groups render as flex-wrapped chips instead of fixed-width full-width rows.
+- `client/src/pages/Settings.jsx`: small color swatch next to a filament color's hex code in the Filament Library table.
+- `docs/web-app.md`: updated the Dashboard fleet grid description.
+
+---
+
 ## 2026-09-22: automatic SSO redirect, with a local-login fallback
 
 Requested: an admin-only setting to send the login page straight to the identity provider instead of showing the local email/password form, plus a fixed URL that always reaches local sign-in regardless of that setting, for when the IdP is unreachable or misconfigured.

@@ -47,6 +47,10 @@ beforeEach(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       part_id INTEGER NOT NULL, status TEXT DEFAULT 'queued', parts_per_plate INTEGER NOT NULL
     );
+    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE filament_colors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, hex_color TEXT
+    );
   `);
 
   // routes/parts.js declares its Express router at module scope, like every route
@@ -251,5 +255,88 @@ describe('GET /api/parts/:id/dispatch-status: material/color', () => {
     const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
     expect(res.status).toBe(200);
     expect(res.body.dispatchable).toBe(false);
+  });
+});
+
+// Mirrors server/scheduler.js's color_tolerance fallback (see CLAUDE.md's sync-pairs
+// table): an exact color match is always preferred; tolerance only matters here when
+// nothing matches exactly.
+describe('GET /api/parts/:id/dispatch-status: color tolerance', () => {
+  function seedColor(name, hex) {
+    db.prepare('INSERT INTO filament_colors (name, hex_color) VALUES (?, ?)').run(name, hex);
+  }
+  function setTolerance(value) {
+    db.prepare("INSERT INTO settings (key, value) VALUES ('color_tolerance', ?)").run(String(value));
+  }
+
+  test('dispatchable via tolerance when no exact color match exists but a close one does', async () => {
+    setTolerance(30);
+    seedColor('Black', '#0A0A0A');
+    seedColor('Charcoal', '#141414');
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    seedPrinter({ loaded_material: 'PLA', loaded_color: 'Charcoal' });
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(true);
+    expect((res.body.notes || []).join(' ')).toMatch(/color tolerance/i);
+  });
+
+  test('not dispatchable when the color is farther than the tolerance allows', async () => {
+    setTolerance(30);
+    seedColor('Black', '#000000');
+    seedColor('White', '#FFFFFF');
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    seedPrinter({ loaded_material: 'PLA', loaded_color: 'White' });
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(false);
+  });
+
+  test('a close color is not dispatchable when color_tolerance is unset', async () => {
+    seedColor('Black', '#0A0A0A');
+    seedColor('Charcoal', '#141414');
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    seedPrinter({ loaded_material: 'PLA', loaded_color: 'Charcoal' });
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(false);
+  });
+
+  test('an exact match is reported without a tolerance note even when tolerance is on', async () => {
+    setTolerance(100);
+    seedColor('Black', '#0A0A0A');
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    seedPrinter({ loaded_material: 'PLA', loaded_color: 'Black' });
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(true);
+    expect((res.body.notes || []).join(' ')).not.toMatch(/color tolerance/i);
+  });
+
+  test('a lane color also becomes dispatchable via tolerance', async () => {
+    setTolerance(30);
+    seedColor('Black', '#0A0A0A');
+    seedColor('Charcoal', '#141414');
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    const printerId = seedPrinter({ loaded_material: null, loaded_color: null });
+    seedLane(printerId, 0, 'PLA', 'Charcoal');
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(true);
   });
 });

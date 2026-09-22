@@ -107,3 +107,45 @@ describe('PUT /api/settings/auto_sso_redirect', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('PUT /api/settings/color_tolerance', () => {
+  afterEach(() => { currentUser = { id: 1, role: 'admin' }; });
+
+  test('any authenticated user can set it (not admin-only)', async () => {
+    currentUser = { id: 2, role: 'operator' };
+    const res = await request(app)
+      .put('/api/settings/color_tolerance')
+      .send({ value: '40' });
+    expect(res.status).toBe(200);
+    expect(res.body.value).toBe('40');
+  });
+
+  test('accepts 0 (tolerance off)', async () => {
+    const res = await request(app)
+      .put('/api/settings/color_tolerance')
+      .send({ value: '0' });
+    expect(res.status).toBe(200);
+    expect(res.body.value).toBe('0');
+  });
+
+  test('rejects a negative value', async () => {
+    const res = await request(app)
+      .put('/api/settings/color_tolerance')
+      .send({ value: '-1' });
+    expect(res.status).toBe(400);
+  });
+
+  test('rejects a value above the maximum', async () => {
+    const res = await request(app)
+      .put('/api/settings/color_tolerance')
+      .send({ value: '9999' });
+    expect(res.status).toBe(400);
+  });
+
+  test('rejects a non-numeric value', async () => {
+    const res = await request(app)
+      .put('/api/settings/color_tolerance')
+      .send({ value: 'loose' });
+    expect(res.status).toBe(400);
+  });
+});

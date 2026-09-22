@@ -173,6 +173,7 @@ function makeDb() {
       status TEXT DEFAULT 'queued',
       started_at INTEGER, finished_at INTEGER, created_at INTEGER NOT NULL
     );
+    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
   return db;
 }
