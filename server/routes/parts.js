@@ -91,10 +91,31 @@ module.exports = (db, scheduler = null) => {
         continue;
       }
 
-      const materialOk = groupOk.filter(p =>
-        (!requiredMaterial || p.loaded_material === requiredMaterial) &&
-        (!requiredColor    || p.loaded_color    === requiredColor)
-      );
+      // Mirrors the scheduler's candidate query (server/scheduler.js): a printer
+      // qualifies if its own loaded_material/loaded_color satisfies the requirement,
+      // or if any single one of its lanes does (printer_lanes, synced from the
+      // klipper-filament-sync plugin). Checked per-lane, not per-field independently,
+      // so a printer with PLA/Black in one lane and PETG/Red in another isn't wrongly
+      // treated as having PLA/Red available. Keep both in sync.
+      const lanesByPrinter = {};
+      if (groupOk.length > 0) {
+        const laneRows = db.prepare(
+          `SELECT * FROM printer_lanes WHERE printer_id IN (${groupOk.map(() => '?').join(',')})`
+        ).all(...groupOk.map(p => p.id));
+        for (const lane of laneRows) {
+          (lanesByPrinter[lane.printer_id] ||= []).push(lane);
+        }
+      }
+      const materialOk = groupOk.filter(p => {
+        const legacyMatch = (!requiredMaterial || p.loaded_material === requiredMaterial) &&
+                             (!requiredColor    || p.loaded_color    === requiredColor);
+        if (legacyMatch) return true;
+        const lanes = lanesByPrinter[p.id] || [];
+        return lanes.some(l =>
+          (!requiredMaterial || l.material === requiredMaterial) &&
+          (!requiredColor    || l.color    === requiredColor)
+        );
+      });
       if (materialOk.length === 0) {
         const want = [requiredMaterial, requiredColor].filter(Boolean).join(' / ');
         notes.push(`${gc.filename}: no printer has ${want} loaded (set it on the printer's detail page)`);

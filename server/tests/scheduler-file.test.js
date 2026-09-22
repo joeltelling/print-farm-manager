@@ -64,6 +64,11 @@ function makeDb(gcodeFilepath) {
       status TEXT DEFAULT 'IDLE', is_held INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE printer_lanes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_id INTEGER NOT NULL, lane_index INTEGER NOT NULL,
+      material TEXT, color TEXT, updated_at INTEGER NOT NULL
+    );
     CREATE TABLE projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, status TEXT DEFAULT 'active',

@@ -336,12 +336,30 @@ class JobScheduler extends EventEmitter {
           AND (COALESCE(gcodes.allowed_groups, projects.allowed_groups) IS NULL OR EXISTS (
             SELECT 1 FROM json_each(COALESCE(gcodes.allowed_groups, projects.allowed_groups)) WHERE value = ?
           ))
-          AND (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR COALESCE(gcodes.required_material, projects.required_material) = ?)
-          AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR COALESCE(gcodes.required_color, projects.required_color) = ?)
+          -- Material/color eligibility: either the printer's own loaded_material/
+          -- loaded_color satisfies the requirement (unchanged original behavior), or
+          -- ANY SINGLE one of its lanes does (printer_lanes, synced from the
+          -- klipper-filament-sync plugin: see poller.js). Deliberately checked
+          -- per-lane, not "material X exists in some lane AND color Y in some other
+          -- lane": a printer with lane0=PLA/Black and lane1=PETG/Red must not match a
+          -- request for PLA/Red just because each half exists somewhere on it. This
+          -- mirror lives in routes/parts.js's dispatch-status endpoint too: keep both
+          -- in sync (see CLAUDE.md's sync-pairs table).
+          AND (
+            (
+              (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR COALESCE(gcodes.required_material, projects.required_material) = ?)
+              AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR COALESCE(gcodes.required_color, projects.required_color) = ?)
+            )
+            OR EXISTS (
+              SELECT 1 FROM printer_lanes pl WHERE pl.printer_id = ?
+                AND (COALESCE(gcodes.required_material, projects.required_material) IS NULL OR pl.material = COALESCE(gcodes.required_material, projects.required_material))
+                AND (COALESCE(gcodes.required_color, projects.required_color) IS NULL OR pl.color = COALESCE(gcodes.required_color, projects.required_color))
+            )
+          )
           ${excludeClause}
         ORDER BY projects.priority ASC, projects.created_at ASC, parts.sort_order ASC, parts.created_at ASC
         LIMIT 1
-      `).get(printer.model, printer.group_name, printer.loaded_material, printer.loaded_color, ...skippedPartIds);
+      `).get(printer.model, printer.group_name, printer.loaded_material, printer.loaded_color, printer.id, ...skippedPartIds);
 
       if (!candidate) {
         console.log(`[scheduler] No candidate found for ${printer.name} (model: ${printer.model}) — no open parts with matching G-code in an active project`);

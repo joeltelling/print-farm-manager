@@ -73,6 +73,17 @@ listCameras(printer)
     UI displays. Never throw; return [] on any failure or when the
     connector has no concept of multiple cameras.
 
+getLaneData(printer)
+  → [{ index, material, color }] | null. klipper.js only, for the
+    klipper-filament-sync plugin's per-toolhead filament state (Moonraker
+    database namespace "lane_data"). poller.js calls it every poll
+    alongside getStatus and upserts the result into printer_lanes,
+    dropping any lane no longer reported (e.g. the printer's toolhead
+    count changed). Never throw; return null when the plugin is not
+    installed or has nothing stored. Not part of the required interface:
+    this is specific to one Klipper plugin, not a general driver concept
+    other connectors are expected to implement.
+
 testConnection(printer)
   → { ok, message }. Powers the "Test Connection" button on the Add Printer
     and printer-edit forms: a one-off reachability check against exactly the

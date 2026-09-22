@@ -278,6 +278,57 @@ describe('getCameraUrl', () => {
 
 // ─── listCameras ────────────────────────────────────────────────────────────────
 
+describe('getLaneData', () => {
+  test('parses tool0/tool1 keys into indexed lanes', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { result: { value: {
+        tool0: { lane: 'A', material: 'PLA', color: 'Black' },
+        tool1: { lane: 'B', material: 'PETG', color: 'Red' },
+      } } },
+    });
+    const result = await klipper.getLaneData(fakePrinter);
+    expect(result).toEqual([
+      { index: 0, material: 'PLA', color: 'Black' },
+      { index: 1, material: 'PETG', color: 'Red' },
+    ]);
+  });
+
+  test('queries the lane_data namespace on the database endpoint', async () => {
+    axios.get.mockResolvedValueOnce({ data: { result: { value: {} } } });
+    await klipper.getLaneData(fakePrinter);
+    expect(axios.get).toHaveBeenCalledWith(
+      'http://192.168.1.250:7125/server/database/item',
+      expect.objectContaining({ params: { namespace: 'lane_data' }, timeout: 8000 })
+    );
+  });
+
+  test('ignores keys that are not tool<N>', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { result: { value: {
+        tool0: { material: 'PLA', color: 'Black' },
+        some_other_key: { material: 'PETG', color: 'Red' },
+      } } },
+    });
+    const result = await klipper.getLaneData(fakePrinter);
+    expect(result).toEqual([{ index: 0, material: 'PLA', color: 'Black' }]);
+  });
+
+  test('returns null when the namespace is empty', async () => {
+    axios.get.mockResolvedValueOnce({ data: { result: { value: {} } } });
+    expect(await klipper.getLaneData(fakePrinter)).toBeNull();
+  });
+
+  test('returns null when the plugin is not installed (namespace lookup fails)', async () => {
+    axios.get.mockRejectedValueOnce(new Error('404'));
+    expect(await klipper.getLaneData(fakePrinter)).toBeNull();
+  });
+
+  test('returns null when the response has no value at all', async () => {
+    axios.get.mockResolvedValueOnce({ data: {} });
+    expect(await klipper.getLaneData(fakePrinter)).toBeNull();
+  });
+});
+
 describe('listCameras', () => {
   test('returns uid/name/enabled for every registered webcam', async () => {
     axios.get.mockResolvedValueOnce({
@@ -335,5 +386,6 @@ describe('driver registry', () => {
     expect(typeof driver.getCameraUrl).toBe('function');
     expect(typeof driver.testConnection).toBe('function');
     expect(typeof driver.listCameras).toBe('function');
+    expect(typeof driver.getLaneData).toBe('function');
   });
 });

@@ -18,6 +18,11 @@ beforeEach(() => {
       model TEXT NOT NULL, group_name TEXT, loaded_material TEXT, loaded_color TEXT,
       status TEXT DEFAULT 'IDLE', is_held INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1
     );
+    CREATE TABLE printer_lanes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_id INTEGER NOT NULL, lane_index INTEGER NOT NULL,
+      material TEXT, color TEXT, updated_at INTEGER NOT NULL
+    );
     CREATE TABLE projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, status TEXT DEFAULT 'active',
@@ -87,7 +92,7 @@ function seedGcode(partId, overrides = {}) {
 }
 
 function seedPrinter(overrides = {}) {
-  db.prepare(`
+  const r = db.prepare(`
     INSERT INTO printers (model, group_name, loaded_material, loaded_color, status, is_held, is_active)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
@@ -95,6 +100,14 @@ function seedPrinter(overrides = {}) {
     overrides.loaded_material ?? null, overrides.loaded_color ?? null,
     overrides.status ?? 'IDLE', overrides.is_held ?? 0, overrides.is_active ?? 1,
   );
+  return r.lastInsertRowid;
+}
+
+function seedLane(printerId, laneIndex, material, color) {
+  db.prepare(`
+    INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(printerId, laneIndex, material, color, Date.now());
 }
 
 describe('GET /api/parts/:id/dispatch-status', () => {
@@ -180,5 +193,62 @@ describe('GET /api/parts/:id/dispatch-status', () => {
     expect(res.status).toBe(200);
     expect(res.body.dispatchable).toBe(false);
     expect(res.body.reasons.join(' ')).toContain('Rack A');
+  });
+});
+
+// ── Material/color matching, including printer_lanes ────────────────────────────
+// Mirrors server/scheduler.js's candidate query exactly (see the file header
+// comment and CLAUDE.md's sync-pairs table): a printer qualifies via its own
+// loaded_material/loaded_color, or via any single lane satisfying the requirement
+// together (never material from one lane plus color from a different one).
+
+describe('GET /api/parts/:id/dispatch-status: material/color', () => {
+  test('dispatchable when the printer loaded_material/loaded_color matches', async () => {
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    seedPrinter({ loaded_material: 'PLA', loaded_color: 'Black' });
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(true);
+  });
+
+  test('not dispatchable when no printer has the required material/color loaded or laned', async () => {
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    seedPrinter({ loaded_material: 'PETG', loaded_color: 'Red' });
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(false);
+    expect(res.body.reasons.join(' ')).toMatch(/no printer has/i);
+  });
+
+  test('dispatchable via a lane when loaded_material/loaded_color does not match', async () => {
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    const printerId = seedPrinter({ loaded_material: null, loaded_color: null });
+    seedLane(printerId, 0, 'PETG', 'Red');
+    seedLane(printerId, 1, 'PLA', 'Black');
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(true);
+  });
+
+  test('not dispatchable when the material is in one lane and the color in a different lane', async () => {
+    const projectId = seedProject();
+    const partId = seedPart(projectId);
+    seedGcode(partId, { required_material: 'PLA', required_color: 'Black' });
+    const printerId = seedPrinter({ loaded_material: null, loaded_color: null });
+    seedLane(printerId, 0, 'PLA', 'Red');
+    seedLane(printerId, 1, 'PETG', 'Black');
+
+    const res = await request(app).get(`/api/parts/${partId}/dispatch-status`);
+    expect(res.status).toBe(200);
+    expect(res.body.dispatchable).toBe(false);
   });
 });

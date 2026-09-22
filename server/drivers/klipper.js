@@ -174,6 +174,44 @@ async function listCameras(printer) {
   }
 }
 
+// ─── Lane data (klipper-filament-sync plugin) ─────────────────────────────────
+
+// Returns per-lane filament state from the klipper-filament-sync plugin
+// (github.com/maevebaksa/klipper-filament-sync), or null if the plugin is not
+// installed or has nothing stored yet. Never throws.
+//
+// The plugin has no HTTP API of its own: it writes into Moonraker's generic
+// database under namespace "lane_data", keyed "tool0", "tool1", ... (one per
+// toolhead), each value shaped { lane, material, color, nozzle_temp?, bed_temp? }.
+// Confirmed by reading the plugin's filament_sync_bridge.py directly (its README
+// names the namespace but does not document the key/value shape) and cross-checked
+// against Moonraker's own database API docs for the request/response envelope.
+// Reference: https://moonraker.readthedocs.io/en/latest/external_api/database/
+async function getLaneData(printer) {
+  try {
+    const res = await axios.get(`${await base(printer)}/server/database/item`, {
+      params: { namespace: 'lane_data' },
+      timeout: 8000,
+    });
+    const value = res.data?.result?.value;
+    if (!value || typeof value !== 'object') return null;
+
+    const lanes = [];
+    for (const [key, lane] of Object.entries(value)) {
+      const match = /^tool(\d+)$/.exec(key);
+      if (!match || !lane || typeof lane !== 'object') continue;
+      lanes.push({
+        index: Number(match[1]),
+        material: lane.material || null,
+        color: lane.color || null,
+      });
+    }
+    return lanes.length ? lanes : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 // ─── Test connection ─────────────────────────────────────────────────────────
 
 // One-off reachability check for the "Test Connection" button. Does not create or
@@ -192,4 +230,4 @@ async function testConnection(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl, testConnection, listCameras };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl, testConnection, listCameras, getLaneData };

@@ -534,6 +534,8 @@ Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirro
 - `reasons` — populated when `dispatchable` is `false`: global blockers (project not active, part complete, no G-code, remaining qty already covered by in-progress jobs) followed by per-G-code availability problems (no printers of that model, group/material/color mismatch, all matching printers busy or held).
 - `notes` — populated when `dispatchable` is `true`: advisory per-G-code items (e.g. one G-code can dispatch but another has no ready printers).
 
+The material/color check counts a printer as a match via its own `loaded_material`/`loaded_color`, or via any single one of its `printer_lanes` rows (a multi-lane Klipper printer synced from the klipper-filament-sync plugin): mirrors `server/scheduler.js`'s candidate query exactly, see `docs/database.md`'s `printer_lanes` entry.
+
 ### `POST /api/parts`
 
 Required: `project_id`, `name`, `target_qty`.
@@ -812,7 +814,7 @@ All error responses use this shape:
 
 ### `GET /api/backup`
 
-Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
+Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `printer_lanes`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `filament_color_types`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
@@ -830,6 +832,7 @@ Each table's restore INSERT covers the columns the *live* schema currently has (
 {
   "ok": true,
   "printers": 52,
+  "printer_lanes": 8,
   "projects": 3,
   "parts": 12,
   "gcodes": 18,
