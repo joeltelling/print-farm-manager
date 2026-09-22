@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-21: production docker-compose.yml uses host networking
+
+Reported after the mDNS support landed: `.local` printers connected inconsistently, a different subset succeeding between one poll and the next rather than a clean pass or fail. Docker's default bridge network forwards UDP multicast (what mDNS resolution depends on) unreliably; this is a known class of problem for any containerized app that needs mDNS, and the standard fix is host networking, not a bridge-network workaround.
+
+`docker-compose.yml`'s `print-farm-manager` service now sets `network_mode: host` and drops its `ports:` section (Compose ignores published ports under host networking; the app still listens on 3000, just directly on the host's real network interface instead of through Docker's virtual bridge and NAT). The `print-farm-manager-dev` service is unchanged: this only affects the production deployment path, where the mDNS reliability problem actually shows up.
+
+The tradeoff, and the reason this is not the default recommendation for every install (`README.md`'s quickstart and `docs/installation.md`'s optional guidance keep the bridge-network `ports:` form as the default, host networking mentioned as the remedy specifically for unreliable `.local` resolution): a host-networked container has no address on Docker's internal bridge network, so a reverse proxy on the same Docker host that previously reached this app by service name needs to point at the host's own IP address instead.
+
+### Changes
+- `docker-compose.yml`: `print-farm-manager` service now uses `network_mode: host` instead of `ports: ["3000:3000"]`, with the reasoning and the reverse-proxy implication documented inline.
+- `docs/installation.md`: extended the `.local` (mDNS) caveat with the two remedies (host networking, or a plain IP address) now that the reliability problem itself is understood, rather than only documenting the workaround.
+
+---
+
 ## 2026-09-21: Test Connection button; Webcams page redesigned as a snapshot gallery
 
 Requested while troubleshooting printers that connect inconsistently by hostname: a way to check reachability against exactly what is typed into the form right now, without saving first and without digging through server logs.
