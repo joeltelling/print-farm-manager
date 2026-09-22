@@ -1,4 +1,5 @@
 const express = require('express');
+const { normalizeHex } = require('../color-distance');
 
 module.exports = (db) => {
   const router = express.Router();
@@ -84,7 +85,12 @@ module.exports = (db) => {
     const foundCount = db.prepare(`SELECT COUNT(*) AS count FROM filament_types WHERE id IN (${placeholders})`).get(...type_ids).count;
     if (foundCount !== type_ids.length) return res.status(400).json({ error: 'One or more filament types not found' });
 
-    const hex = req.body?.hex_color?.trim() || null;
+    const rawHex = req.body?.hex_color?.trim();
+    let hex = null;
+    if (rawHex) {
+      hex = normalizeHex(rawHex);
+      if (!hex) return res.status(400).json({ error: 'hex_color must be a hex color like #ff0000' });
+    }
     try {
       const createColor = db.transaction(() => {
         const result = db.prepare('INSERT INTO filament_colors (name, hex_color) VALUES (?, ?)').run(name, hex);
@@ -121,11 +127,26 @@ module.exports = (db) => {
       if (foundCount !== type_ids.length) return res.status(400).json({ error: 'One or more filament types not found' });
     }
 
+    // Same "present in body wins" concern as elsewhere in this codebase: omitted
+    // (undefined) keeps the existing hex, an empty string clears it, and anything
+    // else must normalize (see color-distance.js's normalizeHex) or the request
+    // is rejected rather than silently saving a value the browser can't render.
+    let newHex = color.hex_color;
+    if (hex_color !== undefined) {
+      const trimmed = hex_color?.trim();
+      if (!trimmed) {
+        newHex = null;
+      } else {
+        newHex = normalizeHex(trimmed);
+        if (!newHex) return res.status(400).json({ error: 'hex_color must be a hex color like #ff0000' });
+      }
+    }
+
     try {
       const applyUpdate = db.transaction(() => {
         db.prepare(`
           UPDATE filament_colors SET name = COALESCE(?, name), hex_color = ? WHERE id = ?
-        `).run(name?.trim() || null, hex_color !== undefined ? (hex_color?.trim() || null) : color.hex_color, color.id);
+        `).run(name?.trim() || null, newHex, color.id);
 
         if (type_ids) {
           db.prepare('DELETE FROM filament_color_types WHERE color_id = ?').run(color.id);
