@@ -125,15 +125,24 @@ async function checkIfPrinting(printer) {
 
 // ─── Camera ─────────────────────────────────────────────────────────────────
 
-// Returns { streamUrl, snapshotUrl } for the first enabled webcam registered in
+// Returns { streamUrl, snapshotUrl } for the selected webcam registered in
 // Moonraker's webcam management API, or null if none is configured or the
 // printer is unreachable. Never throws.
 // Reference: https://moonraker.readthedocs.io/en/latest/external_api/webcams/
+//
+// printer.camera_uid selects a specific webcam (crowsnest can register more than
+// one), matched against each entry's Moonraker-assigned uid, the field Moonraker's
+// own docs recommend for identifying a webcam, since name is not guaranteed stable.
+// Falls back to the first enabled webcam (previous behavior) when camera_uid is
+// unset or does not match any entry, so an unconfigured or stale selection degrades
+// gracefully instead of returning nothing.
 async function getCameraUrl(printer) {
   try {
     const res = await axios.get(`${await base(printer)}/server/webcams/list`, { timeout: 8000 });
     const webcams = res.data?.result?.webcams || [];
-    const cam = webcams.find(w => w.enabled) || webcams[0];
+    const cam = (printer.camera_uid && webcams.find(w => w.uid === printer.camera_uid))
+      || webcams.find(w => w.enabled)
+      || webcams[0];
     if (!cam || !cam.stream_url) return null;
 
     // stream_url/snapshot_url may be a relative path: Moonraker's docs resolve
@@ -148,6 +157,20 @@ async function getCameraUrl(printer) {
     };
   } catch (_) {
     return null;
+  }
+}
+
+// Returns every webcam Moonraker knows about for this printer, as
+// [{ uid, name, enabled }], for the camera picker on the Add Printer and
+// printer-edit forms (a crowsnest setup can register more than one). Empty
+// array on any failure or when none are configured. Never throws.
+async function listCameras(printer) {
+  try {
+    const res = await axios.get(`${await base(printer)}/server/webcams/list`, { timeout: 8000 });
+    const webcams = res.data?.result?.webcams || [];
+    return webcams.map(w => ({ uid: w.uid, name: w.name, enabled: !!w.enabled }));
+  } catch (_) {
+    return [];
   }
 }
 
@@ -169,4 +192,4 @@ async function testConnection(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl, testConnection };
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl, testConnection, listCameras };

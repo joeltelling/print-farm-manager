@@ -180,7 +180,14 @@ Returns live webcam feed URLs for a printer, if its connector supports one. `404
 
 **Response, camera available:**
 ```json
-{ "available": true, "streamUrl": "http://192.168.1.250/webcam/?action=stream", "snapshotUrl": "http://192.168.1.250/webcam/?action=snapshot" }
+{
+  "available": true,
+  "streamUrl": "http://192.168.1.250/webcam/?action=stream",
+  "snapshotUrl": "http://192.168.1.250/webcam/?action=snapshot",
+  "rotation": 180,
+  "flipH": true,
+  "flipV": false
+}
 ```
 
 **Response, no camera (unsupported connector, none configured on the printer, or unreachable):**
@@ -188,7 +195,25 @@ Returns live webcam feed URLs for a printer, if its connector supports one. `404
 { "available": false }
 ```
 
-Currently implemented for `klipper` (via Moonraker's `/server/webcams/list`) and `octoprint` (via `/api/settings`'s `webcam` section). Other connectors always return `available: false`. `snapshotUrl` may be `null` even when `streamUrl` is present.
+Currently implemented for `klipper` (via Moonraker's `/server/webcams/list`) and `octoprint` (via `/api/settings`'s `webcam` section). Other connectors always return `available: false`. `snapshotUrl` may be `null` even when `streamUrl` is present. For `klipper`, if the printer's `camera_uid` matches one of the webcams Moonraker reports, that one is used; otherwise the first enabled webcam is, same as before `camera_uid` existed.
+
+`rotation`/`flipH`/`flipV` come straight from the printer row (`camera_rotation`/`camera_flip_h`/`camera_flip_v`), not from the connector: they are a display preference the client applies as a CSS transform, not something read from or written to the printer's own webcam server. Always present when `available: true`, regardless of connector.
+
+### `POST /api/printers/list-cameras`
+
+Every webcam the connector currently reports for the given connection settings, for the camera picker on the Add Printer and printer-edit forms (a Klipper crowsnest setup can register more than one). Same shape and no-printer-required design as `test-connection` below, so it works before a printer is ever saved.
+
+**Body:** same as `test-connection`'s: `{ "type": "klipper", "ip": "...", "api_key": "", "serial_number": "" }`. Required: `type`, `ip`.
+
+**Response, always `200`:**
+```json
+{ "cameras": [
+  { "uid": "abc123", "name": "Toolhead Cam", "enabled": true },
+  { "uid": "def456", "name": "Bed Cam", "enabled": false }
+] }
+```
+
+`400` only for a malformed request (missing `type`/`ip`, or an unregistered connector type). A connector without `listCameras` (everything but `klipper` today) always returns `{ "cameras": [] }`, not an error.
 
 ### `POST /api/printers/test-connection`
 
@@ -227,17 +252,19 @@ Create a single printer.
 }
 ```
 
-Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname, including a `.local` (mDNS) name, as well as a numeric address; see `docs/installation.md`'s credential table for the one remaining caveat (the original Elegoo Centauri Carbon's UDP discovery needing an IPv4 address). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`).
+Required: `name`, `ip`, `api_key`, `model`. `ip` accepts a hostname, including a `.local` (mDNS) name, as well as a numeric address; see `docs/installation.md`'s credential table for the one remaining caveat (the original Elegoo Centauri Carbon's UDP discovery needing an IPv4 address). Optional: `group_name`, `type` (defaults to `"prusa"`), `auto_advance` (boolean, defaults to `false`), `camera_uid`, `camera_rotation` (`0`/`90`/`180`/`270`, defaults to `0`), `camera_flip_h`, `camera_flip_v` (booleans, default `false`).
 
 `model` must be one of: `mk4`, `mk4s`, `c1`, `c1l`, `xl`.
 
 `auto_advance` is for belt/conveyor printers: see the `auto_advance` note in `docs/database.md`'s printers table. Not importable via CSV; toggle it per printer through this endpoint or the printer detail page after creation.
 
+`camera_uid`/`camera_rotation`/`camera_flip_h`/`camera_flip_v` are the display preferences `GET /:id/camera` returns; see `docs/database.md`'s printers table for what each one does.
+
 Returns `201` with the created printer object. Returns `409` if `name` already exists.
 
 ### `PUT /api/printers/:id`
 
-Partial update: only fields provided are changed (uses `COALESCE`, except `auto_advance`, which uses the same "present in body wins" rule as `loaded_material`/`loaded_color` so an explicit `false` can actually turn it off). All fields from POST are accepted, plus `is_held` (`0` or `1`).
+Partial update: only fields provided are changed (uses `COALESCE`, except `auto_advance`, `camera_uid`, `camera_rotation`, `camera_flip_h`, and `camera_flip_v`, which use the same "present in body wins" rule as `loaded_material`/`loaded_color` so an explicit falsy value, like unchecking a flip flag or clearing the selected camera, actually takes effect rather than a plain `COALESCE` silently keeping the old value). All fields from POST are accepted, plus `is_held` (`0` or `1`).
 
 Returns `404` if not found, `409` on name conflict.
 

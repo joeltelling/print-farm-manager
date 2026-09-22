@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-09-21: camera rotation/flip and crowsnest camera selection; single-instance live view; Mainsail link
+
+Requested together: a way to select which camera a crowsnest (Klipper) printer with more than one configured should use, display-side rotation and flip for a camera mounted at an angle, a live view on the Webcams page (limited to one at a time, to protect the bandwidth work from two entries ago), and a quick way to reach a Klipper printer's own Mainsail UI from Fleet or the Dashboard.
+
+`printers` gains four columns: `camera_uid` (which crowsnest webcam to use, matched against Moonraker's own `uid` field for each entry, the identifier Moonraker's docs recommend over the deprecated `name`), and `camera_rotation`/`camera_flip_h`/`camera_flip_v`. The rotation/flip fields are a pure display preference applied client-side as a CSS transform (`client/src/cameraTransform.js`), not read from or written to the connector: OctoPrint and Klipper cameras both get it, since it has nothing to do with what either protocol reports about itself. `camera_uid` only means anything for `klipper.js`, the only driver whose printer can register more than one camera; `getCameraUrl` now prefers the webcam matching it, falling back to the previous first-enabled behavior when it is unset or stale.
+
+A new `POST /api/printers/list-cameras` (same no-printer-required shape as `test-connection`) powers the camera picker: a "Find cameras" button on the Add Printer and printer-edit forms calls it and fills a dropdown from whatever crowsnest currently reports, so setting `camera_uid` means picking a name, not guessing an identifier.
+
+Webcams' live view is single-instance by page-level state (`liveViewId`): starting live view on one card switches it away from whichever other card had it, instead of allowing two concurrent MJPEG connections, which would have undercut the bandwidth-safety work already done on this page.
+
+The Mainsail link (Fleet's card header, and a click on a Dashboard fleet-grid cell) only appears for `klipper` printers, opening `http://<printer.ip>` in a new tab; `.local` names resolve the same way here as anywhere else a browser opens them, since this is the user's own browser doing the resolving, not the server.
+
+Not hardware-validated: the `camera_uid` matching and `listCameras` were written from the same Moonraker webcam API docs already verified for `getCameraUrl`, but no physical crowsnest setup with more than one camera was reachable from this environment to confirm the picker end to end.
+
+### Changes
+- `server/db.js`: added `camera_uid`, `camera_rotation`, `camera_flip_h`, `camera_flip_v` to `printers`.
+- `server/drivers/klipper.js`: `getCameraUrl` prefers the webcam matching `printer.camera_uid`; added `listCameras`.
+- `server/routes/printers.js`: `GET /:id/camera` now also returns `rotation`/`flipH`/`flipV` from the printer row; new `POST /api/printers/list-cameras`; `POST`/`PUT /api/printers` accept the four new fields (the flip flags and `camera_uid`/`camera_rotation` use the same "present in body wins" rule as `auto_advance`, so an explicit clear or uncheck actually takes effect).
+- `client/src/cameraTransform.js`: new, builds the rotation/flip CSS transform from a camera response.
+- `client/src/pages/PrinterDetail.jsx`, `Settings.jsx`: added the Camera section (rotation, flip, and for `klipper` the "Find cameras" picker) to the printer-edit and Add Printer forms; the camera card's snapshot and live images now carry the transform.
+- `client/src/useCameraHover.jsx`: the hover preview snapshot now carries the transform.
+- `client/src/pages/Webcams.jsx`: added the single-instance Watch Live button; snapshot and live images carry the transform.
+- `client/src/pages/Fleet.jsx`, `client/src/components/FleetStatusGrid.jsx`: added the Mainsail link/click for `klipper` printers.
+- `server/tests/klipper-driver.test.js`, `printers-filaments.test.js`, `printers-test-connection.test.js`, `printers-decommission.test.js`, `backup-restore.test.js`: coverage for `camera_uid` selection, `listCameras`, the new route, the "present in body wins" fields, and the backup/restore round-trip; the latter two files' in-memory schemas also gained the four new columns (see the earlier `auto_advance` incident's postmortem for why every test file with its own `printers` schema needs checking, not just the one that broke).
+- `docs/api.md`, `docs/database.md`, `docs/driver-authoring.md`, `docs/web-app.md`: documented the new columns, endpoint, driver contract addition, and UI.
+
+---
+
 ## 2026-09-21: production docker-compose.yml uses host networking
 
 Reported after the mDNS support landed: `.local` printers connected inconsistently, a different subset succeeding between one poll and the next rather than a clean pass or fail. Docker's default bridge network forwards UDP multicast (what mDNS resolution depends on) unreliably; this is a known class of problem for any containerized app that needs mDNS, and the standard fix is host networking, not a bridge-network workaround.

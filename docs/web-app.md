@@ -37,6 +37,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
 | `client/src/components/FleetStatusGrid.jsx` | Grouped-by-model printer grid used by the Dashboard's fleet grid |
 | `client/src/useCameraHover.jsx` | Hover-to-preview camera hook used by `FleetStatusGrid`: lazy-fetches `GET /api/printers/:id/camera` on first hover, shows a snapshot only (never the live stream) |
+| `client/src/cameraTransform.js` | Builds the CSS `transform` for a camera image from `camera_rotation`/`camera_flip_h`/`camera_flip_v`; shared by PrinterDetail's camera card, `useCameraHover.jsx`, and Webcams.jsx |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -97,7 +98,7 @@ TV-optimized command center intended to be shown full-screen on a large monitor 
 |---|---|
 | Header | Branding, fleet utilization % (printing / total), live HH:MM:SS clock and date |
 | Hero stat cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) — large tabular numerals |
-| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend. Hovering a cell shows a floating camera snapshot if the printer has one configured (`useCameraHover.jsx`); it never opens the live stream, since a hover fires far too often for that to be a lightweight preview. |
+| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend. Hovering a cell shows a floating camera snapshot if the printer has one configured (`useCameraHover.jsx`); it never opens the live stream, since a hover fires far too often for that to be a lightweight preview. A `klipper` printer's cell is also clickable, opening `http://<printer.ip>` (Mainsail) in a new tab; other printers' cells are not clickable. |
 | Active Projects | All active projects, ordered by dispatch priority (same order as the Projects page), with **all parts** listed: per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
 | Needs Attention | Every printer requiring a human, sorted by priority: AWAITING → ERROR → STOPPED → PAUSED → OFFLINE, then longest-waiting first. Each row shows a reason badge, printer name, and wait time derived from `last_event_at`. Empty state renders a green "✓ All clear" badge. |
 
@@ -120,7 +121,9 @@ The bottom row is a 2-column grid (`2fr 1fr`): Active Projects takes two-thirds,
 
 `client/src/pages/Webcams.jsx`
 
-A plain snapshot gallery, deliberately not the fleet status grid: no color-coded status highlighting, no per-printer action, just a still image per printer. Printer list comes from `GET /api/printers`, polled every 15 seconds. Each printer's camera info (does it have one, and its snapshot URL) is looked up once per page visit via `GET /api/printers/:id/camera`, since the URL itself is stable and only the image behind it changes; a card with no snapshot configured (or no camera at all) shows a placeholder instead. Every 30 seconds, each configured `<img>` gets a fresh cache-busting query param, triggering a new single-shot request, never the continuous MJPEG stream: same bandwidth discipline as the hover preview on the Dashboard's fleet grid (`useCameraHover.jsx`), for the same reason. Watching a live feed remains an explicit action on the printer's own detail page.
+A plain snapshot gallery, deliberately not the fleet status grid: no color-coded status highlighting, just a still image per printer plus one per-card action. Printer list comes from `GET /api/printers`, polled every 15 seconds. Each printer's camera info (does it have one, and its snapshot/stream URLs) is looked up once per page visit via `GET /api/printers/:id/camera`, since the URLs themselves are stable and only the image behind the snapshot URL changes; a card with no snapshot configured (or no camera at all) shows a placeholder instead. Every 30 seconds, each snapshot `<img>` gets a fresh cache-busting query param, triggering a new single-shot request, never the continuous MJPEG stream: same bandwidth discipline as the hover preview on the Dashboard's fleet grid (`useCameraHover.jsx`), for the same reason.
+
+A card whose camera reports a `streamUrl` gets a **Watch Live** button. Live view is **single-instance**: the page keeps one `liveViewId` (the printer currently live, or `null`), so clicking Watch Live on a card switches live view to it and implicitly stops whatever other card was live, rather than opening a second concurrent MJPEG stream. Every rendered image (snapshot or live) has `client/src/cameraTransform.js`'s rotation/flip transform applied, the same as the printer detail camera card and the hover preview.
 
 ---
 
@@ -137,7 +140,7 @@ Live printer grid that polls `GET /api/printers` every 15 seconds (matching the 
 - Each printer card shows: name, status badge (color-coded), model tag, group name
 - **While PRINTING:** job filename (monospace, truncated), left-to-right blue progress bar, percentage, time remaining, and wall-clock ETA (e.g. "45m left · done 4:35 PM")
 - **While UPLOADING (display-only overlay):** the hardware still reports IDLE while the scheduler transfers a file, so cards with a healthy in-flight upload (`has_uploading_job` and not held) show a violet "Uploading" badge, the filename, and "Sending file to printer…". Held + uploading is a *failed* upload and renders the existing orange confirmation UI instead. The overlay is computed client-side (`displayStatus()` in Fleet.jsx) and never written to `printers.status`; the Uploading chip/count appears in the filter row and uploading printers are excluded from the Idle count.
-- IP address is not shown on cards
+- IP address is not shown on cards, but a `klipper` printer's card header has a **Mainsail ↗** link that opens `http://<printer.ip>` in a new tab (`e.stopPropagation()` so it doesn't also trigger the card's own click-to-open-detail behavior)
 - Empty state message when no printers are registered
 
 **Status color scheme (aligned to Prusa UI):**
@@ -209,6 +212,8 @@ Per-machine history and annotation screen. Reached by clicking a printer card in
 
 **Edit Details form:** includes a Group field with a `<datalist>` autocomplete sourced from `GET /api/groups`, same free-text-plus-suggestions behavior as the Printers page bulk-edit and the Settings Add Printer form. A **Test Connection** button under the IP/hostname field posts whatever is currently typed there (plus API key and serial number) to `POST /api/printers/test-connection` and shows the result (`Connected`, or the specific failure reason) inline, without saving anything first.
 
+For `klipper` and `octoprint` printers, a **Camera** section (rotation, flip horizontal, flip vertical) sets the display transform `client/src/cameraTransform.js` applies wherever this printer's camera image renders, purely a client-side preference, not read from or sent to the connector. `klipper` printers additionally get a camera picker: a **Find cameras** button calls `POST /api/printers/list-cameras` against the form's current connection settings and populates a dropdown of whatever crowsnest reports, for printers with more than one configured; "Default (first enabled)" keeps the previous no-selection behavior.
+
 **Add note form:** freeform textarea → `POST /api/printers/:id/events`. Submitted note appears immediately at the top of the timeline.
 
 **Event timeline:** all `printer_events` rows for this printer, newest first. Each entry shows:
@@ -216,7 +221,7 @@ Per-machine history and annotation screen. Reached by clicking a printer card in
 - Note text (if any)
 - Formatted timestamp
 
-**Camera card:** fetched from `GET /api/printers/:id/camera` alongside the rest of the page's data; nothing is rendered for connectors that don't support one. The MJPEG stream URL is continuous video, not a single frame, so it never autoplays: the card defaults to the connector's snapshot URL if it has one (or a placeholder if it doesn't), and a "Watch Live" button swaps in the live `<img src={streamUrl}>`, with "Stop Live View" to close it again without navigating away. Switching printers (or any refetch of the page's data) resets the card back to the snapshot, so a stream is never left running against a printer you've navigated away from. See [docs/api.md](api.md).
+**Camera card:** fetched from `GET /api/printers/:id/camera` alongside the rest of the page's data; nothing is rendered for connectors that don't support one. The MJPEG stream URL is continuous video, not a single frame, so it never autoplays: the card defaults to the connector's snapshot URL if it has one (or a placeholder if it doesn't), and a "Watch Live" button swaps in the live `<img src={streamUrl}>`, with "Stop Live View" to close it again without navigating away. Switching printers (or any refetch of the page's data) resets the card back to the snapshot, so a stream is never left running against a printer you've navigated away from. Both the snapshot and the live image get `client/src/cameraTransform.js`'s rotation/flip CSS transform applied, from the response's `rotation`/`flipH`/`flipV` fields. See [docs/api.md](api.md).
 
 **Catalog-print popup:** opens automatically (a fixed-position modal, not a page navigation) when the fetched printer has `needs_catalog: true`, meaning it is `PRINTING` or `FINISHED` with no job the farm dispatched, the signature of a print sent straight to it from outside the farm (e.g. OrcaSlicer). Prompts for a Part (grouped by project, open parts only) and a quantity, then submits to `POST /api/printers/:id/catalog-print`. A "Not now" button dismisses it for the rest of this page visit without submitting; reloading the page re-opens it as long as `needs_catalog` is still true server-side.
 
@@ -257,7 +262,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 **Groups section:** lists every registered group (`GET /api/groups`) with a Delete button per row and a name-only add form (`POST /api/groups`). Modeled on the Printer Models section, minus the type/color hierarchy Filament Library has. Deleting a group is blocked with an inline error naming the printer/G-code/project count still referencing it (`DELETE /api/groups/:name`, `409`). A group doesn't have to be created here first: typing a new name on a printer (Add Printer form, Printers bulk-edit, PrinterDetail, or CSV import) registers it automatically; this section exists for pre-creating a group before any printer uses it, and for cleanup.
 
-**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail. A **Test Connection** button under the IP/hostname field checks reachability against whatever is currently in the form, before the printer is ever saved (same `POST /api/printers/test-connection` the printer-edit form's button uses).
+**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail. A **Test Connection** button under the IP/hostname field checks reachability against whatever is currently in the form, before the printer is ever saved (same `POST /api/printers/test-connection` the printer-edit form's button uses). The same **Camera** section (rotation, flip, and for `klipper` a crowsnest camera picker via `POST /api/printers/list-cameras`) as the printer-edit form's, described above, also works pre-save here.
 
 **Farm Name section:** saves the `farm_name` setting (`PUT /api/settings/farm_name`); `App.jsx` fetches it on load and shows it in the sidebar/topbar, falling back to "Print Farm".
 

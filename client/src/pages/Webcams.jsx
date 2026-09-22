@@ -1,17 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { cameraTransform } from '../cameraTransform';
 
 const SNAPSHOT_REFRESH_MS = 30000;
 
 // A plain snapshot gallery, not the fleet status grid: no color-coded highlighting,
 // just an occasional still image per printer. Each printer's camera info (does it
-// have one, and its snapshot URL) is looked up once per page visit: the URL itself
-// is stable, only the image behind it changes, then the <img> tags get a fresh
-// cache-busting query param on an interval. Always a single-shot request, never the
-// continuous MJPEG stream (see useCameraHover.jsx for why that distinction matters).
+// have one, and its snapshot/stream URLs) is looked up once per page visit: the
+// URLs themselves are stable, only the image behind a snapshot URL changes, so the
+// snapshot <img> tags get a fresh cache-busting query param on an interval instead
+// of a re-fetch. A snapshot request is always single-shot, never the continuous
+// MJPEG stream (see useCameraHover.jsx for why that distinction matters), except
+// for whichever one card is in live view. Only one card may be live at a time
+// (liveViewId): starting live view on a card stops whichever other one was live,
+// the same discipline as everywhere else camera bandwidth is handled in this app.
 export default function Webcams() {
   const [printers, setPrinters] = useState(null);
-  const [cameras, setCameras] = useState({}); // { [printerId]: { available, snapshotUrl } }
+  const [cameras, setCameras] = useState({}); // { [printerId]: { available, snapshotUrl, streamUrl } }
   const [refreshedAt, setRefreshedAt] = useState(Date.now());
+  const [liveViewId, setLiveViewId] = useState(null);
   const fetchedCameras = useRef(new Set());
 
   const fetchPrinters = useCallback(async () => {
@@ -52,26 +58,49 @@ export default function Webcams() {
         Webcams
       </div>
       <div style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
-        A still snapshot per printer, refreshed every 30 seconds. For a live feed, open a
-        printer's page and click "Watch Live".
+        A still snapshot per printer, refreshed every 30 seconds. Click "Watch Live" on any
+        one printer for its live feed; only one can be live at a time.
       </div>
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16,
       }}>
         {printers.map(p => {
           const camera = cameras[p.id];
+          const isLive = liveViewId === p.id;
           return (
             <div key={p.id} style={{
               background: '#131720', border: '1px solid #1e2433', borderRadius: 8, padding: 12,
             }}>
-              <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600, marginBottom: 8 }}>
-                {p.name}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
+                  {p.name}
+                </div>
+                {camera?.streamUrl && (
+                  <button
+                    onClick={() => setLiveViewId(isLive ? null : p.id)}
+                    style={{
+                      background: isLive ? '#2563eb' : 'transparent',
+                      color: isLive ? '#fff' : '#94a3b8',
+                      border: '1px solid #2d3748', borderRadius: 6,
+                      padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+                    }}
+                  >
+                    {isLive ? 'Stop Live View' : 'Watch Live'}
+                  </button>
+                )}
               </div>
-              {camera?.snapshotUrl ? (
+              {isLive ? (
+                <img
+                  key={camera.streamUrl}
+                  src={camera.streamUrl}
+                  alt={`${p.name} live feed`}
+                  style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
+                />
+              ) : camera?.snapshotUrl ? (
                 <img
                   src={`${camera.snapshotUrl}${camera.snapshotUrl.includes('?') ? '&' : '?'}_=${refreshedAt}`}
                   alt={`${p.name} snapshot`}
-                  style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a' }}
+                  style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
                 />
               ) : (
                 <div style={{

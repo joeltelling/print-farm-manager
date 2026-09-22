@@ -1,5 +1,7 @@
-// Tests for POST /api/printers/test-connection: the "Test Connection" button's
-// backend. The route itself never touches the database, but mounting the real
+// Tests for the two no-printer-id-required diagnostic routes: POST
+// /api/printers/test-connection (the "Test Connection" button) and POST
+// /api/printers/list-cameras (the camera picker on the Add Printer and
+// printer-edit forms). Neither touches the database, but mounting the real
 // printers router still needs one: it prepares a printer_groups statement at
 // setup time (see registerGroup in routes/printers.js), so a stub object throws
 // before any request is even sent. Drivers are mocked; the in-memory db exists
@@ -85,5 +87,58 @@ describe('POST /api/printers/test-connection', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: false, message: 'Connection timed out' });
     expect(testConnection).toHaveBeenCalledWith({ ip: '192.168.1.70', api_key: '', serial_number: '' });
+  });
+});
+
+describe('POST /api/printers/list-cameras', () => {
+  test('400s when ip is missing', async () => {
+    const res = await request(app)
+      .post('/api/printers/list-cameras')
+      .send({ type: 'klipper' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/ip/i);
+  });
+
+  test('400s when type is missing', async () => {
+    const res = await request(app)
+      .post('/api/printers/list-cameras')
+      .send({ ip: '192.168.1.50' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/type/i);
+  });
+
+  test('400s for an unknown connector type', async () => {
+    getDriver.mockImplementation(() => { throw new Error('No driver registered for printer type: "not-a-brand"'); });
+    const res = await request(app)
+      .post('/api/printers/list-cameras')
+      .send({ type: 'not-a-brand', ip: '192.168.1.50' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/No driver registered/);
+  });
+
+  test('returns an empty list without erroring when the connector has no listCameras support', async () => {
+    getDriver.mockReturnValue({ getStatus: jest.fn() }); // no listCameras export
+    const res = await request(app)
+      .post('/api/printers/list-cameras')
+      .send({ type: 'octoprint', ip: '192.168.1.50' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ cameras: [] });
+  });
+
+  test('passes ip, api_key, and serial_number through to the driver and returns its result', async () => {
+    const listCameras = jest.fn().mockResolvedValue([
+      { uid: 'uid-1', name: 'cam1', enabled: true },
+      { uid: 'uid-2', name: 'cam2', enabled: false },
+    ]);
+    getDriver.mockReturnValue({ listCameras });
+
+    const res = await request(app)
+      .post('/api/printers/list-cameras')
+      .send({ type: 'klipper', ip: '192.168.1.70', api_key: '', serial_number: '' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.cameras).toHaveLength(2);
+    expect(res.body.cameras[0]).toEqual({ uid: 'uid-1', name: 'cam1', enabled: true });
+    expect(listCameras).toHaveBeenCalledWith({ ip: '192.168.1.70', api_key: '', serial_number: '' });
   });
 });

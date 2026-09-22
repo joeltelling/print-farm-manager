@@ -104,17 +104,19 @@ export default function FleetStatusGrid({ printers, allModels, title = 'Fleet St
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
               {group.map(printer => {
                 const c = cellColors(printer);
+                const isKlipper = printer.type === 'klipper';
                 return (
                   <div
                     key={printer.id}
-                    title={`${printer.name}: ${printer.status}`}
+                    title={isKlipper ? `${printer.name}: ${printer.status} (click to open Mainsail)` : `${printer.name}: ${printer.status}`}
                     onMouseEnter={e => onEnter(printer, e)}
                     onMouseLeave={onLeave}
+                    onClick={isKlipper ? () => window.open(`http://${printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`, '_blank') : undefined}
                     style={{
                       width: 54, height: 44, borderRadius: 6,
                       background: c.bg, border: `1px solid ${c.border}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'default',
+                      cursor: isKlipper ? 'pointer' : 'default',
                     }}
                   >
                     <span style={{

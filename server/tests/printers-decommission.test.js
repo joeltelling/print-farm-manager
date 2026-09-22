@@ -29,6 +29,10 @@ beforeAll(() => {
       decommission_note TEXT,
       serial_number    TEXT DEFAULT '',
       auto_advance     INTEGER DEFAULT 0,
+      camera_uid       TEXT,
+      camera_rotation  INTEGER DEFAULT 0,
+      camera_flip_h    INTEGER DEFAULT 0,
+      camera_flip_v    INTEGER DEFAULT 0,
       created_at       INTEGER NOT NULL
     );
     CREATE TABLE projects (
