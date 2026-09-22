@@ -26,7 +26,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Login.jsx` | Sign-in form, SSO button, first-run bootstrap form, automatic SSO redirect, `/backup-login` fallback |
 | `client/src/pages/Account.jsx` | Self-service API key management |
 | `client/src/pages/Users.jsx` | Admin-only account management |
-| `client/src/pages/Fleet.jsx` | Live printer grid |
+| `client/src/pages/Fleet.jsx` | Live printer grid, pinned-printers section |
 | `client/src/pages/Webcams.jsx` | Plain snapshot gallery, one still image per printer, no status highlighting |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
 | `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline, note form, camera card, catalog-print popup |
@@ -40,6 +40,9 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/cameraTransform.js` | Builds the CSS `transform` for a camera image from `camera_rotation`/`camera_flip_h`/`camera_flip_v`, plus `rotationFitTransform`/`useNaturalSize` to keep a 90/270-rotated image's box correctly sized instead of overflowing it; shared by PrinterDetail's camera card, `useCameraHover.jsx`, and Webcams.jsx |
 | `client/src/webUiLink.js` | Picks the "open web interface" URL/label for a printer: its `octoeverywhere_url` if set, otherwise the connector-appropriate local-IP link; shared by Fleet.jsx and FleetStatusGrid.jsx |
 | `client/src/components/GcodeUploadWizard.jsx` | Drag-and-drop-triggered 3-step upload wizard used by the Projects page: an alternative to its per-part upload panel |
+| `client/src/filamentColorHex.js` | Builds a color-name-to-hex-code lookup from `GET /api/filaments/colors`, for showing a printer's loaded color as a swatch outside the Filament Library table |
+| `client/src/components/ColorSwatch.jsx` | Small colored square for a filament color's hex code; renders nothing if no hex is set |
+| `client/src/usePinnedPrinters.js` | Per-browser (`localStorage`) pinned-printer set for Fleet's Pinned section |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -146,6 +149,8 @@ Live printer grid that polls `GET /api/printers` every 15 seconds (matching the 
 - **While PRINTING:** job filename (monospace, truncated), left-to-right blue progress bar, percentage, time remaining, and wall-clock ETA (e.g. "45m left · done 4:35 PM")
 - **While UPLOADING (display-only overlay):** the hardware still reports IDLE while the scheduler transfers a file, so cards with a healthy in-flight upload (`has_uploading_job` and not held) show a violet "Uploading" badge, the filename, and "Sending file to printer…". Held + uploading is a *failed* upload and renders the existing orange confirmation UI instead. The overlay is computed client-side (`displayStatus()` in Fleet.jsx) and never written to `printers.status`; the Uploading chip/count appears in the filter row and uploading printers are excluded from the Idle count.
 - IP address is not shown on cards, but a `klipper` or `octoprint` printer's card header has a web-interface link (**Mainsail ↗**, **OctoPrint ↗**, or **OctoEverywhere ↗** if the printer has an `octoeverywhere_url` set: see `client/src/webUiLink.js`) that opens in a new tab (`e.stopPropagation()` so it doesn't also trigger the card's own click-to-open-detail behavior)
+- Loaded material/color, when set, shows a small colored swatch next to the text if that color has a hex code in the Filament Library (`ColorSwatch.jsx`, `filamentColorHex.js`); no swatch (just text) if the color has no hex set
+- A ☆/★ button on each card pins/unpins it (`usePinnedPrinters.js`, `localStorage`, per-browser). Any pinned printers get their own **★ Pinned** section above the model-grouped ones, respecting the active status filter/search the same way; a pinned printer still also appears in its normal model group below, this is a shortcut, not a move
 - Empty state message when no printers are registered
 
 **Status color scheme (aligned to Prusa UI):**
@@ -211,7 +216,7 @@ Click any row to navigate to `/printers/:id` (the Printer Detail view).
 
 Per-machine history and annotation screen. Reached by clicking a printer card in the Fleet page, clicking a row in the Printers page, or via the "View History" button in the Decommissioned page.
 
-**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable.
+**Header card:** printer name, live status badge (or DECOMMISSIONED), model, IP, connector type, decommissioned timestamp if applicable. When a material/color is loaded, it shows a small colored swatch next to the text if that color has a hex code in the Filament Library, same `ColorSwatch.jsx`/`filamentColorHex.js` as the Fleet page.
 
 **Rename:** a **Rename** button next to the printer name swaps the header into an inline edit form. Save sends `PUT /api/printers/:id` with the new `name`; the server's UNIQUE-name 409 is surfaced inline. Escape or the Cancel button closes the form without saving.
 

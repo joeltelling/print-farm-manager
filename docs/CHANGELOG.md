@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-09-22: loaded-color swatches on Fleet/PrinterDetail, pinned printers
+
+Two of a batch of requested quality-of-life items.
+
+**Color swatches:** the loaded-material badge on Fleet cards and the Printer Detail header both show a small colored square next to the material/color text now, the same swatch already used in the Filament Library table, so a glance at the fleet tells you what's actually loaded instead of reading text. `client/src/filamentColorHex.js` builds a color-name-to-hex lookup from `GET /api/filaments/colors` (already fetched by PrinterDetail for its edit form; newly fetched by Fleet); `client/src/components/ColorSwatch.jsx` renders nothing when a color has no hex code set, same as everywhere else this session's color-tolerance/swatch work has treated an unset hex.
+
+**Pinned printers:** a ☆/★ button on each Fleet card, backed by `localStorage` (per-browser, not synced through the server: this is a personal viewing preference, not farm state). Pinned printers get a **★ Pinned** section above the model-grouped ones. Useful specifically because Fleet groups by model: a farm with many models and one printer each (like this one) can't move anything by reordering within a group of one, so pinning needed its own cross-model section rather than a per-group sort.
+
+### Changes
+- `client/src/filamentColorHex.js`: new, `buildColorHexMap`.
+- `client/src/components/ColorSwatch.jsx`: new.
+- `client/src/usePinnedPrinters.js`: new.
+- `client/src/pages/Fleet.jsx`: swatch on the loaded-material badge; pin toggle button and the Pinned section.
+- `client/src/pages/PrinterDetail.jsx`: swatch on the header's Loaded line.
+- `docs/web-app.md`: documented both features and the three new files.
+
+---
+
 ## 2026-09-22: drag-and-drop G-code upload wizard
 
 Requested: an alternative UI flow for getting a G-code file into the farm, since the existing path requires already having an open Project and Part with its Details panel expanded. Explicitly a second front door onto the existing upload, not a replacement for it.

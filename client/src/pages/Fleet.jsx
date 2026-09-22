@@ -5,6 +5,9 @@ import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
 import { useToast } from '../useToast';
 import { webUiLink } from '../webUiLink';
+import { buildColorHexMap } from '../filamentColorHex';
+import ColorSwatch from '../components/ColorSwatch';
+import usePinnedPrinters from '../usePinnedPrinters';
 
 const STATUS_COLORS = {
   PRINTING:   { bg: '#1e3a5f', text: '#60a5fa', label: 'Printing' },
@@ -56,7 +59,7 @@ function formatEta(secs) {
   return `done ${time}`;
 }
 
-function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail }) {
+function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint, onUploadFailed, onDecommission, onLinkJob, onOpenDetail, colorHexMap, pinned, onTogglePin }) {
   const shownStatus = displayStatus(printer);
   const style = statusStyle(shownStatus);
   const isUploading = shownStatus === 'UPLOADING';
@@ -130,6 +133,16 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
     >
       {/* Name + status badge */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={e => { e.stopPropagation(); onTogglePin(printer.id); }}
+          title={pinned ? 'Unpin' : 'Pin to top'}
+          style={{
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            color: pinned ? '#fbbf24' : '#334155', fontSize: 14, lineHeight: 1, flexShrink: 0,
+          }}
+        >
+          {pinned ? '★' : '☆'}
+        </button>
         <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {printer.name}
         </span>
@@ -160,7 +173,8 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         </span>
         {printer.group_name && <span style={{ color: '#475569' }}>{printer.group_name}</span>}
         {(printer.loaded_material || printer.loaded_color) && (
-          <span style={{ color: '#7dd3fc', fontSize: 11 }}>
+          <span style={{ color: '#7dd3fc', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <ColorSwatch hex={colorHexMap.get(printer.loaded_color)} />
             {[printer.loaded_material, printer.loaded_color].filter(Boolean).join(' · ')}
           </span>
         )}
@@ -347,11 +361,14 @@ export default function Fleet() {
   const [selectedForReady, setSelectedForReady] = useState(new Set());
   const [lastPolled, setLastPolled]           = useState(null);
   const [allModels, setAllModels]             = useState([]);
+  const [colorHexMap, setColorHexMap]         = useState(new Map());
+  const { pinnedIds, togglePin }              = usePinnedPrinters();
   // { printerId, printerName, jobs, selectedJobId, isHeld }
   const [linkJobModal, setLinkJobModal]       = useState(null);
 
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(setAllModels).catch(() => {});
+    fetch('/api/filaments/colors').then(r => r.json()).then(colors => setColorHexMap(buildColorHexMap(colors))).catch(() => {});
   }, []);
 
   const fetchPrinters = useCallback(async () => {
@@ -619,6 +636,13 @@ export default function Fleet() {
     return true;
   });
 
+  // Pinned printers get their own section at the very top, cutting across
+  // model groups: useful when most models have just one printer each (pinning
+  // within a group of one wouldn't move anything). Respects the active status
+  // filter/search like everything else, and a pinned printer still also
+  // appears in its normal model group below; this is a shortcut, not a move.
+  const pinnedPrinters = filtered.filter(p => pinnedIds.has(p.id));
+
   // Group by model — order and labels come from the DB via /api/models
   const modelOrder  = allModels.map(m => m.model_id);
   const MODEL_LABELS = Object.fromEntries(allModels.map(m => [m.model_id, m.label]));
@@ -880,6 +904,37 @@ export default function Fleet() {
         />
       )}
 
+      {!loading && pinnedPrinters.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+            ★ Pinned <span style={{ fontWeight: 400, color: '#475569' }}>({pinnedPrinters.length})</span>
+          </h2>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+            gap: 10,
+          }}>
+            {pinnedPrinters.map((printer) => (
+              <PrinterCard
+                key={printer.id}
+                printer={printer}
+                selected={selectedForReady.has(printer.id)}
+                onToggleSelect={toggleSelect}
+                onSetReady={setReady}
+                onBadPrint={badPrint}
+                onUploadFailed={uploadFailed}
+                onDecommission={decommission}
+                onLinkJob={openLinkJobModal}
+                onOpenDetail={(id) => navigate(`/printers/${id}`)}
+                colorHexMap={colorHexMap}
+                pinned={true}
+                onTogglePin={togglePin}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {Object.entries(grouped).map(([model, group]) => (
         <div key={model} style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
@@ -902,6 +957,9 @@ export default function Fleet() {
                 onDecommission={decommission}
                 onLinkJob={openLinkJobModal}
                 onOpenDetail={(id) => navigate(`/printers/${id}`)}
+                colorHexMap={colorHexMap}
+                pinned={pinnedIds.has(printer.id)}
+                onTogglePin={togglePin}
               />
             ))}
           </div>
