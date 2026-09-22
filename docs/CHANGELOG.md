@@ -13,6 +13,9 @@ The tradeoff, and the reason this is not the default recommendation for every in
 ### Changes
 - `docker-compose.yml`: `print-farm-manager` service now uses `network_mode: host` instead of `ports: ["3000:3000"]`, with the reasoning and the reverse-proxy implication documented inline.
 - `docs/installation.md`: extended the `.local` (mDNS) caveat with the two remedies (host networking, or a plain IP address) now that the reliability problem itself is understood, rather than only documenting the workaround.
+
+---
+
 ## 2026-09-21: Test Connection button; Webcams page redesigned as a snapshot gallery
 
 Requested while troubleshooting printers that connect inconsistently by hostname: a way to check reachability against exactly what is typed into the form right now, without saving first and without digging through server logs.
