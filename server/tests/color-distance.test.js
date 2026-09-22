@@ -1,4 +1,4 @@
-const { hexDistance, colorsClose } = require('../color-distance');
+const { hexDistance, colorsClose, normalizeHex } = require('../color-distance');
 
 describe('hexDistance', () => {
   test('identical colors are 0 apart', () => {
@@ -26,7 +26,35 @@ describe('hexDistance', () => {
     expect(hexDistance(null, '#000000')).toBeNull();
     expect(hexDistance('#000000', undefined)).toBeNull();
     expect(hexDistance('not-a-color', '#000000')).toBeNull();
-    expect(hexDistance('#fff', '#000000')).toBeNull(); // 3-digit shorthand not supported
+  });
+
+  test('supports 3-digit shorthand', () => {
+    expect(hexDistance('#fff', '#ffffff')).toBe(0);
+    expect(hexDistance('#000', '#fff')).toBeCloseTo(Math.sqrt(3 * 255 ** 2), 5);
+  });
+});
+
+describe('normalizeHex', () => {
+  test('adds a missing leading #', () => {
+    expect(normalizeHex('ff0000')).toBe('#ff0000');
+    expect(normalizeHex('f00')).toBe('#f00');
+  });
+
+  test('lowercases and trims', () => {
+    expect(normalizeHex('  #FF0000  ')).toBe('#ff0000');
+  });
+
+  test('leaves 3-digit shorthand at 3 digits (both are valid CSS)', () => {
+    expect(normalizeHex('#ABC')).toBe('#abc');
+  });
+
+  test('returns null for anything that is not a hex color', () => {
+    expect(normalizeHex('red')).toBeNull();
+    expect(normalizeHex('')).toBeNull();
+    expect(normalizeHex('   ')).toBeNull();
+    expect(normalizeHex('#12345')).toBeNull();
+    expect(normalizeHex(null)).toBeNull();
+    expect(normalizeHex(undefined)).toBeNull();
   });
 });
 

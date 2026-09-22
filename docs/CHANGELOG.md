@@ -17,6 +17,19 @@ Two of a batch of requested quality-of-life items.
 - `client/src/pages/Fleet.jsx`: swatch on the loaded-material badge; pin toggle button and the Pinned section.
 - `client/src/pages/PrinterDetail.jsx`: swatch on the header's Loaded line.
 - `docs/web-app.md`: documented both features and the three new files.
+## 2026-09-22: fix filament color swatches not rendering for a hex value missing its `#`
+
+Reported: "swatches seem to not work" after the color-swatch and color-tolerance work shipped earlier today. `routes/filaments.js` never validated `hex_color` on save, only trimmed it: a value typed into the free-text hex field (next to the `<input type="color">` picker, which always emits a normalized value on its own) without a leading `#`, like `ff0000`, saved without error. A bare hex string with no `#` is not valid CSS for a `background` value, so the browser silently ignores it: no error anywhere, the swatch just never shows a color. The scheduler's color-tolerance fallback (shipped alongside the swatch work) would have had the same problem reading that value back out, just less visibly.
+
+`server/color-distance.js` gains `normalizeHex`: adds a missing `#`, lowercases, accepts 3- or 6-digit hex, and returns `null` for anything else. `routes/filaments.js` now runs every `hex_color` through it on create and update, rejecting a genuinely invalid value with `400` instead of saving it. A one-time startup backfill in `db.js` normalizes (or, if truly unparseable, clears) any `hex_color` already saved before this validation existed, so a farm that already has bad values fixes itself on next restart rather than needing a manual re-save of every affected color.
+
+### Changes
+- `server/color-distance.js`: new `normalizeHex`; `parseHex` (used by the RGB-distance math) now also accepts 3-digit shorthand, matching what `normalizeHex` allows through.
+- `server/routes/filaments.js`: `POST`/`PUT /api/filaments/colors` validate and normalize `hex_color`, `400` on anything that isn't a hex color.
+- `server/db.js`: one-time startup backfill normalizing existing `filament_colors.hex_color` rows.
+- `server/tests/filaments.test.js`: coverage for the missing-`#` fix, rejection of a non-hex value, and that a rejected update leaves the existing value untouched.
+- `server/tests/color-distance.test.js`: `normalizeHex` coverage; updated the `hexDistance` test that previously asserted 3-digit shorthand was unsupported, since it now is.
+- `docs/filaments.md`: documented the validation and the "present in body wins" clearing rule for `hex_color`.
 
 ---
 
