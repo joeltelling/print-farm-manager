@@ -12,6 +12,7 @@ import Decommissioned from './pages/Decommissioned';
 import Login from './pages/Login';
 import Users from './pages/Users';
 import Account from './pages/Account';
+import CommandPalette from './components/CommandPalette';
 import { useAuth } from './AuthContext';
 
 function navItems(role) {
@@ -93,6 +94,7 @@ export default function App() {
         }
       `}</style>
 
+      <CommandPalette />
       <div id="layout">
         {/* Sidebar (desktop) */}
         <nav id="sidebar">
@@ -100,6 +102,21 @@ export default function App() {
             <div style={{ fontWeight: 800, fontSize: 15, color: '#e2e8f0', lineHeight: 1.3 }}>{farmName}</div>
             <div style={{ fontWeight: 400, fontSize: 11, color: '#475569' }}>Print Farm Manager</div>
           </div>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('openCommandPalette'))}
+            title="Jump to a printer, project, or part"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              background: '#1e2433', border: '1px solid #2d3748', borderRadius: 6,
+              color: '#64748b', padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+              marginBottom: 8,
+            }}
+          >
+            Search
+            <span style={{ fontSize: 10, color: '#475569', border: '1px solid #334155', borderRadius: 4, padding: '1px 5px' }}>
+              ⌘K
+            </span>
+          </button>
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.to === '/' || !!item.end} style={navLinkStyle}>
               {item.label}

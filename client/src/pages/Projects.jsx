@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../useToast';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
@@ -912,6 +913,19 @@ export default function Projects() {
 
   // Details panels (set of open part IDs)
   const [openPanels, setOpenPanels]       = useState(new Set());
+
+  // Deep link from CommandPalette.jsx (/projects?open=<projectId>&part=<partId>):
+  // this page has never had its own :id route, selectedId is plain component
+  // state, so a project/part search result gets here to open instead of a
+  // dedicated route. Runs once on mount only: this is a one-time "arrive
+  // here already open" jump, not two-way synced URL state.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    const partId = searchParams.get('part');
+    if (openId) setSelectedId(Number(openId));
+    if (partId) setOpenPanels(prev => new Set(prev).add(Number(partId)));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inline rename
   const [editingProjectName, setEditingProjectName] = useState(false);

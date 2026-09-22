@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-09-22: command palette (Cmd/Ctrl+K) to jump to a printer, project, or part
+
+Requested as part of a batch of quality-of-life items: a way to jump straight to a printer, project, or part by name instead of navigating through the Fleet/Printers/Projects pages to find it.
+
+`CommandPalette.jsx` opens on Cmd+K (Mac) / Ctrl+K (elsewhere), or a new "Search ⌘K" button in the sidebar, mounted once in `App.jsx` so it works from any page. Fetches `GET /api/printers`, `/api/projects`, and `/api/parts` once, lazily, the first time it's actually opened. Typing filters all three by a case-insensitive substring match on name; nothing shows until something is typed, since this is a jump-to tool, not a fleet report.
+
+The harder part: Projects.jsx has never had a `:id` route, so a project's detail view is reached by clicking it and holding `selectedId` as plain component state, not a URL. Rather than restructure that, the palette navigates to `/projects?open=<id>` (or `&part=<id>` for a part, which also expands that part's Details panel), and a small `useSearchParams` effect in `Projects.jsx` reads it once on mount. This is a one-time "arrive here already open" jump, not two-way-synced URL state: the page still works exactly as before for someone who didn't arrive via the palette.
+
+### Changes
+- `client/src/components/CommandPalette.jsx`: new.
+- `client/src/App.jsx`: mounts `<CommandPalette />`; sidebar "Search ⌘K" button, dispatching the `openCommandPalette` window event the palette listens for (same pattern already used for `farmNameChanged`).
+- `client/src/pages/Projects.jsx`: reads `?open=`/`&part=` once on mount to preselect a project and expand a part's panel.
+- `docs/web-app.md`: new Command Palette section; noted the deep-link params on the Projects Page section.
+
+---
+
 ## 2026-09-22: loaded-color swatches on Fleet/PrinterDetail, pinned printers
 
 Two of a batch of requested quality-of-life items.
