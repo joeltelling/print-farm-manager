@@ -64,6 +64,12 @@ function makeDb({ printerGroup = null, printerMaterial = null, printerColor = nu
       status TEXT DEFAULT 'IDLE', is_held INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE printer_lanes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_id INTEGER NOT NULL, lane_index INTEGER NOT NULL,
+      material TEXT, color TEXT, updated_at INTEGER NOT NULL,
+      UNIQUE(printer_id, lane_index)
+    );
     CREATE TABLE projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL, status TEXT DEFAULT 'active',
@@ -329,6 +335,69 @@ describe('scheduler: project-level group cascade', () => {
     const db = makeDb({ printerGroup: 'Rack Z', gcodeGroups: null, projectGroups: null });
     const scheduler = new JobScheduler(db, { on: () => {} });
     const jobId = await scheduler._dispatchToPrinter({ ...printer, group_name: 'Rack Z' });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+});
+
+// ── Multi-lane filtering (printer_lanes) ───────────────────────────────────────
+// A printer's loaded_material/loaded_color is a single value, but a multi-toolhead
+// Klipper printer synced from the klipper-filament-sync plugin can have several
+// lanes, each with its own material/color (server/poller.js populates printer_lanes;
+// see server/scheduler.js's candidate query for the matching rule this mirrors).
+
+describe('scheduler: lane filtering (printer_lanes)', () => {
+  test('dispatches when no single loaded_material/loaded_color matches, but one lane does', async () => {
+    const db = makeDb({ printerMaterial: null, printerColor: null, gcodeMaterial: 'PLA', gcodeColor: 'Black' });
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, ?, ?, ?)')
+      .run('PETG', 'Red', Date.now());
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 1, ?, ?, ?)')
+      .run('PLA', 'Black', Date.now());
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: null, loaded_color: null });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('does not dispatch when the material exists in one lane and the color in a different lane', async () => {
+    // Lane 0 has PLA (wrong color), lane 1 has Black (wrong material): neither lane
+    // alone satisfies "PLA and Black", so this must not match even though both
+    // values exist somewhere across the printer's lanes.
+    const db = makeDb({ printerMaterial: null, printerColor: null, gcodeMaterial: 'PLA', gcodeColor: 'Black' });
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, ?, ?, ?)')
+      .run('PLA', 'Red', Date.now());
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 1, ?, ?, ?)')
+      .run('PETG', 'Black', Date.now());
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: null, loaded_color: null });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('a printer with no lanes and no loaded_material/loaded_color still fails a targeted gcode', async () => {
+    const db = makeDb({ printerMaterial: null, printerColor: null, gcodeMaterial: 'PLA', gcodeColor: 'Black' });
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: null, loaded_color: null });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('the legacy loaded_material/loaded_color match still works when lanes also exist but do not match', async () => {
+    const db = makeDb({ printerMaterial: 'PLA', printerColor: 'Black', gcodeMaterial: 'PLA', gcodeColor: 'Black' });
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, ?, ?, ?)')
+      .run('PETG', 'Red', Date.now());
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: 'PLA', loaded_color: 'Black' });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('a lane matches material with no color requirement', async () => {
+    const db = makeDb({ printerMaterial: null, printerColor: null, gcodeMaterial: 'PETG', gcodeColor: null });
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, ?, ?, ?)')
+      .run('PETG', 'Any Color', Date.now());
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: null, loaded_color: null });
     expect(jobId).not.toBeNull();
     expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
   });

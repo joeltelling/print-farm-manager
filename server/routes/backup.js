@@ -64,6 +64,7 @@ module.exports = (db) => {
   // GET /api/backup — export full farm as a downloadable JSON bundle
   router.get('/', (req, res) => {
     const printers        = db.prepare('SELECT * FROM printers').all();
+    const printer_lanes   = db.prepare('SELECT * FROM printer_lanes').all();
     const projects        = db.prepare('SELECT * FROM projects').all();
     const parts           = db.prepare('SELECT * FROM parts').all();
     const gcodes          = db.prepare('SELECT * FROM gcodes').all();
@@ -89,6 +90,7 @@ module.exports = (db) => {
       version: 1,
       exported_at: Date.now(),
       printers,
+      printer_lanes,
       projects,
       parts,
       gcodes,
@@ -176,6 +178,7 @@ module.exports = (db) => {
         // table — see makeInserter() above.
         const stmts = {
           printer:        makeInserter(db, 'printers', backup.printers || []),
+          printer_lane:   makeInserter(db, 'printer_lanes', backup.printer_lanes || []),
           project:        makeInserter(db, 'projects', backup.projects || []),
           part:           makeInserter(db, 'parts', backup.parts || []),
           gcode:          makeInserter(db, 'gcodes', backup.gcodes || []),
@@ -193,6 +196,9 @@ module.exports = (db) => {
         for (const m of (backup.printer_models || [])) stmts.printer_model.run(m);
         for (const g of (backup.printer_groups || [])) stmts.printer_group.run(g);
         for (const p of (backup.printers || [])) stmts.printer.run(p);
+        // printer_lanes after printers: FK on printer_id (ON DELETE CASCADE already
+        // cleared any old rows when printers was deleted above, no separate DELETE needed)
+        for (const l of (backup.printer_lanes || [])) stmts.printer_lane.run(l);
         for (const p of (backup.projects || [])) stmts.project.run(p);
         for (const p of (backup.parts    || [])) stmts.part.run(p);
         for (const g of (backup.gcodes   || [])) {
@@ -209,7 +215,7 @@ module.exports = (db) => {
 
         // Sync auto-increment counters so new inserts don't collide
         for (const [table, col] of [
-          ['printers', 'printers'], ['projects', 'projects'],
+          ['printers', 'printers'], ['printer_lanes', 'printer_lanes'], ['projects', 'projects'],
           ['parts', 'parts'], ['gcodes', 'gcodes'], ['jobs', 'jobs'],
           ['printer_events', 'printer_events'],
           ['filament_types', 'filament_types'], ['filament_colors', 'filament_colors'],
@@ -223,11 +229,12 @@ module.exports = (db) => {
 
       restore();
 
-      console.log(`[backup] Farm restored: ${backup.printers.length} printers, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.printer_groups || []).length} groups, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors, ${(backup.filament_color_types || []).length} filament color/type links`);
+      console.log(`[backup] Farm restored: ${backup.printers.length} printers, ${(backup.printer_lanes || []).length} printer lanes, ${backup.projects.length} projects, ${backup.gcodes.length} gcodes, ${backup.jobs.length} jobs, ${(backup.printer_events || []).length} events, ${(backup.printer_models || []).length} printer models, ${(backup.printer_groups || []).length} groups, ${(backup.filament_types || []).length} filament types, ${(backup.filament_colors || []).length} filament colors, ${(backup.filament_color_types || []).length} filament color/type links`);
 
       res.json({
         ok: true,
         printers:        (backup.printers        || []).length,
+        printer_lanes:   (backup.printer_lanes    || []).length,
         projects:        (backup.projects        || []).length,
         parts:           (backup.parts           || []).length,
         gcodes:          (backup.gcodes          || []).length,

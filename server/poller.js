@@ -123,6 +123,39 @@ class PrinterPoller extends EventEmitter {
         .prepare('UPDATE printers SET job_name = ?, job_progress = ?, job_time_remaining = ? WHERE id = ?')
         .run(jobName, jobProgress, jobTimeRemaining, printer.id);
     }
+
+    // Per-lane filament state (klipper-filament-sync plugin), for connectors that
+    // support it. Optional export: most drivers don't have one, and getDriver()
+    // above already resolved a valid driver for this printer.type.
+    if (typeof driver.getLaneData === 'function') {
+      const lanes = await driver.getLaneData(printer);
+      if (lanes) this._syncLanes(printer.id, lanes);
+    }
+  }
+
+  // Upserts the reported lanes and removes any lane row no longer present in this
+  // poll's data (e.g. the printer's toolhead count changed), so printer_lanes always
+  // reflects exactly what the plugin last reported, not a superset that accumulates
+  // stale rows over time.
+  _syncLanes(printerId, lanes) {
+    const now = Date.now();
+    const upsert = this.db.prepare(`
+      INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(printer_id, lane_index) DO UPDATE SET
+        material = excluded.material, color = excluded.color, updated_at = excluded.updated_at
+    `);
+    const sync = this.db.transaction(() => {
+      for (const lane of lanes) {
+        upsert.run(printerId, lane.index, lane.material, lane.color, now);
+      }
+      const indexes = lanes.map(l => l.index);
+      const placeholders = indexes.map(() => '?').join(',');
+      this.db
+        .prepare(`DELETE FROM printer_lanes WHERE printer_id = ? AND lane_index NOT IN (${placeholders})`)
+        .run(printerId, ...indexes);
+    });
+    sync();
   }
 }
 

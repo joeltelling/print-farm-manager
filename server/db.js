@@ -401,4 +401,26 @@ try { db.exec('ALTER TABLE printers ADD COLUMN camera_rotation INTEGER DEFAULT 0
 try { db.exec('ALTER TABLE printers ADD COLUMN camera_flip_h INTEGER DEFAULT 0'); } catch (_) {}
 try { db.exec('ALTER TABLE printers ADD COLUMN camera_flip_v INTEGER DEFAULT 0'); } catch (_) {}
 
+// Per-lane filament state for a multi-toolhead Klipper printer, synced automatically
+// from the klipper-filament-sync plugin's Moonraker database entries (namespace
+// "lane_data") on every poll: see server/drivers/klipper.js's getLaneData and
+// poller.js. lane_index is 0-based, matching the plugin's tool0/tool1/... keys.
+// Live state, not history: a printer with one lane looks the same to the scheduler
+// as a printer with none, via loaded_material/loaded_color; lanes only add
+// eligibility, matched in server/scheduler.js and mirrored in
+// GET /api/parts/:id/dispatch-status, they never take it away. ON DELETE CASCADE
+// because this is current state tied to the printer, not an audit trail (contrast
+// printer_events, which deliberately has no FK so history survives printer deletion).
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS printer_lanes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    printer_id  INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+    lane_index  INTEGER NOT NULL,
+    material    TEXT,
+    color       TEXT,
+    updated_at  INTEGER NOT NULL,
+    UNIQUE(printer_id, lane_index)
+  )`);
+} catch (_) {}
+
 module.exports = db;

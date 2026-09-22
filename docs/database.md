@@ -61,6 +61,24 @@ If a `model` column is present, name inference is skipped entirely — any print
 
 **`camera_rotation`**, **`camera_flip_h`**, **`camera_flip_v`** (`INTEGER DEFAULT 0`, migration): display-only preferences applied as a client-side CSS transform wherever a camera image renders (the printer detail camera card, the Dashboard fleet grid's hover preview, the Webcams page). Not read from or written to the printer's own connector: this is purely how the farm app displays a feed it already has, independent of whatever a printer's own webcam server thinks its orientation is. `camera_rotation` is degrees (`0`/`90`/`180`/`270`); the flip flags are booleans.
 
+### printer_lanes
+
+Per-toolhead filament state for a multi-lane Klipper printer, synced automatically from the [klipper-filament-sync](https://github.com/maevebaksa/klipper-filament-sync) plugin's Moonraker database entries (namespace `lane_data`, keyed `tool0`/`tool1`/...) on every poll cycle. `server/drivers/klipper.js`'s `getLaneData` reads the plugin's data; `server/poller.js`'s `_syncLanes` upserts it here and deletes any lane no longer reported, so this table always mirrors exactly what the plugin last said, never a superset that accumulates stale rows.
+
+```sql
+CREATE TABLE IF NOT EXISTS printer_lanes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  printer_id  INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+  lane_index  INTEGER NOT NULL,
+  material    TEXT,
+  color       TEXT,
+  updated_at  INTEGER NOT NULL,
+  UNIQUE(printer_id, lane_index)
+);
+```
+
+Live state, not history, unlike `printer_events`: `ON DELETE CASCADE` because a deleted printer's lanes have no meaning to keep around. A printer with lanes is eligible for a G-code if *any single lane* satisfies its `required_material`/`required_color` together, in addition to (not instead of) the existing `loaded_material`/`loaded_color` check: see `server/scheduler.js`'s candidate query and its mirror at `GET /api/parts/:id/dispatch-status` (`server/routes/parts.js`). Checked per-lane deliberately: a printer with PLA in one lane and Black in a different lane must not match a request for "PLA and Black" just because both values exist somewhere on it. A printer without the plugin, or without lanes for any other reason, keeps working exactly as before: this table only ever adds eligibility, never removes any.
+
 ### printer_groups
 
 A persisted registry of group names, independent of which printers currently carry a given `group_name`. `printers.group_name` stays plain free text (matched by string equality, not a foreign key), so nothing else in the schema changes: this table exists purely so a group used to restrict dispatch (see `gcodes.allowed_groups` / `projects.allowed_groups` below) can never silently disappear from every picker just because every printer that carried it was reassigned elsewhere.

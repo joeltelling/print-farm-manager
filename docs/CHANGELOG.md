@@ -2,6 +2,34 @@
 
 ---
 
+## 2026-09-21: per-lane filament sync from klipper-filament-sync, multi-lane dispatch matching
+
+Requested: pull filament state from the klipper-filament-sync plugin (github.com/maevebaksa/klipper-filament-sync) instead of setting `loaded_material`/`loaded_color` by hand on a multi-toolhead Klipper printer, with as many lanes as the printer actually has, synced automatically on every poll.
+
+The plugin has no HTTP API of its own (confirmed by reading `filament_sync_bridge.py` directly; its README names the storage location but not the schema): it writes into Moonraker's built-in database under namespace `lane_data`, keyed `tool0`/`tool1`/..., each value `{ lane, material, color, nozzle_temp?, bed_temp? }`. Cross-checked the request/response envelope against Moonraker's own database API docs before writing `getLaneData`. A new `printer_lanes` table holds whatever the plugin currently reports, upserted and pruned to match exactly on every poll (`server/poller.js`'s `_syncLanes`) so it never accumulates a lane the printer no longer has.
+
+The part that needed real care: the scheduler dispatches a job to a printer based on a *single* `loaded_material`/`loaded_color`, but a multi-lane printer can have different filament in different lanes. Eligibility now also passes if any *one* lane satisfies the G-code's required material and color *together* (`server/scheduler.js`'s candidate query, mirrored in `GET /api/parts/:id/dispatch-status`). Deliberately not "material X exists in some lane and color Y exists in some other lane": a printer with PLA/Black in lane 0 and PETG/Red in lane 1 must not match a request for PLA/Red just because each half exists somewhere on it, which would send the wrong filament combination to a real print. This is additive only: a printer with no lanes (no plugin, or any other Klipper/OctoPrint/Prusa/Bambu/Elegoo printer) keeps exactly its previous eligibility.
+
+Every existing test file that seeds its own `printers` schema and exercises the scheduler's real candidate query, or the dispatch-status route's real material/color check, needed a `printer_lanes` table added (`scheduler-file.test.js`, `scheduler-targeting.test.js`, `scheduler-sweep.test.js`, `dispatch-status.test.js`) or it would 500/throw on the new `EXISTS` clause, the same class of gap that caused the `auto_advance` CI incident earlier this session; checked every `new JobScheduler`/`routes/parts` test file, not just the ones already known to touch this path.
+
+Not hardware-validated: `getLaneData`'s parsing was written from the plugin's actual source and Moonraker's official database API docs, but no physical Klipper printer running this plugin was reachable from this environment to confirm the full sync end to end.
+
+### Changes
+- `server/db.js`: new `printer_lanes` table (`ON DELETE CASCADE` on `printer_id`, `UNIQUE(printer_id, lane_index)`).
+- `server/drivers/klipper.js`: new `getLaneData`, reading Moonraker's `lane_data` database namespace.
+- `server/poller.js`: `_pollPrinter` calls `getLaneData` (when the driver exports it) alongside `getStatus`; new `_syncLanes` upserts and prunes `printer_lanes` to match.
+- `server/scheduler.js`: candidate query's material/color check now also passes via any single matching `printer_lanes` row, not just `loaded_material`/`loaded_color`.
+- `server/routes/parts.js`: `GET /:id/dispatch-status` mirrors the same lane-matching rule.
+- `server/routes/backup.js`: `printer_lanes` added to export, restore, and the auto-increment resync list.
+- `server/tests/poller-lanes.test.js`: new, covers `_syncLanes` (upsert, prune, leave untouched on a failed plugin read, no-op for a driver without `getLaneData`).
+- `server/tests/klipper-driver.test.js`: `getLaneData` coverage.
+- `server/tests/scheduler-targeting.test.js`, `dispatch-status.test.js`: lane-matching coverage, including the "material in one lane, color in another" negative case.
+- `server/tests/scheduler-file.test.js`, `scheduler-sweep.test.js`: added the `printer_lanes` table their own schemas were missing, needed once the real candidate query started referencing it.
+- `server/tests/backup-restore.test.js`: `printer_lanes` round-trip (export and restore, the latter proving the reinsert step runs, not just that cascade-delete left rows untouched).
+- `docs/database.md`, `docs/api.md`, `docs/driver-authoring.md`: documented the new table, the dispatch-status/backup shape changes, and the `getLaneData` driver export.
+
+---
+
 ## 2026-09-21: camera rotation/flip and crowsnest camera selection; single-instance live view; Mainsail link
 
 Requested together: a way to select which camera a crowsnest (Klipper) printer with more than one configured should use, display-side rotation and flip for a camera mounted at an angle, a live view on the Webcams page (limited to one at a time, to protect the bandwidth work from two entries ago), and a quick way to reach a Klipper printer's own Mainsail UI from Fleet or the Dashboard.

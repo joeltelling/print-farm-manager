@@ -56,6 +56,15 @@ beforeEach(() => {
       camera_flip_h       INTEGER DEFAULT 0,
       camera_flip_v       INTEGER DEFAULT 0
     );
+    CREATE TABLE printer_lanes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_id  INTEGER NOT NULL REFERENCES printers(id) ON DELETE CASCADE,
+      lane_index  INTEGER NOT NULL,
+      material    TEXT,
+      color       TEXT,
+      updated_at  INTEGER NOT NULL,
+      UNIQUE(printer_id, lane_index)
+    );
     CREATE TABLE projects (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
       name              TEXT NOT NULL,
@@ -153,6 +162,9 @@ beforeEach(() => {
        'cam-uid-1', 180, 1, 0)
   `).run(now);
 
+  db.prepare(`INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, 'PLA', 'Black', ?)`).run(now);
+  db.prepare(`INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 1, 'PETG', 'Red', ?)`).run(now);
+
   db.prepare(`
     INSERT INTO projects (name, description, status, priority, created_at, updated_at, required_material, required_color, allowed_groups)
     VALUES ('Targeted Project', 'test', 'active', 0, ?, ?, 'PETG', 'Red', '["Bambu Farm"]')
@@ -217,6 +229,10 @@ describe('Backup export/restore — column round-trip regression', () => {
       camera_rotation: 180,
       camera_flip_h: 1,
     });
+    expect(res.body.printer_lanes).toEqual([
+      expect.objectContaining({ printer_id: 1, lane_index: 0, material: 'PLA', color: 'Black' }),
+      expect.objectContaining({ printer_id: 1, lane_index: 1, material: 'PETG', color: 'Red' }),
+    ]);
     expect(res.body.projects[0]).toMatchObject({
       required_material: 'PETG',
       required_color: 'Red',
@@ -263,6 +279,14 @@ describe('Backup export/restore — column round-trip regression', () => {
       expect(printer.camera_uid).toBe('cam-uid-1');
       expect(printer.camera_rotation).toBe(180);
       expect(printer.camera_flip_h).toBe(1);
+
+      // printer_lanes cascade-deletes when printers is deleted mid-restore (ON DELETE
+      // CASCADE), so this specifically proves the reinsert-from-backup step runs, not
+      // that the rows just survived untouched.
+      const lanes = db.prepare('SELECT * FROM printer_lanes WHERE printer_id = 1 ORDER BY lane_index').all();
+      expect(lanes).toHaveLength(2);
+      expect(lanes[0]).toMatchObject({ lane_index: 0, material: 'PLA', color: 'Black' });
+      expect(lanes[1]).toMatchObject({ lane_index: 1, material: 'PETG', color: 'Red' });
 
       const project = db.prepare('SELECT * FROM projects WHERE id = 1').get();
       expect(project.required_material).toBe('PETG');
