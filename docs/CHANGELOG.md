@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-22: drag-and-drop G-code upload wizard
+
+Requested: an alternative UI flow for getting a G-code file into the farm, since the existing path requires already having an open Project and Part with its Details panel expanded. Explicitly a second front door onto the existing upload, not a replacement for it.
+
+`GcodeUploadWizard.jsx` is a 3-step modal (destination, then G-code details, then review and upload) that also creates the Project and/or Part along the way if they don't exist yet, instead of requiring them to already exist. It's triggered by dropping a file anywhere on the Projects list view, or the new "+ Upload G-code" header button, both landing on the same wizard. The destination step defaults to "existing" project/part with a picker, or "new" with inline name/quantity fields; the details step mirrors the existing per-part panel's fields (parts per plate, model, AMS slot, targeting) and pre-fills from `POST /api/gcodes/parse-filename` the same way. The final upload step calls the exact same `POST /api/gcodes/upload` (XHR, for progress) the existing panel already uses, so this doesn't introduce a second upload code path server-side, only a second way to reach it client-side.
+
+The drop handler distinguishes an OS file drag (`dataTransfer.types` includes `Files`) from the page's own existing internal project/part row-reorder drag, which uses the same native HTML5 drag events but isn't a file drop, so dragging a row to reorder it no longer risks tripping the new drop zone.
+
+Scoped to the Projects list view only: dropping a file while a project's detail view is open doesn't currently open the wizard there (the existing per-part panel, or the header button, still work from that view).
+
+Not fully browser-tested: this dev machine's broken `better-sqlite3` binding (see the last few entries) means the backend can't run locally, so the full flow (creating a project/part and uploading through it end to end) could not be exercised in a real browser from this environment. Verified by `npm run build` and a careful manual read-through of the component, including catching and fixing one real bug pre-merge (switching to "new project" didn't also reset the part picker to "new", which would have shown an empty, unusable "existing part" dropdown for a project that cannot have any parts yet).
+
+### Changes
+- `client/src/components/GcodeUploadWizard.jsx`: new.
+- `client/src/pages/Projects.jsx`: page-level drag-and-drop listeners and a drop-target overlay, "+ Upload G-code" header button, wizard state and the `onUploaded` refresh callback.
+- `docs/web-app.md`: documented the wizard and its Key Files entry.
+
+---
+
 ## 2026-09-22: scheduler color tolerance fallback
 
 Requested: let the scheduler dispatch to a printer whose loaded color is close but not an exact match, instead of leaving a job queued whenever nothing has the precise color, with an admin-adjustable tolerance and an exact match always preferred when one is available.

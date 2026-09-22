@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useToast } from '../useToast';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
+import GcodeUploadWizard from '../components/GcodeUploadWizard';
 
 // ── Estimate helpers ──────────────────────────────────────────────────────────
 
@@ -923,6 +924,51 @@ export default function Projects() {
   const [dupName,       setDupName]       = useState('');
   const [duplicating,   setDuplicating]   = useState(false);
 
+  // G-code upload wizard, an alternative to the per-part GcodeUploadPanel below:
+  // drop a file anywhere on this page, or click "+ Upload G-code", and it walks
+  // through picking (or creating) the Project and Part before uploading, instead
+  // of requiring the operator to already be inside an expanded part's panel.
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardFile, setWizardFile] = useState(null); // pre-attached when opened by dropping a file; picked inside the wizard otherwise
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0); // dragenter/dragleave fire on every child too; only the count hitting 0 means "left the page"
+
+  function handleDragEnter(e) {
+    if (!e.dataTransfer.types.includes('Files')) return; // don't react to the internal row-reorder drag
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }
+  function handleDragOver(e) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+  }
+  function handleDragLeave(e) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }
+  function handleDrop(e) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) { setWizardFile(file); setWizardOpen(true); }
+  }
+
+  function closeWizard() {
+    setWizardOpen(false);
+    setWizardFile(null);
+  }
+
+  async function handleWizardUploaded() {
+    closeWizard();
+    showToast('G-code uploaded');
+    await fetchProjects();
+    if (selectedId != null) await fetchDetail(selectedId);
+  }
+
   // Filament library and group registry: fetched once here, passed down to
   // avoid per-gcode-row fetches. The group registry is model-independent (a
   // group is a persisted entity, not derived from which printers currently
@@ -1254,9 +1300,37 @@ export default function Projects() {
     );
 
     return (
-      <div>
+      <div onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
         {toastEl}
         {confirmModal}
+
+        {/* Full-page hint while a file is dragged over the page (not the internal
+            project/part row-reorder drag, which handleDragEnter ignores). Dropping
+            anywhere opens the upload wizard with that file already attached. */}
+        {dragActive && createPortal(
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 999, pointerEvents: 'none',
+            background: 'rgba(29, 78, 216, 0.15)', border: '3px dashed #3b82f6',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <div style={{ background: '#1e2433', border: '1px solid #3b82f6', borderRadius: 10, padding: '16px 28px', fontSize: 15, fontWeight: 600, color: '#93c5fd' }}>
+              Drop G-code to start a new job
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {wizardOpen && (
+          <GcodeUploadWizard
+            initialFile={wizardFile}
+            projects={projects}
+            filamentTypes={filamentTypes}
+            filamentColors={filamentColors}
+            groups={allGroups}
+            onClose={closeWizard}
+            onUploaded={handleWizardUploaded}
+          />
+        )}
 
         {/* ── Duplicate project modal ── */}
         {dupModal && createPortal(
@@ -1328,12 +1402,21 @@ export default function Projects() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700 }}>Projects</h1>
-          <button
-            onClick={() => setShowNewForm(v => !v)}
-            style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-          >
-            + New Project
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => setWizardOpen(true)}
+              title="Or just drag a G-code file anywhere on this page"
+              style={{ background: '#1f2937', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              + Upload G-code
+            </button>
+            <button
+              onClick={() => setShowNewForm(v => !v)}
+              style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              + New Project
+            </button>
+          </div>
         </div>
 
         {(draftCount > 0 || pausedCount > 0 || completedCount > 0) && (
