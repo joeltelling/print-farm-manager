@@ -15,6 +15,9 @@ The harder part: Projects.jsx has never had a `:id` route, so a project's detail
 - `client/src/App.jsx`: mounts `<CommandPalette />`; sidebar "Search ⌘K" button, dispatching the `openCommandPalette` window event the palette listens for (same pattern already used for `farmNameChanged`).
 - `client/src/pages/Projects.jsx`: reads `?open=`/`&part=` once on mount to preselect a project and expand a part's panel.
 - `docs/web-app.md`: new Command Palette section; noted the deep-link params on the Projects Page section.
+
+---
+
 ## 2026-09-22: attribute operator actions in printer_events to the signed-in user
 
 Requested: the event timeline says what happened (decommissioned, confirmed, a note) but not who did it, now that the farm has multiple named accounts (admin/operator) instead of one shared login.
