@@ -7,7 +7,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Login page**: email/password sign-in, a "Sign in with SSO" button when OIDC is configured, and a one-time "create the admin account" form on a fresh install
 - **Dashboard**: TV-optimized command center: fleet utilization, stat cards, printer grid (hover a printer for a camera preview), active project progress, and a needs-attention panel
 - **Fleet page**: live grid of all active printers with status, filterable and searchable
-- **Webcams page**: the same grouped printer grid as the Dashboard, showing every printer (not just camera-capable ones), for a dedicated hover-to-preview camera view
+- **Webcams page**: a plain snapshot gallery, one still image per printer refreshed every 30 seconds, deliberately without the fleet status grid's color-coded highlighting
 - **Printers page**: searchable directory of all printers (active and decommissioned); click any row to open the detail view
 - **Printer detail view**: per-machine event timeline, inline note form, printer header, a camera card (OctoPrint/Klipper) that opens on a snapshot and streams live only once "Watch Live" is clicked, and a popup for cataloging any print sent straight to the printer outside the farm
 - **Settings page** — CSV import UI for the printer registry, with flagged-row resolution
@@ -27,7 +27,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Account.jsx` | Self-service API key management |
 | `client/src/pages/Users.jsx` | Admin-only account management |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
-| `client/src/pages/Webcams.jsx` | All-printers grid dedicated to the hover camera preview |
+| `client/src/pages/Webcams.jsx` | Plain snapshot gallery, one still image per printer, no status highlighting |
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
 | `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline, note form, camera card, catalog-print popup |
 | `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
@@ -35,7 +35,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Dashboard.jsx` | TV command center dashboard |
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
-| `client/src/components/FleetStatusGrid.jsx` | Grouped-by-model printer grid, shared by Dashboard and Webcams |
+| `client/src/components/FleetStatusGrid.jsx` | Grouped-by-model printer grid used by the Dashboard's fleet grid |
 | `client/src/useCameraHover.jsx` | Hover-to-preview camera hook used by `FleetStatusGrid`: lazy-fetches `GET /api/printers/:id/camera` on first hover, shows a snapshot only (never the live stream) |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
@@ -120,7 +120,7 @@ The bottom row is a 2-column grid (`2fr 1fr`): Active Projects takes two-thirds,
 
 `client/src/pages/Webcams.jsx`
 
-Renders `FleetStatusGrid` (the same component the Dashboard's fleet grid uses) against every printer from `GET /api/printers`, polled every 15 seconds, rather than only the subset `GET /api/dashboard` returns. Unlike Fleet or Printers, this page exists purely as a hover surface: there is no filtering, search, or per-printer action, just the grid and the same hover-to-preview camera behavior. Hovering a cell fetches `GET /api/printers/:id/camera` once (cached for the rest of the page visit) and shows a snapshot if one is configured; printers whose connector only exposes a live stream show a text hint instead of opening that stream, since opening a continuous MJPEG connection on every hover would be a standing bandwidth cost with no user intent behind it. Watching a live feed remains an explicit action on the printer's own detail page.
+A plain snapshot gallery, deliberately not the fleet status grid: no color-coded status highlighting, no per-printer action, just a still image per printer. Printer list comes from `GET /api/printers`, polled every 15 seconds. Each printer's camera info (does it have one, and its snapshot URL) is looked up once per page visit via `GET /api/printers/:id/camera`, since the URL itself is stable and only the image behind it changes; a card with no snapshot configured (or no camera at all) shows a placeholder instead. Every 30 seconds, each configured `<img>` gets a fresh cache-busting query param, triggering a new single-shot request, never the continuous MJPEG stream: same bandwidth discipline as the hover preview on the Dashboard's fleet grid (`useCameraHover.jsx`), for the same reason. Watching a live feed remains an explicit action on the printer's own detail page.
 
 ---
 
@@ -207,7 +207,7 @@ Per-machine history and annotation screen. Reached by clicking a printer card in
 
 **Rename:** a **Rename** button next to the printer name swaps the header into an inline edit form. Save sends `PUT /api/printers/:id` with the new `name`; the server's UNIQUE-name 409 is surfaced inline. Escape or the Cancel button closes the form without saving.
 
-**Edit Details form:** includes a Group field with a `<datalist>` autocomplete sourced from `GET /api/groups`, same free-text-plus-suggestions behavior as the Printers page bulk-edit and the Settings Add Printer form.
+**Edit Details form:** includes a Group field with a `<datalist>` autocomplete sourced from `GET /api/groups`, same free-text-plus-suggestions behavior as the Printers page bulk-edit and the Settings Add Printer form. A **Test Connection** button under the IP/hostname field posts whatever is currently typed there (plus API key and serial number) to `POST /api/printers/test-connection` and shows the result (`Connected`, or the specific failure reason) inline, without saving anything first.
 
 **Add note form:** freeform textarea → `POST /api/printers/:id/events`. Submitted note appears immediately at the top of the timeline.
 
@@ -257,7 +257,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 **Groups section:** lists every registered group (`GET /api/groups`) with a Delete button per row and a name-only add form (`POST /api/groups`). Modeled on the Printer Models section, minus the type/color hierarchy Filament Library has. Deleting a group is blocked with an inline error naming the printer/G-code/project count still referencing it (`DELETE /api/groups/:name`, `409`). A group doesn't have to be created here first: typing a new name on a printer (Add Printer form, Printers bulk-edit, PrinterDetail, or CSV import) registers it automatically; this section exists for pre-creating a group before any printer uses it, and for cleanup.
 
-**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail.
+**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail. A **Test Connection** button under the IP/hostname field checks reachability against whatever is currently in the form, before the printer is ever saved (same `POST /api/printers/test-connection` the printer-edit form's button uses).
 
 **Farm Name section:** saves the `farm_name` setting (`PUT /api/settings/farm_name`); `App.jsx` fetches it on load and shows it in the sidebar/topbar, falling back to "Print Farm".
 

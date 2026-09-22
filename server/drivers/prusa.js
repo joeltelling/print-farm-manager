@@ -7,6 +7,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const { resolveHost } = require('../mdns-resolve');
+const { describeConnectionError } = require('../connection-test-helpers');
 
 // ─── Status ─────────────────────────────────────────────────────────────────
 
@@ -121,4 +122,21 @@ async function checkIfPrinting(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting };
+// ─── Test connection ─────────────────────────────────────────────────────────
+
+// One-off reachability check for the "Test Connection" button. Does not create or
+// touch any cached connection state (Prusa has none). Never throws.
+async function testConnection(printer) {
+  try {
+    const ip = await resolveHost(printer.ip);
+    await axios.get(`http://${ip}/api/v1/status`, {
+      headers: { 'X-Api-Key': printer.api_key },
+      timeout: 8000,
+    });
+    return { ok: true, message: ip !== printer.ip ? `Connected (resolved to ${ip})` : 'Connected' };
+  } catch (err) {
+    return { ok: false, message: describeConnectionError(err) };
+  }
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, testConnection };

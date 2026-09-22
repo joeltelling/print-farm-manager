@@ -12,6 +12,7 @@ const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 const { resolveHost } = require('../mdns-resolve');
+const { describeConnectionError } = require('../connection-test-helpers');
 
 function headers(printer) {
   return { 'X-Api-Key': printer.api_key };
@@ -163,4 +164,18 @@ async function getCameraUrl(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl };
+// ─── Test connection ─────────────────────────────────────────────────────────
+
+// One-off reachability check for the "Test Connection" button. Does not create or
+// touch any cached connection state (OctoPrint has none). Never throws.
+async function testConnection(printer) {
+  try {
+    const ip = await resolveHost(printer.ip);
+    await axios.get(`http://${ip}/api/printer`, { headers: headers(printer), timeout: 8000 });
+    return { ok: true, message: ip !== printer.ip ? `Connected (resolved to ${ip})` : 'Connected' };
+  } catch (err) {
+    return { ok: false, message: describeConnectionError(err) };
+  }
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl, testConnection };

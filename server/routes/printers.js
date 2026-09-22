@@ -132,6 +132,33 @@ module.exports = (db) => {
     res.json(slots || []);
   });
 
+  // POST /api/printers/test-connection: one-off reachability check against the given
+  // connection settings, without creating, saving, or looking up a printer by id. Used
+  // by the "Test Connection" button on both the Add Printer form (before anything is
+  // saved) and the printer-edit form (whatever is currently in the fields, saved or
+  // not). Never touches a driver's cached persistent connection (Bambu, Centauri, CC2):
+  // each driver's testConnection() opens and tears down its own connection.
+  router.post('/test-connection', async (req, res) => {
+    const { type, ip, api_key, serial_number } = req.body;
+    if (!type) return res.status(400).json({ error: 'type is required' });
+    if (!ip) return res.status(400).json({ error: 'ip is required' });
+
+    const { getDriver } = require('../drivers');
+    let driver;
+    try {
+      driver = getDriver(type);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (typeof driver.testConnection !== 'function') {
+      return res.json({ ok: false, message: 'Not supported for this printer type' });
+    }
+
+    const result = await driver.testConnection({ ip, api_key: api_key || '', serial_number: serial_number || '' });
+    res.json(result);
+  });
+
   // GET /api/printers/:id
   router.get('/:id', (req, res) => {
     const printer = db.prepare(`SELECT p.*, ${NEEDS_CATALOG_SQL} FROM printers p WHERE p.id = ?`).get(req.params.id);

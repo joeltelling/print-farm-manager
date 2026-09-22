@@ -340,3 +340,39 @@ describe('uploadAndPrint — non-.3mf rejection', () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 });
+
+// ─── Test connection ──────────────────────────────────────────────────────────
+// Uses its own throwaway mqtt client (reconnectPeriod: 0), separate from the
+// module's cached connections Map, so it does not need nextPrinter()'s unique-id
+// trick, but a fresh printer keeps it isolated from any earlier test's cache entry.
+
+describe('testConnection', () => {
+  test('reports ok on a successful connect and ends the throwaway client', async () => {
+    const printer = nextPrinter();
+    const result = await bambu.testConnection(printer);
+    expect(result).toEqual({ ok: true, message: 'Connected' });
+    expect(mockMqttClient.end).toHaveBeenCalledWith(true);
+  });
+
+  test('reports the connect error', async () => {
+    mockMqttClient.on = jest.fn((event, handler) => {
+      if (event === 'error') handler(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+    });
+    const printer = nextPrinter();
+    const result = await bambu.testConnection(printer);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/refused/i);
+  });
+
+  test('does not touch the cached connection used by getStatus', async () => {
+    const printer = nextPrinter();
+    await bambu.getStatus(printer); // populates the real connections cache
+    mockPublish.mockClear();
+
+    await bambu.testConnection(printer);
+
+    // testConnection's own client publishes nothing (it only connects); the
+    // cached connection's 'connect' handler is what calls publish(pushall).
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+});

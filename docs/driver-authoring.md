@@ -58,6 +58,21 @@ getCameraUrl(printer)
     null on any failure or when no camera is configured. Connectors without
     this export are treated as camera-unsupported: the UI panel simply does
     not render, no placeholder shown.
+
+testConnection(printer)
+  → { ok, message }. Powers the "Test Connection" button on the Add Printer
+    and printer-edit forms: a one-off reachability check against exactly the
+    fields currently in the form, whether or not they have been saved yet.
+    Unlike getStatus, which must swallow every error into the canonical
+    OFFLINE status, this exists to surface the real reason a connection
+    failed, so use describeConnectionError() from
+    server/connection-test-helpers.js rather than inventing new message
+    text per connector. If your driver keeps a persistent connection (a
+    module-level Map, as with Bambu, Centauri Carbon, or Centauri Carbon 2),
+    open and tear down your own throwaway connection here; never read or
+    write that Map, since a test must not disturb whatever real connection
+    already exists for that printer, or use a printer.id that may not exist
+    yet. Never throw.
 ```
 
 ### The `printer` row

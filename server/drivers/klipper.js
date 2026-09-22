@@ -9,6 +9,7 @@ const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 const { resolveHost } = require('../mdns-resolve');
+const { describeConnectionError } = require('../connection-test-helpers');
 
 const PORT = 7125;
 
@@ -150,4 +151,22 @@ async function getCameraUrl(printer) {
   }
 }
 
-module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl };
+// ─── Test connection ─────────────────────────────────────────────────────────
+
+// One-off reachability check for the "Test Connection" button. Does not create or
+// touch any cached connection state (Moonraker has none). Never throws.
+async function testConnection(printer) {
+  try {
+    const raw = printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const ip = await resolveHost(raw);
+    await axios.get(
+      `http://${ip}:${PORT}/printer/objects/query`,
+      { params: { webhooks: '' }, timeout: 8000 }
+    );
+    return { ok: true, message: ip !== raw ? `Connected (resolved to ${ip})` : 'Connected' };
+  } catch (err) {
+    return { ok: false, message: describeConnectionError(err) };
+  }
+}
+
+module.exports = { getStatus, uploadAndPrint, cancelJob, checkIfPrinting, getCameraUrl, testConnection };
