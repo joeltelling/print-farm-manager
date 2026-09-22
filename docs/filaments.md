@@ -17,7 +17,7 @@ Administrator-managed canonical lists of filament types and filament colors. The
 |-------------|---------|-------|
 | `id`        | INTEGER | PK, autoincrement |
 | `name`      | TEXT    | Unique across the whole library, e.g. "Black", "Galaxy Red". A color is a single entity now, not one row per type: see `filament_color_types` below. |
-| `hex_color` | TEXT    | Optional hex code, e.g. "#FF0000". Shown as a color swatch in the Settings table. |
+| `hex_color` | TEXT    | Optional hex code, e.g. "#FF0000". Shown as a color swatch in the Settings table, and read by the scheduler's optional color-tolerance fallback (`server/color-distance.js`, the `color_tolerance` setting): a color with no hex set can never participate in a tolerant match, only an exact name match. |
 
 ### `filament_color_types`
 
@@ -92,7 +92,7 @@ Remove a filament color by ID (also removes its `filament_color_types` rows). No
 | `gcodes.required_material` | type name | Material required to print this G-code |
 | `gcodes.required_color` | color name | Color required to print this G-code |
 
-The scheduler uses `required_material` and `required_color` to match G-codes to printers with matching `loaded_material` / `loaded_color`. None of this matching logic changed: it still compares plain type/color name strings, unaware that a color can now list more than one type.
+The scheduler uses `required_material` and `required_color` to match G-codes to printers with matching `loaded_material` / `loaded_color`. This still compares plain type/color name strings first, unaware that a color can now list more than one type. Only when no printer has the exact required color, and the `color_tolerance` setting is above `0`, does it fall back to comparing `hex_color` values by RGB distance instead (`server/color-distance.js`); material is never loosened this way. See `docs/api.md`'s `PUT /api/settings/:key` entry and `server/scheduler.js`.
 
 ## Settings UI
 

@@ -2,6 +2,7 @@ const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
 const router  = express.Router();
+const { colorsClose } = require('../color-distance');
 
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
@@ -68,6 +69,26 @@ module.exports = (db, scheduler = null) => {
       blockers.push('No G-code uploaded — upload one per printer model this part can print on');
     }
 
+    // Admin-configurable color-tolerance fallback (server/color-distance.js),
+    // mirroring server/scheduler.js's _reserveCandidate: an exact color match
+    // is always preferred, tolerance is only consulted when nothing matches
+    // exactly. hexByName is only built when tolerance is actually on, so a
+    // farm that never sets it never pays for the extra query. Keep this in
+    // sync with the scheduler (see CLAUDE.md's sync-pairs table).
+    const toleranceSetting = db.prepare("SELECT value FROM settings WHERE key = 'color_tolerance'").get();
+    const tolerance = toleranceSetting ? parseInt(toleranceSetting.value, 10) || 0 : 0;
+    const hexByName = tolerance > 0
+      ? new Map(db.prepare('SELECT name, hex_color FROM filament_colors').all().map(c => [c.name, c.hex_color]))
+      : null;
+    function colorOk(printerColor, requiredColor) {
+      if (!requiredColor) return { ok: true, tolerant: false };
+      if (printerColor === requiredColor) return { ok: true, tolerant: false };
+      if (hexByName && colorsClose(hexByName.get(requiredColor), hexByName.get(printerColor), tolerance)) {
+        return { ok: true, tolerant: true };
+      }
+      return { ok: false, tolerant: false };
+    }
+
     // Per-gcode printer availability, using the same filters as the scheduler
     for (const gc of gcodes) {
       const requiredMaterial = gc.required_material || part.project_material || null;
@@ -106,15 +127,21 @@ module.exports = (db, scheduler = null) => {
           (lanesByPrinter[lane.printer_id] ||= []).push(lane);
         }
       }
+      let usedTolerance = false;
       const materialOk = groupOk.filter(p => {
-        const legacyMatch = (!requiredMaterial || p.loaded_material === requiredMaterial) &&
-                             (!requiredColor    || p.loaded_color    === requiredColor);
-        if (legacyMatch) return true;
+        const materialMatch = !requiredMaterial || p.loaded_material === requiredMaterial;
+        const legacyColor = colorOk(p.loaded_color, requiredColor);
+        if (materialMatch && legacyColor.ok) {
+          if (legacyColor.tolerant) usedTolerance = true;
+          return true;
+        }
         const lanes = lanesByPrinter[p.id] || [];
-        return lanes.some(l =>
-          (!requiredMaterial || l.material === requiredMaterial) &&
-          (!requiredColor    || l.color    === requiredColor)
-        );
+        return lanes.some(l => {
+          if (requiredMaterial && l.material !== requiredMaterial) return false;
+          const laneColor = colorOk(l.color, requiredColor);
+          if (laneColor.ok && laneColor.tolerant) usedTolerance = true;
+          return laneColor.ok;
+        });
       });
       if (materialOk.length === 0) {
         const want = [requiredMaterial, requiredColor].filter(Boolean).join(' / ');
@@ -135,6 +162,9 @@ module.exports = (db, scheduler = null) => {
         );
       } else {
         anyGcodeReady = true;
+        if (usedTolerance) {
+          notes.push(`${gc.filename}: matched via color tolerance, not an exact color (Settings → Dispatch)`);
+        }
       }
     }
 

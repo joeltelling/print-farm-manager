@@ -50,10 +50,11 @@ beforeEach(() => {
  * @param {string|null} opts.gcodeMaterial    - required_material on the gcode (null = any)
  * @param {string|null} opts.gcodeColor       - required_color on the gcode (null = any)
  * @param {string|null} opts.projectGroups    - JSON string for projects.allowed_groups (null = none), used as the fallback when gcodeGroups is null
+ * @param {number|null} opts.colorTolerance   - color_tolerance setting value (null = not set, tolerance off)
  */
 function makeDb({ printerGroup = null, printerMaterial = null, printerColor = null,
                    gcodeGroups = null, gcodeMaterial = null, gcodeColor = null,
-                   projectGroups = null } = {}) {
+                   projectGroups = null, colorTolerance = null } = {}) {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE printers (
@@ -101,7 +102,14 @@ function makeDb({ printerGroup = null, printerMaterial = null, printerColor = nu
     );
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     INSERT INTO settings VALUES ('dispatch_batch_size', '10');
+    CREATE TABLE filament_colors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, hex_color TEXT
+    );
   `);
+
+  if (colorTolerance !== null) {
+    db.prepare("INSERT INTO settings (key, value) VALUES ('color_tolerance', ?)").run(String(colorTolerance));
+  }
 
   const now = Date.now();
   db.prepare(`INSERT INTO printers (name, ip, api_key, model, type, group_name, loaded_material, loaded_color, status, is_held, is_active, created_at)
@@ -400,5 +408,85 @@ describe('scheduler: lane filtering (printer_lanes)', () => {
     const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: null, loaded_color: null });
     expect(jobId).not.toBeNull();
     expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+});
+
+// ── Color tolerance (color_tolerance setting) ─────────────────────────────────
+// Admin-configurable RGB-distance fallback (server/color-distance.js) for when no
+// printer has the exact required color loaded: see scheduler.js's _reserveJob
+// (exact pass always runs first) and _reserveCandidate (the color_close() SQL
+// function it registers). Material is never loosened by this setting.
+
+describe('scheduler: color tolerance', () => {
+  test('exact match still wins even with a generous tolerance configured', async () => {
+    const db = makeDb({ printerColor: 'Black', gcodeColor: 'Black', colorTolerance: 100 });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', '#0A0A0A')").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Charcoal', '#141414')").run();
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_color: 'Black' });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('dispatches via tolerance when no exact match exists but a close color does', async () => {
+    const db = makeDb({ printerColor: 'Charcoal', gcodeColor: 'Black', colorTolerance: 30 });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', '#0A0A0A')").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Charcoal', '#141414')").run();
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_color: 'Charcoal' });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('does not dispatch when the loaded color is farther than the tolerance allows', async () => {
+    const db = makeDb({ printerColor: 'White', gcodeColor: 'Black', colorTolerance: 30 });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', '#000000')").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('White', '#FFFFFF')").run();
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_color: 'White' });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('a close color does not dispatch when color_tolerance is unset (tolerance off)', async () => {
+    const db = makeDb({ printerColor: 'Charcoal', gcodeColor: 'Black', colorTolerance: null });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', '#0A0A0A')").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Charcoal', '#141414')").run();
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_color: 'Charcoal' });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('does not dispatch via tolerance when either color has no hex_color catalog entry', async () => {
+    const db = makeDb({ printerColor: 'Charcoal', gcodeColor: 'Black', colorTolerance: 100 });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', NULL)").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Charcoal', '#141414')").run();
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_color: 'Charcoal' });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
+  });
+
+  test('a lane color also dispatches via tolerance', async () => {
+    const db = makeDb({ printerMaterial: null, printerColor: null, gcodeMaterial: 'PLA', gcodeColor: 'Black', colorTolerance: 30 });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', '#0A0A0A')").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Charcoal', '#141414')").run();
+    db.prepare('INSERT INTO printer_lanes (printer_id, lane_index, material, color, updated_at) VALUES (1, 0, ?, ?, ?)')
+      .run('PLA', 'Charcoal', Date.now());
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: null, loaded_color: null });
+    expect(jobId).not.toBeNull();
+    expect(mockDriver.uploadAndPrint).toHaveBeenCalled();
+  });
+
+  test('material must still match exactly even when color tolerance is on', async () => {
+    const db = makeDb({ printerMaterial: 'PETG', printerColor: 'Charcoal', gcodeMaterial: 'PLA', gcodeColor: 'Black', colorTolerance: 100 });
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Black', '#0A0A0A')").run();
+    db.prepare("INSERT INTO filament_colors (name, hex_color) VALUES ('Charcoal', '#141414')").run();
+    const scheduler = new JobScheduler(db, { on: () => {} });
+    const jobId = await scheduler._dispatchToPrinter({ ...printer, loaded_material: 'PETG', loaded_color: 'Charcoal' });
+    expect(jobId).toBeNull();
+    expect(mockDriver.uploadAndPrint).not.toHaveBeenCalled();
   });
 });

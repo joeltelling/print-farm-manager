@@ -89,20 +89,33 @@ export default function FleetStatusGrid({ printers, allModels, title = 'Fleet St
         {title}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Each model gets its own self-contained chip (label above its cells, not
+          squeezed into a fixed-width side column) rather than one full-width row
+          per model. Two problems this fixes together: a long model name no longer
+          collides with the printer boxes next to it (it now wraps freely on its
+          own line above them instead of fighting a narrow fixed column for space),
+          and a fleet with many small model groups (e.g. one printer each) packs
+          those chips several to a line via flexWrap instead of stacking one
+          mostly-empty full-width row per model. A model with many printers still
+          gets a wide chip whose own cell row wraps internally as before. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-start' }}>
         {Object.entries(grouped).map(([model, group]) => (
-          <div key={model} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={model} style={{
+            display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0,
+            background: '#0d1117', border: '1px solid #1a2030', borderRadius: 8,
+            padding: '8px 10px',
+          }}>
 
             {/* Model label */}
-            <div style={{ width: 76, flexShrink: 0, textAlign: 'right' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
                 {MODEL_LABELS[model] || model}
               </div>
-              <div style={{ fontSize: 11, color: '#374151' }}>×{group.length}</div>
+              <div style={{ fontSize: 11, color: '#374151', flexShrink: 0 }}>×{group.length}</div>
             </div>
 
             {/* Printer cells */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {group.map(printer => {
                 const c = cellColors(printer);
                 const link = webUiLink(printer);
@@ -133,7 +146,7 @@ export default function FleetStatusGrid({ printers, allModels, title = 'Fleet St
               })}
             </div>
 
-            {/* Per-row status summary */}
+            {/* Per-model status summary */}
             <RowSummary group={group} />
           </div>
         ))}

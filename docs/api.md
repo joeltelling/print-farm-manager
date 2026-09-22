@@ -542,6 +542,8 @@ Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirro
 
 The material/color check counts a printer as a match via its own `loaded_material`/`loaded_color`, or via any single one of its `printer_lanes` rows (a multi-lane Klipper printer synced from the klipper-filament-sync plugin): mirrors `server/scheduler.js`'s candidate query exactly, see `docs/database.md`'s `printer_lanes` entry.
 
+If no printer has the exact required color and the `color_tolerance` setting is above `0`, a printer with a close enough color (by hex-code RGB distance, `server/color-distance.js`) counts as a match too, same as the scheduler's own fallback. When that's what makes a G-code dispatchable, `notes` includes a line naming it (`"... matched via color tolerance, not an exact color ..."`) so the operator understands why the color shown doesn't exactly match what was requested. Material is never loosened by this setting.
+
 ### `POST /api/parts`
 
 Required: `project_id`, `name`, `target_qty`.
@@ -740,6 +742,7 @@ Body: `{ "value": "..." }`. Allowed keys:
 | `dispatch_batch_size` | integer 1-100 | How many printers the scheduler keeps uploading or printing at once (a concurrency target, not a fixed group size; it draws deeper into the ready queue to fill the target if some printers have no dispatchable candidate) |
 | `farm_name` | ≤ 40 chars | Sidebar branding (falls back to "Print Farm") |
 | `auto_sso_redirect` | `"0"` or `"1"` | Admin-only (`403` for a non-admin, even with a valid session). Whether the login page skips the local form and redirects straight to the OIDC provider; see [docs/auth.md](auth.md). |
+| `color_tolerance` | integer 0-450 | Any authenticated user. RGB-distance (server/color-distance.js) fallback the scheduler and `GET /api/parts/:id/dispatch-status` use when no printer has the exact required color loaded; `0` (the default) disables it. See `docs/database.md`'s `printers` section and the scheduler note below. |
 
 Returns `400` for unknown keys or failed validation, `403` if a non-admin sends `auto_sso_redirect`.
 
