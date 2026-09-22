@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { rotationFitTransform, useNaturalSize } from '../cameraTransform';
 import { buildColorHexMap } from '../filamentColorHex';
 import ColorSwatch from '../components/ColorSwatch';
+import GcodeThumbnail from '../components/GcodeThumbnail';
 import { useParams, useNavigate } from 'react-router-dom';
 
 function formatTimestamp(ms) {
@@ -945,7 +946,12 @@ export default function PrinterDetail() {
                     <tr key={job.id} style={{ borderBottom: '1px solid #1a1f2e' }}>
                       <td style={{ padding: '7px 10px', color: '#cbd5e1', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name ?? '—'}</td>
                       <td style={{ padding: '7px 10px', color: '#94a3b8', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.project_name ?? '—'}</td>
-                      <td style={{ padding: '7px 10px', color: '#64748b', fontFamily: 'monospace', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.gcode_filename ?? '—'}</td>
+                      <td style={{ padding: '7px 10px', color: '#64748b', fontFamily: 'monospace', fontSize: 11, maxWidth: 160 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                          <GcodeThumbnail gcodeId={job.gcode_id} size={22} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.gcode_filename ?? '—'}</span>
+                        </span>
+                      </td>
                       <td style={{ padding: '7px 10px', color: '#64748b', whiteSpace: 'nowrap' }}>{formatTimestamp(job.started_at)}</td>
                       <td style={{ padding: '7px 10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{formatDuration(job.duration_ms)}</td>
                       <td style={{ padding: '7px 10px', color: '#94a3b8', textAlign: 'center' }}>{job.parts_per_plate}</td>

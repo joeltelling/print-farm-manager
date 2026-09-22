@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-09-22: G-code plate thumbnail preview
+
+Requested as part of a batch of quality-of-life items: `.bgcode` and `.3mf` files usually embed a plate thumbnail, and showing it on the part/job row would help distinguish similar-sounding files at a glance instead of reading filenames.
+
+New `GET /api/gcodes/:id/thumbnail` extracts the embedded thumbnail on demand from the file on disk (no new DB column, no upload-time processing step) and serves it with a hard `Cache-Control: private, max-age=31536000, immutable`, since a gcode file's thumbnail can never change after upload. `.bgcode` support is a from-scratch binary parser against Prusa's official block-format spec (github.com/prusa3d/libbgcode); Heatshrink-compressed thumbnail blocks are skipped rather than guessed at, since Node has no built-in decoder for that compression, but uncompressed and Deflate blocks both extract correctly. `.3mf` support is a from-scratch ZIP central-directory reader (no new dependency, only Node's built-in `zlib`), looking for `Metadata/plate_1.png` (confirmed against OrcaSlicer's own source, `bbs_3mf.cpp`), falling back to any `Metadata/plate_<N>.png`, then `Metadata/bbl_thumbnail.png`.
+
+New shared `GcodeThumbnail.jsx` component wires this into three places: the Jobs page table and mobile card, the Projects page's per-part G-code Files list, and PrinterDetail's Job History table. It renders nothing (not a placeholder) when there is no linked G-code or the file has no embedded thumbnail, since most farms mix formats and a blank cell is less noisy than a broken-image icon.
+
+### Changes
+- `server/gcode-thumbnail.js`: new. `extractThumbnail(filename, buffer)`, dispatching to `fromBgcode`/`fromThreeMf` by extension.
+- `server/routes/gcodes.js`: new `GET /:id/thumbnail` route.
+- `server/routes/printer-jobs.js`: job history query now also selects `j.gcode_id`, needed so the client can request a thumbnail per row.
+- `client/src/components/GcodeThumbnail.jsx`: new.
+- `client/src/pages/Jobs.jsx`, `client/src/pages/Projects.jsx`, `client/src/pages/PrinterDetail.jsx`: wire in `GcodeThumbnail`.
+- `docs/api.md`: new `GET /api/gcodes/:id/thumbnail` entry.
+- `docs/web-app.md`: new `GcodeThumbnail.jsx` Key Files entry; noted the thumbnail in the Jobs Page columns, the Projects Page G-code Files bullet, and a new Printer Detail "Job History" section (previously undocumented).
+- `server/tests/gcode-thumbnail.test.js`: new, 19 tests against hand-built spec-accurate byte fixtures covering both formats and the extension dispatch.
+- `server/tests/gcodes-thumbnail-route.test.js`: new, route-level coverage (success for both formats, unknown id, missing file on disk, no thumbnail, cache header) against a real file written to `server/gcode/`.
+- `server/tests/support/gcode-fixtures.js`: new, shared `buildBgcode`/`buildZip` fixture builders used by both test files above.
+
+Implemented from the official specs above, not yet validated against real slicer output on hardware: no real `.bgcode`/`.3mf` sample was available in this environment. The parsers should be checked against an actual sliced file from the farm before relying on this in production.
+
+---
+
 ## 2026-09-22: command palette (Cmd/Ctrl+K) to jump to a printer, project, or part
 
 Requested as part of a batch of quality-of-life items: a way to jump straight to a printer, project, or part by name instead of navigating through the Fleet/Printers/Projects pages to find it.

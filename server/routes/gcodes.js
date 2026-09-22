@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
+const { extractThumbnail } = require('../gcode-thumbnail');
 
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
@@ -224,6 +225,33 @@ module.exports = (db, scheduler = null) => {
       .run(estPrintSecs, materialGrams, allowedGroups, requiredMaterial, requiredColor, req.params.id);
 
     res.json(db.prepare('SELECT * FROM gcodes WHERE id = ?').get(req.params.id));
+  });
+
+  // GET /api/gcodes/:id/thumbnail: the embedded plate thumbnail, if the file
+  // format has one (.bgcode, .3mf; plain .gcode never does) and one was found.
+  // Extracted on demand from the file on disk, not precomputed/stored: parsing
+  // cost is small and this is requested rarely (only while the image is
+  // actually visible), so there's no separate cache column or upload-time
+  // step to keep in sync. Cached hard by the browser (Cache-Control), since a
+  // gcode file's thumbnail can never change after upload, there's no edit path.
+  router.get('/:id/thumbnail', (req, res) => {
+    const gcode = db.prepare('SELECT * FROM gcodes WHERE id = ?').get(req.params.id);
+    if (!gcode) return res.status(404).json({ error: 'G-code not found' });
+
+    const gcodeFilename = gcode.filepath.split(/[\\/]/).pop();
+    const fullPath = path.join(GCODE_DIR, gcodeFilename);
+    if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'File not found on disk' });
+
+    let thumbnail;
+    try {
+      thumbnail = extractThumbnail(gcode.filename, fs.readFileSync(fullPath));
+    } catch (_) {
+      thumbnail = null;
+    }
+    if (!thumbnail) return res.status(404).json({ error: 'No thumbnail embedded in this file' });
+
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.type(thumbnail.mimeType).send(thumbnail.data);
   });
 
   // DELETE /api/gcodes/:id

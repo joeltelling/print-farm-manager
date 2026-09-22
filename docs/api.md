@@ -659,6 +659,17 @@ Update `est_print_secs`, `material_grams`, `allowed_groups`, `required_material`
 
 Returns the updated G-code record.
 
+### `GET /api/gcodes/:id/thumbnail`
+
+Returns the plate thumbnail embedded in the sliced file, if the format has one and one was found: `image/png` or `image/jpeg` bytes, extracted on demand from the file on disk (nothing is precomputed or stored). Response carries `Cache-Control: private, max-age=31536000, immutable`, since a gcode file's thumbnail can never change after upload.
+
+Supported formats:
+- `.bgcode` (Prusa): reads the binary block structure per the [official spec](https://github.com/prusa3d/libbgcode/blob/main/doc/specifications.md), picking the largest embedded thumbnail block. Heatshrink-compressed thumbnail blocks are skipped (no Node decoder available); Deflate and uncompressed blocks are supported.
+- `.3mf` (Bambu Studio / OrcaSlicer): reads the ZIP container looking for `Metadata/plate_1.png`, falling back to any `Metadata/plate_<N>.png`, then `Metadata/bbl_thumbnail.png`.
+- Plain `.gcode` never has an embedded thumbnail and is not parsed.
+
+Returns `404` if the G-code record does not exist, the file is missing from disk, or no thumbnail could be found or extracted (corrupt file, unsupported compression, unrecognized format).
+
 ### `DELETE /api/gcodes/:id`
 
 Deletes the DB record and removes the file from disk. Returns `{ "success": true }`.

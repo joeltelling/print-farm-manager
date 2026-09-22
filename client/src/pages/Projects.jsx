@@ -5,6 +5,7 @@ import { useToast } from '../useToast';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
 import GcodeUploadWizard from '../components/GcodeUploadWizard';
+import GcodeThumbnail from '../components/GcodeThumbnail';
 
 // ── Estimate helpers ──────────────────────────────────────────────────────────
 
@@ -493,6 +494,7 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
   return (
     <div style={{ background: '#0f172a', borderRadius: 4, padding: '6px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <GcodeThumbnail gcodeId={gc.id} size={28} />
         <span style={{
           fontFamily: 'monospace', fontSize: 12, color: '#e2e8f0',
           flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',

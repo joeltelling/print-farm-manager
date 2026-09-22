@@ -44,6 +44,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/components/ColorSwatch.jsx` | Small colored square for a filament color's hex code; renders nothing if no hex is set |
 | `client/src/usePinnedPrinters.js` | Per-browser (`localStorage`) pinned-printer set for Fleet's Pinned section |
 | `client/src/components/CommandPalette.jsx` | Global Cmd/Ctrl+K jump-to-anything search, mounted once in `App.jsx` |
+| `client/src/components/GcodeThumbnail.jsx` | Renders a sliced file's embedded plate thumbnail from `GET /api/gcodes/:id/thumbnail`; renders nothing if there is no `gcodeId` or the image fails to load (file has none embedded) |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -247,6 +248,8 @@ For `klipper` and `octoprint` printers, a **Camera** section (rotation, flip hor
 
 **Catalog-print popup:** opens automatically (a fixed-position modal, not a page navigation) when the fetched printer has `needs_catalog: true`, meaning it is `PRINTING` or `FINISHED` with no job the farm dispatched, the signature of a print sent straight to it from outside the farm (e.g. OrcaSlicer). Prompts for a Part (grouped by project, open parts only) and a quantity, then submits to `POST /api/printers/:id/catalog-print`. A "Not now" button dismisses it for the rest of this page visit without submitting; reloading the page re-opens it as long as `needs_catalog` is still true server-side.
 
+**Job History:** paginated (`GET /api/printers/:id/jobs?page=N`, 100 per page) table of every job run on this printer, newest first, with status, part/project name, part count, and duration. Each row shows a small thumbnail (`GcodeThumbnail.jsx`) next to the filename when the linked G-code's sliced file has one embedded; see `GET /api/gcodes/:id/thumbnail` in [docs/api.md](api.md). Nothing renders for jobs with no linked G-code or a file with no embedded thumbnail.
+
 **← All Printers** back button returns to the Printers list.
 
 ## Decommissioned Page
@@ -321,7 +324,7 @@ Primary operator screen for setting up and launching print runs. Reads `?open=<p
 - **Details panel** (per part, toggle with "Details" button): four sections:
   - *Part Name* — current name displayed with a ✎ pencil button. Click to edit inline; Enter or blur saves, Escape cancels → `PUT /api/parts/:id { name }`
   - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status. If raising Need above Have reopens a part that was `closed` and the parent project had already `completed`, the project is reactivated to `active` server-side and swept for idle printers immediately, the same behavior as the Add Part form below and the header's Re-activate action. Since this part necessarily already has G-code from before it was closed, the sweep can genuinely dispatch it right away.
-  - *G-code Files* — lists each uploaded file with filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
+  - *G-code Files*: lists each uploaded file with a thumbnail (`GcodeThumbnail.jsx`, blank if the file has none embedded), filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
   - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline. A successful upload also triggers a scheduler sweep: this is what actually makes a brand-new part (added via the form below) dispatchable, since the scheduler requires a matching G-code.
 - **Add Part form:** name + target quantity → `POST /api/parts`. If the parent project had `completed`, it's reactivated to `active` immediately, no separate manual reactivate step needed. The new part itself isn't dispatchable yet, though: it has no G-code, so uploading one (above) is what actually triggers dispatch.
 
@@ -333,7 +336,7 @@ Primary operator screen for setting up and launching print runs. Reads `?open=<p
 
 Live job queue that polls `GET /api/jobs` every 15 seconds.
 
-**Columns:** ID, Part, Project, Printer, Model, Status, Started, Duration, Actions
+**Columns:** thumbnail (`GcodeThumbnail.jsx`, blank if the file has none embedded), ID, Part, Project, Printer, Model, Status, Started, Duration, Actions. The mobile card view shows the same thumbnail next to the part name.
 
 **Filters:** status dropdown (all / queued / uploading / printing / finished / failed / cancelled), project dropdown, printer dropdown, all passed as query params on each fetch. The dropdown filters on the real `jobs.status` column; "Awaiting Sign-off" below is a display-only badge, not a filterable value.
 

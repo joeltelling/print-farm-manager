@@ -55,6 +55,7 @@ module.exports = (db) => {
       SELECT
         j.id, j.status, j.parts_per_plate, j.started_at, j.finished_at,
         j.finished_at - j.started_at   AS duration_ms,
+        j.gcode_id,
         p.name                          AS part_name,
         pr.name                         AS project_name,
         g.filename                      AS gcode_filename

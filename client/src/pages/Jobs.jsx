@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useConfirm } from '../useConfirm';
 import EmptyState from '../components/EmptyState';
+import GcodeThumbnail from '../components/GcodeThumbnail';
 
 // Colors match the Fleet page conventions: blue = printing, green = done.
 // Cancelled gets a line-through as a non-color cue against Queued.
@@ -174,7 +175,10 @@ export default function Jobs() {
             return (
               <div key={job.id} style={{ background: '#1e2433', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#cbd5e1' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <GcodeThumbnail gcodeId={job.gcode_id} size={28} />
+                    <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.part_name}</span>
+                  </span>
                   <span style={{ background: st.bg, color: st.text, borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0, textDecoration: st.strike ? 'line-through' : 'none' }}>
                     {st.label}
                   </span>
@@ -208,6 +212,7 @@ export default function Jobs() {
             <thead>
               <tr style={{ color: '#64748b', textAlign: 'left', borderBottom: '1px solid #2d3748' }}>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>ID</th>
+                <th style={{ padding: '6px 10px', fontWeight: 600 }}></th>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>Part</th>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>Project</th>
                 <th style={{ padding: '6px 10px', fontWeight: 600 }}>Printer</th>
@@ -228,6 +233,9 @@ export default function Jobs() {
                   >
                     <td style={{ padding: '8px 10px', color: '#475569', fontFamily: 'monospace', fontSize: 12 }}>
                       #{job.id}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <GcodeThumbnail gcodeId={job.gcode_id} size={28} />
                     </td>
                     <td style={{ padding: '8px 10px' }}>{job.part_name}</td>
                     <td style={{ padding: '8px 10px', color: '#94a3b8' }}>{job.project_name}</td>
