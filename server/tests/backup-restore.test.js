@@ -62,7 +62,8 @@ beforeEach(() => {
       lane_index  INTEGER NOT NULL,
       material    TEXT,
       color       TEXT,
-      updated_at  INTEGER NOT NULL
+      updated_at  INTEGER NOT NULL,
+      UNIQUE(printer_id, lane_index)
     );
     CREATE TABLE projects (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,
