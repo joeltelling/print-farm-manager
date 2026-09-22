@@ -31,6 +31,10 @@ beforeAll(() => {
       loaded_material   TEXT,
       loaded_color      TEXT,
       auto_advance      INTEGER DEFAULT 0,
+      camera_uid        TEXT,
+      camera_rotation   INTEGER DEFAULT 0,
+      camera_flip_h     INTEGER DEFAULT 0,
+      camera_flip_v     INTEGER DEFAULT 0,
       created_at        INTEGER NOT NULL
     );
     CREATE TABLE printer_events (
@@ -213,6 +217,64 @@ describe('PUT /api/printers/:id — material and color', () => {
     expect(res.status).toBe(200);
     expect(res.body.loaded_material).toBe('TPU');
     expect(res.body.loaded_color).toBe('Orange');
+  });
+});
+
+// ── PUT /api/printers/:id: camera settings ─────────────────────────────────
+// Same "present in body wins" concern as loaded_material/loaded_color: camera_uid
+// and camera_rotation clear to null/0 on an explicit empty value, and the flip
+// checkboxes must be distinguishable from "field omitted" the same way auto_advance is.
+
+describe('PUT /api/printers/:id: camera settings', () => {
+  let printerId;
+
+  beforeAll(() => {
+    const row = db.prepare(
+      "INSERT INTO printers (name, ip, api_key, model, is_active, created_at) VALUES ('CameraEditMe', '10.0.0.2', '', 'mk4s', 1, ?)"
+    ).run(Date.now());
+    printerId = row.lastInsertRowid;
+  });
+
+  test('sets camera_uid, camera_rotation, and the flip flags', async () => {
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ camera_uid: 'uid-1', camera_rotation: 180, camera_flip_h: true, camera_flip_v: false });
+    expect(res.status).toBe(200);
+    expect(res.body.camera_uid).toBe('uid-1');
+    expect(res.body.camera_rotation).toBe(180);
+    expect(res.body.camera_flip_h).toBe(1);
+    expect(res.body.camera_flip_v).toBe(0);
+  });
+
+  test('omitting the camera fields leaves them unchanged', async () => {
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ serial_number: 'SN-CAM' });
+    expect(res.status).toBe(200);
+    expect(res.body.camera_uid).toBe('uid-1');
+    expect(res.body.camera_rotation).toBe(180);
+    expect(res.body.camera_flip_h).toBe(1);
+  });
+
+  test('clears camera_uid and resets rotation when explicitly sent empty', async () => {
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ camera_uid: '', camera_rotation: 0 });
+    expect(res.status).toBe(200);
+    expect(res.body.camera_uid).toBeNull();
+    expect(res.body.camera_rotation).toBe(0);
+  });
+
+  test('unchecking flip_h to false actually turns it off', async () => {
+    await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ camera_flip_h: true });
+
+    const res = await request(app)
+      .put(`/api/printers/${printerId}`)
+      .send({ camera_flip_h: false });
+    expect(res.status).toBe(200);
+    expect(res.body.camera_flip_h).toBe(0);
   });
 });
 

@@ -132,6 +132,18 @@ function PrinterCard({ printer, selected, onToggleSelect, onSetReady, onBadPrint
         <span style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {printer.name}
         </span>
+        {printer.type === 'klipper' && (
+          <a
+            href={`http://${printer.ip.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`}
+            target="_blank"
+            rel="noreferrer"
+            onClick={e => e.stopPropagation()}
+            title="Open Mainsail"
+            style={{ color: '#60a5fa', fontSize: 11, textDecoration: 'none', flexShrink: 0 }}
+          >
+            Mainsail ↗
+          </a>
+        )}
         <span style={{ background: style.bg, color: style.text, borderRadius: 4, padding: '2px 8px', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
           {style.label}
         </span>

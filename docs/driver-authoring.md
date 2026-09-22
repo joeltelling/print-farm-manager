@@ -57,7 +57,21 @@ getCameraUrl(printer)
     webcam URLs resolve against the frontend's port 80). Never throw; return
     null on any failure or when no camera is configured. Connectors without
     this export are treated as camera-unsupported: the UI panel simply does
-    not render, no placeholder shown.
+    not render, no placeholder shown. If printer.camera_uid is set, prefer
+    the webcam whose protocol-native identifier matches it over whatever
+    getCameraUrl would otherwise pick by default, falling back to the
+    default when it does not match anything current (a stale selection,
+    e.g. after the webcam config changed): see klipper.js.
+
+listCameras(printer)
+  → [{ uid, name, enabled }] | []. Optional, and only meaningful for a
+    connector whose printer can register more than one camera (klipper.js,
+    via crowsnest). Powers the camera picker on the Add Printer and
+    printer-edit forms via POST /api/printers/list-cameras, so an operator
+    can set printer.camera_uid without guessing. uid should be whatever
+    stable per-camera identifier your protocol provides; name is what the
+    UI displays. Never throw; return [] on any failure or when the
+    connector has no concept of multiple cameras.
 
 testConnection(printer)
   → { ok, message }. Powers the "Test Connection" button on the Add Printer

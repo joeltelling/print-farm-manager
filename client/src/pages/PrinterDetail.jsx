@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { cameraTransform } from '../cameraTransform';
 import { useParams, useNavigate } from 'react-router-dom';
 
 function formatTimestamp(ms) {
@@ -98,6 +99,8 @@ export default function PrinterDetail() {
   const [detailsDraft, setDetailsDraft]     = useState({});
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult]         = useState(null); // { ok, message } | null
+  const [cameraList, setCameraList]         = useState(null); // [{ uid, name, enabled }] | null
+  const [loadingCameras, setLoadingCameras] = useState(false);
   const [detailsError, setDetailsError]     = useState(null);
   const [savingDetails, setSavingDetails]   = useState(false);
   const [catalogDismissed, setCatalogDismissed] = useState(false);
@@ -245,15 +248,43 @@ export default function PrinterDetail() {
       loaded_material: printer.loaded_material || '',
       loaded_color: printer.loaded_color || '',
       auto_advance: !!printer.auto_advance,
+      camera_uid: printer.camera_uid || '',
+      camera_rotation: printer.camera_rotation || 0,
+      camera_flip_h: !!printer.camera_flip_h,
+      camera_flip_v: !!printer.camera_flip_v,
     });
     setDetailsError(null);
     setEditingDetails(true);
+    setCameraList(null);
   }
 
   function cancelEditDetails() {
     setEditingDetails(false);
     setDetailsError(null);
     setTestResult(null);
+    setCameraList(null);
+  }
+
+  async function handleListCameras() {
+    setLoadingCameras(true);
+    try {
+      const res = await fetch('/api/printers/list-cameras', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: printer.type,
+          ip: detailsDraft.ip.trim(),
+          api_key: detailsDraft.api_key.trim(),
+          serial_number: detailsDraft.serial_number.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setCameraList(res.ok ? data.cameras || [] : []);
+    } catch (_) {
+      setCameraList([]);
+    } finally {
+      setLoadingCameras(false);
+    }
   }
 
   async function handleTestConnection() {
@@ -298,6 +329,10 @@ export default function PrinterDetail() {
           loaded_material: detailsDraft.loaded_material.trim() || null,
           loaded_color: detailsDraft.loaded_color.trim() || null,
           auto_advance: detailsDraft.auto_advance,
+          camera_uid: detailsDraft.camera_uid || null,
+          camera_rotation: detailsDraft.camera_rotation,
+          camera_flip_h: detailsDraft.camera_flip_h,
+          camera_flip_v: detailsDraft.camera_flip_v,
         }),
       });
       if (!res.ok) {
@@ -550,6 +585,86 @@ export default function PrinterDetail() {
                 Belt printer (auto-advance, skips confirmation)
               </label>
             </div>
+            {(printer.type === 'klipper' || printer.type === 'octoprint') && (
+              <div style={{
+                background: '#0f172a', border: '1px solid #1e2433',
+                borderRadius: 6, padding: 12, marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>Camera</div>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <label style={detailLabelStyle}>
+                    Rotation
+                    <select
+                      value={detailsDraft.camera_rotation}
+                      onChange={e => setDetailsDraft(d => ({ ...d, camera_rotation: Number(e.target.value) }))}
+                      disabled={savingDetails}
+                      style={{ ...detailInputStyle, width: 100 }}
+                    >
+                      <option value={0}>0°</option>
+                      <option value={90}>90°</option>
+                      <option value={180}>180°</option>
+                      <option value={270}>270°</option>
+                    </select>
+                  </label>
+                  <label style={{ ...detailLabelStyle, flexDirection: 'row', alignItems: 'center', gap: 6, textTransform: 'none', letterSpacing: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={detailsDraft.camera_flip_h}
+                      onChange={e => setDetailsDraft(d => ({ ...d, camera_flip_h: e.target.checked }))}
+                      disabled={savingDetails}
+                      style={{ accentColor: '#3b82f6' }}
+                    />
+                    Flip horizontal
+                  </label>
+                  <label style={{ ...detailLabelStyle, flexDirection: 'row', alignItems: 'center', gap: 6, textTransform: 'none', letterSpacing: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={detailsDraft.camera_flip_v}
+                      onChange={e => setDetailsDraft(d => ({ ...d, camera_flip_v: e.target.checked }))}
+                      disabled={savingDetails}
+                      style={{ accentColor: '#3b82f6' }}
+                    />
+                    Flip vertical
+                  </label>
+                </div>
+                {printer.type === 'klipper' && (
+                  <label style={detailLabelStyle}>
+                    Camera (crowsnest, for a printer with more than one configured)
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select
+                        value={detailsDraft.camera_uid}
+                        onChange={e => setDetailsDraft(d => ({ ...d, camera_uid: e.target.value }))}
+                        disabled={savingDetails}
+                        style={{ ...detailInputStyle, maxWidth: 260 }}
+                      >
+                        <option value="">Default (first enabled)</option>
+                        {(cameraList || []).map(c => (
+                          <option key={c.uid} value={c.uid}>{c.name}{c.enabled ? '' : ' (disabled)'}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleListCameras}
+                        disabled={loadingCameras || !detailsDraft.ip?.trim()}
+                        style={{
+                          background: 'transparent', color: '#94a3b8', border: '1px solid #2d3748',
+                          borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 400,
+                          cursor: loadingCameras || !detailsDraft.ip?.trim() ? 'default' : 'pointer',
+                          opacity: loadingCameras || !detailsDraft.ip?.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        {loadingCameras ? 'Loading...' : 'Find cameras'}
+                      </button>
+                    </div>
+                    {cameraList !== null && cameraList.length === 0 && (
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 400 }}>
+                        No cameras found. Confirm the printer is reachable and crowsnest is configured.
+                      </div>
+                    )}
+                  </label>
+                )}
+              </div>
+            )}
             {detailsError && (
               <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 6 }}>{detailsError}</div>
             )}
@@ -660,7 +775,7 @@ export default function PrinterDetail() {
               src={camera.streamUrl}
               alt={`${printer.name} camera feed`}
               onError={() => setCameraError(true)}
-              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a' }}
+              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
             />
           ) : camera.snapshotUrl ? (
             <img
@@ -668,7 +783,7 @@ export default function PrinterDetail() {
               src={camera.snapshotUrl}
               alt={`${printer.name} camera snapshot`}
               onError={() => setCameraError(true)}
-              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a' }}
+              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
             />
           ) : (
             <div style={{

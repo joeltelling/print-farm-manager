@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { cameraTransform } from './cameraTransform';
 
 // Shared hover-to-preview behavior for printer camera feeds: used by the
 // Dashboard fleet grid and the Webcams page's identical grid (see
@@ -60,6 +61,7 @@ export default function useCameraHover() {
             style={{
               width: 220, maxWidth: '40vw', height: 'auto',
               borderRadius: 4, display: 'block', background: '#0a0f1a',
+              transform: cameraTransform(current),
             }}
           />
         ) : (

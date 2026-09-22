@@ -253,6 +253,55 @@ describe('getCameraUrl', () => {
       expect.objectContaining({ timeout: 8000 })
     );
   });
+
+  test('selects the webcam matching camera_uid over the enabled one', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { result: { webcams: [
+        { uid: 'uid-1', name: 'cam1', enabled: true, stream_url: '/cam1/stream', snapshot_url: null },
+        { uid: 'uid-2', name: 'cam2', enabled: false, stream_url: '/cam2/stream', snapshot_url: null },
+      ] } },
+    });
+    const result = await klipper.getCameraUrl({ ...fakePrinter, camera_uid: 'uid-2' });
+    expect(result.streamUrl).toBe('http://192.168.1.250/cam2/stream');
+  });
+
+  test('falls back to the enabled webcam when camera_uid matches nothing', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { result: { webcams: [
+        { uid: 'uid-1', name: 'cam1', enabled: true, stream_url: '/cam1/stream', snapshot_url: null },
+      ] } },
+    });
+    const result = await klipper.getCameraUrl({ ...fakePrinter, camera_uid: 'stale-uid' });
+    expect(result.streamUrl).toBe('http://192.168.1.250/cam1/stream');
+  });
+});
+
+// ─── listCameras ────────────────────────────────────────────────────────────────
+
+describe('listCameras', () => {
+  test('returns uid/name/enabled for every registered webcam', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { result: { webcams: [
+        { uid: 'uid-1', name: 'cam1', enabled: true, stream_url: '/cam1/stream' },
+        { uid: 'uid-2', name: 'cam2', enabled: false, stream_url: '/cam2/stream' },
+      ] } },
+    });
+    const result = await klipper.listCameras(fakePrinter);
+    expect(result).toEqual([
+      { uid: 'uid-1', name: 'cam1', enabled: true },
+      { uid: 'uid-2', name: 'cam2', enabled: false },
+    ]);
+  });
+
+  test('returns an empty array when none are configured', async () => {
+    axios.get.mockResolvedValueOnce({ data: { result: { webcams: [] } } });
+    expect(await klipper.listCameras(fakePrinter)).toEqual([]);
+  });
+
+  test('returns an empty array on network error, never throws', async () => {
+    axios.get.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    expect(await klipper.listCameras(fakePrinter)).toEqual([]);
+  });
 });
 
 // ─── Test connection ──────────────────────────────────────────────────────────
@@ -285,5 +334,6 @@ describe('driver registry', () => {
     expect(typeof driver.checkIfPrinting).toBe('function');
     expect(typeof driver.getCameraUrl).toBe('function');
     expect(typeof driver.testConnection).toBe('function');
+    expect(typeof driver.listCameras).toBe('function');
   });
 });

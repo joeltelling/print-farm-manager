@@ -159,6 +159,32 @@ module.exports = (db) => {
     res.json(result);
   });
 
+  // POST /api/printers/list-cameras: every webcam the connector currently reports for
+  // the given connection settings, for the camera picker on the Add Printer and
+  // printer-edit forms (a crowsnest setup can register more than one). Same
+  // no-id-required shape as test-connection, so it works before a printer is saved.
+  // Connectors without listCameras (everything but Klipper today) always return [].
+  router.post('/list-cameras', async (req, res) => {
+    const { type, ip, api_key, serial_number } = req.body;
+    if (!type) return res.status(400).json({ error: 'type is required' });
+    if (!ip) return res.status(400).json({ error: 'ip is required' });
+
+    const { getDriver } = require('../drivers');
+    let driver;
+    try {
+      driver = getDriver(type);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (typeof driver.listCameras !== 'function') {
+      return res.json({ cameras: [] });
+    }
+
+    const cameras = await driver.listCameras({ ip, api_key: api_key || '', serial_number: serial_number || '' });
+    res.json({ cameras });
+  });
+
   // GET /api/printers/:id
   router.get('/:id', (req, res) => {
     const printer = db.prepare(`SELECT p.*, ${NEEDS_CATALOG_SQL} FROM printers p WHERE p.id = ?`).get(req.params.id);
@@ -179,13 +205,14 @@ module.exports = (db) => {
     if (!normalized || !db.prepare('SELECT 1 FROM printer_models WHERE model_id = ?').get(normalized)) {
       return res.status(400).json({ error: `Unknown model "${model}". Add it in Settings → Printer Models first.` });
     }
-    const { loaded_material, loaded_color, auto_advance } = req.body;
+    const { loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v } = req.body;
     try {
       const result = db.prepare(`
-        INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, auto_advance, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(name, ip, api_key || '', serial_number || '', group_name || null, printerType, normalized,
-             loaded_material || null, loaded_color || null, auto_advance ? 1 : 0, Date.now());
+             loaded_material || null, loaded_color || null, auto_advance ? 1 : 0,
+             camera_uid || null, camera_rotation || 0, camera_flip_h ? 1 : 0, camera_flip_v ? 1 : 0, Date.now());
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer creation into a reported error.
       if (group_name && group_name.trim()) {
@@ -205,7 +232,7 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
 
-    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color, auto_advance } = req.body;
+    const { name, ip, api_key, serial_number, group_name, type, model, is_held, decommission_note, loaded_material, loaded_color, auto_advance, camera_uid, camera_rotation, camera_flip_h, camera_flip_v } = req.body;
     let normalized = undefined;
     if (model !== undefined) {
       normalized = normalizeModel(model);
@@ -222,6 +249,15 @@ module.exports = (db) => {
     // COALESCE(?, auto_advance) bind could never do (COALESCE only falls through on
     // NULL, not on 0/false).
     const newAutoAdvance = 'auto_advance' in req.body ? (auto_advance ? 1 : 0) : printer.auto_advance;
+    // Same "present in body wins" rule for the camera fields: a plain COALESCE(?, col)
+    // can't tell "field omitted" from "field explicitly cleared", and both matter here.
+    // Picking "Default" in the camera dropdown sends camera_uid: '' to clear a previous
+    // selection; a COALESCE would silently keep the old uid instead. Same reasoning for
+    // camera_rotation resetting to 0.
+    const newCameraUid      = 'camera_uid' in req.body ? (camera_uid || null) : printer.camera_uid;
+    const newCameraRotation = 'camera_rotation' in req.body ? (camera_rotation || 0) : printer.camera_rotation;
+    const newCameraFlipH    = 'camera_flip_h' in req.body ? (camera_flip_h ? 1 : 0) : printer.camera_flip_h;
+    const newCameraFlipV    = 'camera_flip_v' in req.body ? (camera_flip_v ? 1 : 0) : printer.camera_flip_v;
 
     // Compute effective new values for all tracked fields (COALESCE: body wins, else keep existing)
     const after = {
@@ -234,12 +270,18 @@ module.exports = (db) => {
       loaded_material: newMaterial,
       loaded_color:    newColor,
       auto_advance:    newAutoAdvance,
+      camera_uid:      newCameraUid,
+      camera_rotation: newCameraRotation,
+      camera_flip_h:   newCameraFlipH,
+      camera_flip_v:   newCameraFlipV,
     };
 
     const FIELD_LABELS = {
       name: 'Name', ip: 'IP address or hostname', group_name: 'Group', type: 'Connector type',
       model: 'Model', serial_number: 'Serial number',
       loaded_material: 'Material', loaded_color: 'Color', auto_advance: 'Auto-advance',
+      camera_uid: 'Camera', camera_rotation: 'Camera rotation',
+      camera_flip_h: 'Camera flip (horizontal)', camera_flip_v: 'Camera flip (vertical)',
     };
 
     try {
@@ -256,10 +298,15 @@ module.exports = (db) => {
             decommission_note = COALESCE(?, decommission_note),
             loaded_material = ?,
             loaded_color = ?,
-            auto_advance = ?
+            auto_advance = ?,
+            camera_uid = ?,
+            camera_rotation = ?,
+            camera_flip_h = ?,
+            camera_flip_v = ?
         WHERE id = ?
       `).run(name, ip, api_key, serial_number, group_name, type, normalized, is_held, decommission_note ?? null,
-             newMaterial, newColor, newAutoAdvance, req.params.id);
+             newMaterial, newColor, newAutoAdvance,
+             newCameraUid, newCameraRotation, newCameraFlipH, newCameraFlipV, req.params.id);
 
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer update into a reported error.
@@ -496,7 +543,13 @@ module.exports = (db) => {
 
     const camera = await driver.getCameraUrl(printer);
     if (!camera) return res.json({ available: false });
-    res.json({ available: true, ...camera });
+    res.json({
+      available: true,
+      ...camera,
+      rotation: printer.camera_rotation || 0,
+      flipH: !!printer.camera_flip_h,
+      flipV: !!printer.camera_flip_v,
+    });
   });
 
   // GET /api/printers/:id/raw-status — calls the printer's driver, returns raw response for debugging

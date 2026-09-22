@@ -391,4 +391,14 @@ try {
   )`);
 } catch (_) {}
 
+// Camera display preferences, applied client-side as a CSS transform regardless of
+// connector (see GET /api/printers/:id/camera). camera_uid selects which crowsnest
+// webcam entry to use when a Klipper printer has more than one configured (Moonraker
+// assigns each webcam a stable uid; see server/drivers/klipper.js's listCameras).
+// Unused, and harmless, for connectors with at most one camera.
+try { db.exec('ALTER TABLE printers ADD COLUMN camera_uid TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE printers ADD COLUMN camera_rotation INTEGER DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE printers ADD COLUMN camera_flip_h INTEGER DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE printers ADD COLUMN camera_flip_v INTEGER DEFAULT 0'); } catch (_) {}
+
 module.exports = db;

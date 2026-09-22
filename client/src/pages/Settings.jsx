@@ -186,12 +186,36 @@ export default function Settings() {
     }
   }
 
-  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', serial_number: '', model: '', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false });
+  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', serial_number: '', model: '', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false, camera_uid: '', camera_rotation: 0, camera_flip_h: false, camera_flip_v: false });
   const [addResult, setAddResult] = useState(null);
   const [addError, setAddError] = useState(null);
   const [adding, setAdding] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState(null); // { ok, message } | null
+  const [cameraList, setCameraList] = useState(null); // [{ uid, name, enabled }] | null (not fetched yet)
+  const [loadingCameras, setLoadingCameras] = useState(false);
+
+  async function handleListCameras() {
+    setLoadingCameras(true);
+    try {
+      const res = await fetch('/api/printers/list-cameras', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: addForm.type,
+          ip: addForm.ip.trim(),
+          api_key: addForm.api_key.trim(),
+          serial_number: addForm.serial_number.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setCameraList(res.ok ? data.cameras || [] : []);
+    } catch (_) {
+      setCameraList([]);
+    } finally {
+      setLoadingCameras(false);
+    }
+  }
 
   async function handleTestConnection() {
     setTestingConnection(true);
@@ -248,13 +272,18 @@ export default function Settings() {
           loaded_material: addForm.loaded_material.trim() || null,
           loaded_color: addForm.loaded_color.trim() || null,
           auto_advance: addForm.auto_advance,
+          camera_uid: addForm.camera_uid || null,
+          camera_rotation: addForm.camera_rotation,
+          camera_flip_h: addForm.camera_flip_h,
+          camera_flip_v: addForm.camera_flip_v,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Add failed');
       setAddResult(data);
-      setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false });
+      setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false, camera_uid: '', camera_rotation: 0, camera_flip_h: false, camera_flip_v: false });
       setTestResult(null);
+      setCameraList(null);
     } catch (err) {
       setAddError(err.message);
     } finally {
@@ -970,8 +999,9 @@ export default function Settings() {
                 onChange={e => {
                   const t = e.target.value;
                   const first = allModels.find(m => m.connector === t);
-                  setAddForm(p => ({ ...p, type: t, model: first?.model_id || '', serial_number: '' }));
+                  setAddForm(p => ({ ...p, type: t, model: first?.model_id || '', serial_number: '', camera_uid: '' }));
                   setTestResult(null);
+                  setCameraList(null);
                 }}
                 style={inputStyle}
               >
@@ -1011,7 +1041,7 @@ export default function Settings() {
               <label style={{ display: 'block', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>IP Address or Hostname *</label>
               <input
                 value={addForm.ip}
-                onChange={e => { setAddForm(p => ({ ...p, ip: e.target.value })); setTestResult(null); }}
+                onChange={e => { setAddForm(p => ({ ...p, ip: e.target.value })); setTestResult(null); setCameraList(null); }}
                 required
                 placeholder="192.168.1.100 or octoprint-01"
                 style={inputStyle}
@@ -1125,6 +1155,86 @@ export default function Settings() {
                 Belt printer: auto-advance to the next job without operator confirmation
               </label>
             </div>
+            {(addForm.type === 'klipper' || addForm.type === 'octoprint') && (
+              <div style={{
+                gridColumn: '1 / -1', background: '#0f172a', border: '1px solid #1e2433',
+                borderRadius: 6, padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>Camera</div>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>Rotation</label>
+                    <select
+                      value={addForm.camera_rotation}
+                      onChange={e => setAddForm(p => ({ ...p, camera_rotation: Number(e.target.value) }))}
+                      style={{ ...inputStyle, width: 100 }}
+                    >
+                      <option value={0}>0°</option>
+                      <option value={90}>90°</option>
+                      <option value={180}>180°</option>
+                      <option value={270}>270°</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      id="add-printer-flip-h"
+                      type="checkbox"
+                      checked={addForm.camera_flip_h}
+                      onChange={e => setAddForm(p => ({ ...p, camera_flip_h: e.target.checked }))}
+                      style={{ accentColor: '#3b82f6' }}
+                    />
+                    <label htmlFor="add-printer-flip-h" style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>Flip horizontal</label>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      id="add-printer-flip-v"
+                      type="checkbox"
+                      checked={addForm.camera_flip_v}
+                      onChange={e => setAddForm(p => ({ ...p, camera_flip_v: e.target.checked }))}
+                      style={{ accentColor: '#3b82f6' }}
+                    />
+                    <label htmlFor="add-printer-flip-v" style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer' }}>Flip vertical</label>
+                  </div>
+                </div>
+                {addForm.type === 'klipper' && (
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>
+                      Camera (crowsnest, for a printer with more than one configured)
+                    </label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select
+                        value={addForm.camera_uid}
+                        onChange={e => setAddForm(p => ({ ...p, camera_uid: e.target.value }))}
+                        style={{ ...inputStyle, maxWidth: 260 }}
+                      >
+                        <option value="">Default (first enabled)</option>
+                        {(cameraList || []).map(c => (
+                          <option key={c.uid} value={c.uid}>{c.name}{c.enabled ? '' : ' (disabled)'}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleListCameras}
+                        disabled={loadingCameras || !addForm.ip.trim()}
+                        style={{
+                          background: 'transparent', color: '#94a3b8', border: '1px solid #2d3748',
+                          borderRadius: 6, padding: '4px 10px', fontSize: 12,
+                          cursor: loadingCameras || !addForm.ip.trim() ? 'default' : 'pointer',
+                          opacity: loadingCameras || !addForm.ip.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        {loadingCameras ? 'Loading...' : 'Find cameras'}
+                      </button>
+                    </div>
+                    {cameraList !== null && cameraList.length === 0 && (
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                        No cameras found. Confirm the printer is reachable and crowsnest is configured.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <button
             type="submit"
