@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { rotationFitTransform, useNaturalSize } from '../cameraTransform';
+import { buildColorHexMap } from '../filamentColorHex';
+import ColorSwatch from '../components/ColorSwatch';
 import { useParams, useNavigate } from 'react-router-dom';
 
 function formatTimestamp(ms) {
@@ -95,6 +97,7 @@ export default function PrinterDetail() {
   const [models, setModels]           = useState([]);
   const [filamentTypes, setFilamentTypes]   = useState([]);
   const [filamentColors, setFilamentColors] = useState([]);
+  const colorHexMap = useMemo(() => buildColorHexMap(filamentColors), [filamentColors]);
   const [groups, setGroups]                 = useState([]);
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsDraft, setDetailsDraft]     = useState({});
@@ -727,9 +730,10 @@ export default function PrinterDetail() {
               <span>Connector: <span style={{ color: '#94a3b8' }}>{printer.type}</span></span>
             )}
             {(printer.loaded_material || printer.loaded_color) && (
-              <span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 Loaded:{' '}
-                <span style={{ color: '#7dd3fc' }}>
+                <span style={{ color: '#7dd3fc', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <ColorSwatch hex={colorHexMap.get(printer.loaded_color)} />
                   {[printer.loaded_material, printer.loaded_color].filter(Boolean).join(' · ')}
                 </span>
               </span>
