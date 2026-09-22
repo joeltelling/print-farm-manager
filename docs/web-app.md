@@ -43,6 +43,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/filamentColorHex.js` | Builds a color-name-to-hex-code lookup from `GET /api/filaments/colors`, for showing a printer's loaded color as a swatch outside the Filament Library table |
 | `client/src/components/ColorSwatch.jsx` | Small colored square for a filament color's hex code; renders nothing if no hex is set |
 | `client/src/usePinnedPrinters.js` | Per-browser (`localStorage`) pinned-printer set for Fleet's Pinned section |
+| `client/src/components/CommandPalette.jsx` | Global Cmd/Ctrl+K jump-to-anything search, mounted once in `App.jsx` |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -89,6 +90,17 @@ Rendered by `App.jsx` in place of the whole layout shell whenever `AuthContext`'
 - **Otherwise:** email and password fields, submitting to `POST /api/auth/login`. If `oidcEnabled` is also true, a "Sign in with SSO" link to `/api/auth/oidc/login` appears below a divider.
 
 A successful bootstrap or login calls `setUser` from `AuthContext`, which re-renders `App.jsx` into the normal layout immediately, no page reload. If the path was `/backup-login`, it is reset to `/` first (via `history.replaceState`) since that path has no matching route once the normal app mounts.
+
+## Command Palette
+
+`client/src/components/CommandPalette.jsx`, mounted once in `App.jsx` inside `<BrowserRouter>` (so `useNavigate` works), available from every page once signed in.
+
+Opens on **Cmd+K** (Mac) / **Ctrl+K** (elsewhere), Escape closes it, or the sidebar's **Search** button, which dispatches an `openCommandPalette` window `CustomEvent` (the same cross-component-tree signal pattern `App.jsx` already uses for `farmNameChanged`). `GET /api/printers`, `/api/projects`, and `/api/parts` are fetched once, lazily, the first time the palette is actually opened, not on every page load.
+
+Typing filters printers, projects, and parts by a case-insensitive substring match on name (nothing shown until at least one character is typed: this is a jump-to tool, not a fleet report), capped at 30 results. Arrow keys move the highlighted result, Enter or a click chooses it:
+
+- A **printer** result navigates to `/printers/:id` (an existing route).
+- A **project** result navigates to `/projects?open=<id>`. A **part** result navigates to `/projects?open=<projectId>&part=<id>`, also expanding that part's Details panel. Projects.jsx has never had its own `:id` route (which project's detail view is open is plain `selectedId` component state), so these are read once on mount by a `useSearchParams` effect in `Projects.jsx` rather than being two-way-synced URL state: a one-time "arrive here already open" jump, not a bookmarkable/shareable view.
 
 ## Dashboard Page
 
@@ -288,7 +300,7 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 
 `client/src/pages/Projects.jsx`
 
-Primary operator screen for setting up and launching print runs.
+Primary operator screen for setting up and launching print runs. Reads `?open=<projectId>` (and optionally `&part=<partId>`) from the URL once on mount, to open the detail view and expand a part's panel when arriving from `CommandPalette.jsx` (see its own section above).
 
 **List view (default):**
 - Only `active` projects show by default, ordered by dispatch priority (drag the ⠿ handle to reorder → `PUT /api/projects/reorder`). `draft`, `paused`, and `completed` projects are each hidden behind their own "Show X (count)" checkbox above the list, so a farm with a long project history doesn't bury the in-flight work; a checkbox only appears when at least one project has that status. State persists per browser (`localStorage`), same pattern as the Printers page's "Show decommissioned". If every project is filtered out, an empty-state prompts to check a box rather than showing the first-run "create your first project" message.
