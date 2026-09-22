@@ -25,10 +25,21 @@ function sweepOidcFlows() {
 
 module.exports = (db) => {
   // GET /api/auth/status: tells the client whether to show the bootstrap
-  // form or the normal login form, and whether to offer the SSO button.
+  // form or the normal login form, whether to offer the SSO button, and
+  // whether to skip the form entirely and redirect straight to the IdP.
+  // autoSsoRedirect is gated on oidc.isConfigured() here (not just the raw
+  // setting) so an admin who enables it before finishing OIDC setup, or a
+  // farm whose OIDC env vars later go missing, can never end up redirecting
+  // a visitor into a login flow that 404s instead of falling back to the
+  // password form.
   router.get('/status', (req, res) => {
     const userCount = db.prepare('SELECT COUNT(*) AS count FROM users').get().count;
-    res.json({ needsBootstrap: userCount === 0, oidcEnabled: oidc.isConfigured() });
+    const autoSsoSetting = db.prepare("SELECT value FROM settings WHERE key = 'auto_sso_redirect'").get();
+    res.json({
+      needsBootstrap: userCount === 0,
+      oidcEnabled: oidc.isConfigured(),
+      autoSsoRedirect: autoSsoSetting?.value === '1' && oidc.isConfigured(),
+    });
   });
 
   // POST /api/auth/bootstrap: creates the first user (always role 'admin').

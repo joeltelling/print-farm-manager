@@ -401,6 +401,13 @@ try { db.exec('ALTER TABLE printers ADD COLUMN camera_rotation INTEGER DEFAULT 0
 try { db.exec('ALTER TABLE printers ADD COLUMN camera_flip_h INTEGER DEFAULT 0'); } catch (_) {}
 try { db.exec('ALTER TABLE printers ADD COLUMN camera_flip_v INTEGER DEFAULT 0'); } catch (_) {}
 
+// Operator-supplied OctoEverywhere URL (https://octoeverywhere.com), an optional
+// remote-access alternative to the printer's local IP for the "open web interface"
+// links on Fleet and the Dashboard fleet grid. OctoEverywhere generates this URL
+// per-printer in its own dashboard; the app has no way to look it up, so it is
+// entered by the operator like any other connection setting.
+try { db.exec('ALTER TABLE printers ADD COLUMN octoeverywhere_url TEXT'); } catch (_) {}
+
 // Per-lane filament state for a multi-toolhead Klipper printer, synced automatically
 // from the klipper-filament-sync plugin's Moonraker database entries (namespace
 // "lane_data") on every poll: see server/drivers/klipper.js's getLaneData and

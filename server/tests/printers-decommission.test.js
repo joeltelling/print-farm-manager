@@ -33,6 +33,7 @@ beforeAll(() => {
       camera_rotation  INTEGER DEFAULT 0,
       camera_flip_h    INTEGER DEFAULT 0,
       camera_flip_v    INTEGER DEFAULT 0,
+      octoeverywhere_url TEXT,
       created_at       INTEGER NOT NULL
     );
     CREATE TABLE projects (
@@ -83,6 +84,15 @@ beforeAll(() => {
     CREATE TABLE printer_groups (
       name       TEXT PRIMARY KEY,
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE printer_lanes (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      printer_id  INTEGER NOT NULL,
+      lane_index  INTEGER NOT NULL,
+      material    TEXT,
+      color       TEXT,
+      updated_at  INTEGER NOT NULL,
+      UNIQUE(printer_id, lane_index)
     );
   `);
 

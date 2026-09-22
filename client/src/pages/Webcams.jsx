@@ -1,7 +1,80 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { cameraTransform } from '../cameraTransform';
+import { rotationFitTransform, useNaturalSize } from '../cameraTransform';
 
 const SNAPSHOT_REFRESH_MS = 30000;
+
+// One card. Pulled out of the page's map() so its rotation-fit natural-size
+// state (see cameraTransform.js) is a proper per-image hook instance instead
+// of one shared state object keyed by printer id.
+function WebcamCard({ printer, camera, isLive, onToggleLive, refreshedAt }) {
+  const [natural, onImgLoad] = useNaturalSize();
+  const lanes = printer.lanes || [];
+
+  return (
+    <div style={{
+      background: '#131720', border: '1px solid #1e2433', borderRadius: 8, padding: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
+          {printer.name}
+        </div>
+        {camera?.streamUrl && (
+          <button
+            onClick={onToggleLive}
+            style={{
+              background: isLive ? '#2563eb' : 'transparent',
+              color: isLive ? '#fff' : '#94a3b8',
+              border: '1px solid #2d3748', borderRadius: 6,
+              padding: '3px 8px', fontSize: 11, cursor: 'pointer',
+            }}
+          >
+            {isLive ? 'Stop Live View' : 'Watch Live'}
+          </button>
+        )}
+      </div>
+      {/* What's loaded: legacy single loaded_material/loaded_color for a printer
+          with no lane plugin, or every lane klipper-filament-sync reports (see
+          server/drivers/klipper.js getLaneData) for one that has it. */}
+      {(lanes.length > 0 || printer.loaded_material || printer.loaded_color) && (
+        <div style={{ fontSize: 11, color: '#7dd3fc', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {lanes.length > 0
+            ? lanes.map(l => (
+                <span key={l.lane_index}>Lane {l.lane_index}: {[l.material, l.color].filter(Boolean).join(' · ') || '(not set)'}</span>
+              ))
+            : <span>{[printer.loaded_material, printer.loaded_color].filter(Boolean).join(' · ')}</span>}
+        </div>
+      )}
+      {isLive ? (
+        <img
+          key={camera.streamUrl}
+          src={camera.streamUrl}
+          alt={`${printer.name} live feed`}
+          onLoad={onImgLoad}
+          style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a', transform: rotationFitTransform(camera, natural) }}
+        />
+      ) : camera?.snapshotUrl ? (
+        <img
+          src={`${camera.snapshotUrl}${camera.snapshotUrl.includes('?') ? '&' : '?'}_=${refreshedAt}`}
+          alt={`${printer.name} snapshot`}
+          onLoad={onImgLoad}
+          style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a', transform: rotationFitTransform(camera, natural) }}
+        />
+      ) : (
+        <div style={{
+          width: '100%', height: 120, borderRadius: 4, background: '#0a0f1a',
+          border: '1px dashed #2d3748', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', fontSize: 12, color: '#475569', textAlign: 'center', padding: 8,
+        }}>
+          {camera === undefined
+            ? 'Loading...'
+            : camera.available
+              ? 'No snapshot configured'
+              : 'No camera'}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // A plain snapshot gallery, not the fleet status grid: no color-coded highlighting,
 // just an occasional still image per printer. Each printer's camera info (does it
@@ -64,60 +137,16 @@ export default function Webcams() {
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16,
       }}>
-        {printers.map(p => {
-          const camera = cameras[p.id];
-          const isLive = liveViewId === p.id;
-          return (
-            <div key={p.id} style={{
-              background: '#131720', border: '1px solid #1e2433', borderRadius: 8, padding: 12,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
-                  {p.name}
-                </div>
-                {camera?.streamUrl && (
-                  <button
-                    onClick={() => setLiveViewId(isLive ? null : p.id)}
-                    style={{
-                      background: isLive ? '#2563eb' : 'transparent',
-                      color: isLive ? '#fff' : '#94a3b8',
-                      border: '1px solid #2d3748', borderRadius: 6,
-                      padding: '3px 8px', fontSize: 11, cursor: 'pointer',
-                    }}
-                  >
-                    {isLive ? 'Stop Live View' : 'Watch Live'}
-                  </button>
-                )}
-              </div>
-              {isLive ? (
-                <img
-                  key={camera.streamUrl}
-                  src={camera.streamUrl}
-                  alt={`${p.name} live feed`}
-                  style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
-                />
-              ) : camera?.snapshotUrl ? (
-                <img
-                  src={`${camera.snapshotUrl}${camera.snapshotUrl.includes('?') ? '&' : '?'}_=${refreshedAt}`}
-                  alt={`${p.name} snapshot`}
-                  style={{ width: '100%', borderRadius: 4, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
-                />
-              ) : (
-                <div style={{
-                  width: '100%', height: 120, borderRadius: 4, background: '#0a0f1a',
-                  border: '1px dashed #2d3748', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: 12, color: '#475569', textAlign: 'center', padding: 8,
-                }}>
-                  {camera === undefined
-                    ? 'Loading...'
-                    : camera.available
-                      ? 'No snapshot configured'
-                      : 'No camera'}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {printers.map(p => (
+          <WebcamCard
+            key={p.id}
+            printer={p}
+            camera={cameras[p.id]}
+            isLive={liveViewId === p.id}
+            onToggleLive={() => setLiveViewId(liveViewId === p.id ? null : p.id)}
+            refreshedAt={refreshedAt}
+          />
+        ))}
       </div>
     </div>
   );

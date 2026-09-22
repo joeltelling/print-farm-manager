@@ -2,6 +2,53 @@
 
 ---
 
+## 2026-09-22: automatic SSO redirect, with a local-login fallback
+
+Requested: an admin-only setting to send the login page straight to the identity provider instead of showing the local email/password form, plus a fixed URL that always reaches local sign-in regardless of that setting, for when the IdP is unreachable or misconfigured.
+
+Built entirely on the existing OIDC support (`server/oidc.js`, `docs/auth.md`): no new dependency, no new auth mechanism, and no change to how any route is actually protected. `auto_sso_redirect` is a new admin-only `settings` row (`PUT /api/settings/auto_sso_redirect`, `403` for an operator); `GET /api/auth/status` reports the effective value as `autoSsoRedirect`, always `false` if OIDC's environment variables aren't set regardless of the raw setting, so the toggle can never redirect a visitor into a login flow that 404s. `client/src/pages/Login.jsx` renders before `App.jsx` mounts its router (it's shown for any pathname while logged out), so `/backup-login` is a plain `window.location.pathname` check rather than a route: it forces the local form, and a successful login from there resets the address bar to `/` first so the app mounts on the Dashboard instead of an unmatched path.
+
+### Changes
+- `server/routes/settings.js`: `auto_sso_redirect` added to `ALLOWED_KEYS`, admin-only (`ADMIN_ONLY_KEYS`), validated to `"0"`/`"1"`.
+- `server/routes/auth.js`: `GET /api/auth/status` adds `autoSsoRedirect` (`auto_sso_redirect` setting AND `oidc.isConfigured()`).
+- `client/src/pages/Login.jsx`: auto-redirects to `/api/auth/oidc/login` when `autoSsoRedirect` is true and the request isn't for `/backup-login`; `/backup-login` always shows the local form and resets the URL to `/` after a successful login.
+- `client/src/App.jsx`: passes `forceLocal={window.location.pathname === '/backup-login'}` to `Login`.
+- `client/src/pages/Settings.jsx`: new admin-only "Single Sign-On" section, a checkbox that saves immediately.
+- `server/tests/settings.test.js`, `auth-routes.test.js`: coverage for the admin-only gate and the OIDC-not-configured-wins-over-setting rule.
+- `docs/auth.md`, `docs/api.md`, `docs/web-app.md`: documented the setting, the status field, and the client behavior.
+
+---
+
+## 2026-09-22: OctoEverywhere web-interface links, loaded filament visibility, rotated-camera sizing fix, sidebar scroll fix
+
+Four small follow-ups requested together after the camera and lane-sync work shipped.
+
+**Rotated-camera sizing:** a 90/270 `camera_rotation` was applying `transform: rotate()` inside a box still sized for the image's unrotated width and height, since a CSS transform repaints pixels without ever resizing the element's own layout box: the rotated feed visibly overflowed, or left an oversized gap in, every camera view. `cameraTransform.js` gains `rotationFitTransform`, which shrinks a sideways image by the ratio of its own short side to its long side (read from the loaded `<img>` via the new `useNaturalSize` hook) so it fits back inside its box instead of guessing a fixed aspect ratio that would be wrong for a non-4:3 stream. 0/180 degrees is unaffected, since rotation never changes the box size there.
+
+**OctoEverywhere:** a new optional `octoeverywhere_url` column lets an operator point a printer's "open web interface" link at its OctoEverywhere URL (generated in OctoEverywhere's own dashboard; this app has no way to look it up) instead of the local IP, so the link still works off the local network. Purely a link choice, shared by Fleet and the Dashboard fleet grid via the new `client/src/webUiLink.js`: OctoEverywhere is a remote-access proxy in front of an existing OctoPrint or Moonraker/Klipper web UI, not a connector, so this has no effect on polling or dispatch.
+
+**Loaded filament visibility:** the Webcams page and the Dashboard/Webcams hover preview now show what's loaded on the printer, which they previously didn't display at all: every `printer_lanes` row if the printer has klipper-filament-sync, or the legacy `loaded_material`/`loaded_color` otherwise. `GET /api/printers` now attaches each printer's `lanes` (batched query, same pattern as `dispatch-status`), so the client doesn't need a second fetch per printer.
+
+**Sidebar scroll:** the layout shell used `min-height: 100vh` on `#layout`, so a page taller than the viewport stretched the whole layout (sidebar included) past it instead of scrolling just the content area, pushing "Sign out" below the fold. Changed to a fixed `height: 100vh` so `#main`'s existing `overflow-y: auto` actually creates its own scroll region and the sidebar (and Sign out) stays pinned to the real viewport.
+
+### Changes
+- `client/src/cameraTransform.js`: new `rotationFitTransform`, `useNaturalSize`.
+- `client/src/useCameraHover.jsx`, `client/src/pages/PrinterDetail.jsx`, `client/src/pages/Webcams.jsx`: use `rotationFitTransform` instead of the plain rotate/flip transform.
+- `client/src/pages/Webcams.jsx`: extracted `WebcamCard` (so the natural-size hook is a proper per-card instance), shows loaded filament per card.
+- `client/src/useCameraHover.jsx`: hover tooltip shows loaded filament.
+- `server/db.js`: new `printers.octoeverywhere_url` column.
+- `server/routes/printers.js`: `octoeverywhere_url` on create/update (present-in-body-wins, same as the camera fields); `GET /` attaches `lanes` per printer.
+- `client/src/webUiLink.js`: new, shared by `Fleet.jsx` and `FleetStatusGrid.jsx`.
+- `client/src/pages/PrinterDetail.jsx`, `client/src/pages/Settings.jsx`: OctoEverywhere URL field on the printer edit/add forms.
+- `client/src/App.jsx`: `#layout` uses `height: 100vh` instead of `min-height`.
+- `server/tests/printers-filaments.test.js`: `octoeverywhere_url` set/omit/clear coverage.
+- `server/tests/printers-decommission.test.js`: added the `octoeverywhere_url` column and a `printer_lanes` table its schema was missing (it exercises the real `GET /` list route, which now queries `printer_lanes`).
+- `docs/database.md`, `docs/api.md`, `docs/web-app.md`: documented the new column, the `lanes` field, and the client changes.
+
+Not hardware-validated: the rotation-fit math was verified by build and by reasoning through the geometry, but no physical rotated camera was reachable from this environment to confirm the visual fit end to end.
+
+---
+
 ## 2026-09-21: per-lane filament sync from klipper-filament-sync, multi-lane dispatch matching
 
 Requested: pull filament state from the klipper-filament-sync plugin (github.com/maevebaksa/klipper-filament-sync) instead of setting `loaded_material`/`loaded_color` by hand on a multi-toolhead Klipper printer, with as many lanes as the printer actually has, synced automatically on every poll.

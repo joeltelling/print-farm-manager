@@ -44,6 +44,7 @@ beforeAll(() => {
       last_used_at  INTEGER,
       revoked_at    INTEGER
     );
+    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   `);
 
   const authRouter = require('../routes/auth')(db);
@@ -61,7 +62,16 @@ describe('GET /api/auth/status', () => {
   test('needsBootstrap is true with zero users', async () => {
     const res = await request(app).get('/api/auth/status');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ needsBootstrap: true, oidcEnabled: false });
+    expect(res.body).toEqual({ needsBootstrap: true, oidcEnabled: false, autoSsoRedirect: false });
+  });
+
+  test('autoSsoRedirect is false when the setting is on but OIDC is not configured', async () => {
+    // oidc.isConfigured() is false in this test (no env vars set), which must
+    // win over the raw setting: never redirect into a login flow that 404s.
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_sso_redirect', '1')").run();
+    const res = await request(app).get('/api/auth/status');
+    expect(res.body.autoSsoRedirect).toBe(false);
+    db.prepare("DELETE FROM settings WHERE key = 'auto_sso_redirect'").run();
   });
 
   test('needsBootstrap is false once a user exists', async () => {

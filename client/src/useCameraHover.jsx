@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { cameraTransform } from './cameraTransform';
+import { rotationFitTransform, useNaturalSize } from './cameraTransform';
 
 // Shared hover-to-preview behavior for printer camera feeds: used by the
 // Dashboard fleet grid and the Webcams page's identical grid (see
@@ -18,7 +18,12 @@ export default function useCameraHover() {
 
   const onEnter = useCallback((printer, e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    setHover({ printerId: printer.id, name: printer.name, x: rect.left + rect.width / 2, y: rect.top });
+    setHover({
+      printerId: printer.id, name: printer.name,
+      loadedMaterial: printer.loaded_material, loadedColor: printer.loaded_color,
+      lanes: printer.lanes,
+      x: rect.left + rect.width / 2, y: rect.top,
+    });
 
     if (!requested.current.has(printer.id)) {
       requested.current.add(printer.id);
@@ -32,6 +37,7 @@ export default function useCameraHover() {
   const onLeave = useCallback(() => setHover(null), []);
 
   const current = hover ? cache[hover.printerId] : null;
+  const [natural, onImgLoad] = useNaturalSize();
 
   // Hover previews only ever show a still snapshot, never the live streamUrl: a
   // hover fires on every mouse pass over the grid, and opening a continuous MJPEG
@@ -54,14 +60,27 @@ export default function useCameraHover() {
         <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4, textAlign: 'center' }}>
           {hover.name}
         </div>
+        {(hover.lanes?.length > 0 || hover.loadedMaterial || hover.loadedColor) && (
+          <div style={{
+            fontSize: 11, color: '#7dd3fc', marginBottom: 4, textAlign: 'center',
+            display: 'flex', flexDirection: 'column', gap: 2,
+          }}>
+            {hover.lanes?.length > 0
+              ? hover.lanes.map(l => (
+                  <span key={l.lane_index}>{[l.material, l.color].filter(Boolean).join(' · ') || '(not set)'}</span>
+                ))
+              : <span>{[hover.loadedMaterial, hover.loadedColor].filter(Boolean).join(' · ')}</span>}
+          </div>
+        )}
         {current.snapshotUrl ? (
           <img
             src={current.snapshotUrl}
             alt={`${hover.name} camera`}
+            onLoad={onImgLoad}
             style={{
               width: 220, maxWidth: '40vw', height: 'auto',
               borderRadius: 4, display: 'block', background: '#0a0f1a',
-              transform: cameraTransform(current),
+              transform: rotationFitTransform(current, natural),
             }}
           />
         ) : (

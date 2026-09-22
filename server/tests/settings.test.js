@@ -4,6 +4,9 @@ const Database = require('better-sqlite3');
 
 let db;
 let app;
+// mutated per test to simulate "who is making this request": auto_sso_redirect
+// is admin-only, the rest of this router isn't (see server/routes/settings.js)
+let currentUser = { id: 1, role: 'admin' };
 
 beforeAll(() => {
   db = new Database(':memory:');
@@ -12,6 +15,7 @@ beforeAll(() => {
 
   app = express();
   app.use(express.json());
+  app.use((req, res, next) => { req.user = currentUser; next(); });
   app.use('/api/settings', require('../routes/settings')(db));
 });
 
@@ -72,5 +76,34 @@ describe('PUT /api/settings/dispatch_batch_size', () => {
       .send({ value: '5' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/unknown setting key/i);
+  });
+});
+
+describe('PUT /api/settings/auto_sso_redirect', () => {
+  afterEach(() => { currentUser = { id: 1, role: 'admin' }; });
+
+  test('admin can enable it', async () => {
+    const res = await request(app)
+      .put('/api/settings/auto_sso_redirect')
+      .send({ value: '1' });
+    expect(res.status).toBe(200);
+    expect(res.body.value).toBe('1');
+    expect(db.prepare("SELECT value FROM settings WHERE key = 'auto_sso_redirect'").get().value).toBe('1');
+  });
+
+  test('rejects a value other than 0 or 1', async () => {
+    const res = await request(app)
+      .put('/api/settings/auto_sso_redirect')
+      .send({ value: 'yes' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/must be "0" or "1"/i);
+  });
+
+  test('an operator cannot change it', async () => {
+    currentUser = { id: 2, role: 'operator' };
+    const res = await request(app)
+      .put('/api/settings/auto_sso_redirect')
+      .send({ value: '0' });
+    expect(res.status).toBe(403);
   });
 });

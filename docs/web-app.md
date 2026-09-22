@@ -23,7 +23,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/main.jsx` | React root, wraps `<App />` in `<AuthProvider>`, mounts into `#root` |
 | `client/src/App.jsx` | Layout shell, sidebar/topbar nav, `<Routes>`, renders `<Login>` when logged out |
 | `client/src/AuthContext.jsx` | Current-user state, checked once via `GET /api/auth/me` |
-| `client/src/pages/Login.jsx` | Sign-in form, SSO button, first-run bootstrap form |
+| `client/src/pages/Login.jsx` | Sign-in form, SSO button, first-run bootstrap form, automatic SSO redirect, `/backup-login` fallback |
 | `client/src/pages/Account.jsx` | Self-service API key management |
 | `client/src/pages/Users.jsx` | Admin-only account management |
 | `client/src/pages/Fleet.jsx` | Live printer grid |
@@ -31,13 +31,14 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Printers.jsx` | Searchable all-printers directory |
 | `client/src/pages/PrinterDetail.jsx` | Per-printer event timeline, note form, camera card, catalog-print popup |
 | `client/src/pages/Decommissioned.jsx` | Decommissioned printer list with notes and recommission |
-| `client/src/pages/Settings.jsx` | CSV import, flagged-row resolution, printer models |
+| `client/src/pages/Settings.jsx` | CSV import, flagged-row resolution, printer models, farm name, admin-only single sign-on redirect toggle |
 | `client/src/pages/Dashboard.jsx` | TV command center dashboard |
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
 | `client/src/components/FleetStatusGrid.jsx` | Grouped-by-model printer grid used by the Dashboard's fleet grid |
 | `client/src/useCameraHover.jsx` | Hover-to-preview camera hook used by `FleetStatusGrid`: lazy-fetches `GET /api/printers/:id/camera` on first hover, shows a snapshot only (never the live stream) |
-| `client/src/cameraTransform.js` | Builds the CSS `transform` for a camera image from `camera_rotation`/`camera_flip_h`/`camera_flip_v`; shared by PrinterDetail's camera card, `useCameraHover.jsx`, and Webcams.jsx |
+| `client/src/cameraTransform.js` | Builds the CSS `transform` for a camera image from `camera_rotation`/`camera_flip_h`/`camera_flip_v`, plus `rotationFitTransform`/`useNaturalSize` to keep a 90/270-rotated image's box correctly sized instead of overflowing it; shared by PrinterDetail's camera card, `useCameraHover.jsx`, and Webcams.jsx |
+| `client/src/webUiLink.js` | Picks the "open web interface" URL/label for a printer: its `octoeverywhere_url` if set, otherwise the connector-appropriate local-IP link; shared by Fleet.jsx and FleetStatusGrid.jsx |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -80,9 +81,10 @@ Navigation uses `react-router-dom` `<NavLink>` — active links are highlighted 
 Rendered by `App.jsx` in place of the whole layout shell whenever `AuthContext`'s `user` is `null`: no sidebar, no nav, a single centered card. `GET /api/auth/status` on mount decides which form to show:
 
 - **`needsBootstrap: true`** (a fresh install, zero users exist): name, email, and password fields, submitting to `POST /api/auth/bootstrap`. This form only ever appears once per install.
+- **`autoSsoRedirect: true`** (an admin turned it on in Settings, and OIDC is actually configured; see `docs/auth.md`): the form doesn't render at all. A `useEffect` sends the browser straight to `/api/auth/oidc/login` instead, with a "Redirecting to single sign-on..." message and a manual link to `/backup-login` shown in case the redirect is slow. `App.jsx` passes `forceLocal={true}` when the path is `/backup-login`, which always shows the normal form below instead, ignoring the redirect.
 - **Otherwise:** email and password fields, submitting to `POST /api/auth/login`. If `oidcEnabled` is also true, a "Sign in with SSO" link to `/api/auth/oidc/login` appears below a divider.
 
-A successful bootstrap or login calls `setUser` from `AuthContext`, which re-renders `App.jsx` into the normal layout immediately, no page reload.
+A successful bootstrap or login calls `setUser` from `AuthContext`, which re-renders `App.jsx` into the normal layout immediately, no page reload. If the path was `/backup-login`, it is reset to `/` first (via `history.replaceState`) since that path has no matching route once the normal app mounts.
 
 ## Dashboard Page
 
@@ -98,7 +100,7 @@ TV-optimized command center intended to be shown full-screen on a large monitor 
 |---|---|
 | Header | Branding, fleet utilization % (printing / total), live HH:MM:SS clock and date |
 | Hero stat cards | Printing, Idle, Awaiting sign-off, Parts Today (rolling 24h) — large tabular numerals |
-| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend. Hovering a cell shows a floating camera snapshot if the printer has one configured (`useCameraHover.jsx`); it never opens the live stream, since a hover fires far too often for that to be a lightweight preview. A `klipper` printer's cell is also clickable, opening `http://<printer.ip>` (Mainsail) in a new tab; other printers' cells are not clickable. |
+| Fleet grid | All active printers as color-coded 54×44px cells, grouped by model row with per-row status summary badges and a color legend. Hovering a cell shows a floating camera snapshot (rotation/flip-corrected) plus its loaded filament, if the printer has one configured (`useCameraHover.jsx`); it never opens the live stream, since a hover fires far too often for that to be a lightweight preview. A `klipper` or `octoprint` printer's cell is also clickable, opening its web interface in a new tab (`client/src/webUiLink.js`: the printer's `octoeverywhere_url` if set, otherwise `http://<printer.ip>`); other printers' cells are not clickable. |
 | Active Projects | All active projects, ordered by dispatch priority (same order as the Projects page), with **all parts** listed: per-part 3-segment progress bars (green = completed, blue = printing, dark = remaining), completion counts with `+N printing` annotation, and DONE badges on closed parts. No truncation. |
 | Needs Attention | Every printer requiring a human, sorted by priority: AWAITING → ERROR → STOPPED → PAUSED → OFFLINE, then longest-waiting first. Each row shows a reason badge, printer name, and wait time derived from `last_event_at`. Empty state renders a green "✓ All clear" badge. |
 
@@ -123,6 +125,8 @@ The bottom row is a 2-column grid (`2fr 1fr`): Active Projects takes two-thirds,
 
 A plain snapshot gallery, deliberately not the fleet status grid: no color-coded status highlighting, just a still image per printer plus one per-card action. Printer list comes from `GET /api/printers`, polled every 15 seconds. Each printer's camera info (does it have one, and its snapshot/stream URLs) is looked up once per page visit via `GET /api/printers/:id/camera`, since the URLs themselves are stable and only the image behind the snapshot URL changes; a card with no snapshot configured (or no camera at all) shows a placeholder instead. Every 30 seconds, each snapshot `<img>` gets a fresh cache-busting query param, triggering a new single-shot request, never the continuous MJPEG stream: same bandwidth discipline as the hover preview on the Dashboard's fleet grid (`useCameraHover.jsx`), for the same reason.
 
+Each card is a `WebcamCard` component (so its rotation-fit natural-size state, see below, is a proper per-image hook instance rather than one object shared across a `.map()`) and shows what's loaded above the image: every `printer_lanes` row (`GET /api/printers`'s `lanes` field) if the printer has klipper-filament-sync, one line per lane, or the legacy `loaded_material`/`loaded_color` otherwise.
+
 A card whose camera reports a `streamUrl` gets a **Watch Live** button. Live view is **single-instance**: the page keeps one `liveViewId` (the printer currently live, or `null`), so clicking Watch Live on a card switches live view to it and implicitly stops whatever other card was live, rather than opening a second concurrent MJPEG stream. Every rendered image (snapshot or live) has `client/src/cameraTransform.js`'s rotation/flip transform applied, the same as the printer detail camera card and the hover preview.
 
 ---
@@ -140,7 +144,7 @@ Live printer grid that polls `GET /api/printers` every 15 seconds (matching the 
 - Each printer card shows: name, status badge (color-coded), model tag, group name
 - **While PRINTING:** job filename (monospace, truncated), left-to-right blue progress bar, percentage, time remaining, and wall-clock ETA (e.g. "45m left · done 4:35 PM")
 - **While UPLOADING (display-only overlay):** the hardware still reports IDLE while the scheduler transfers a file, so cards with a healthy in-flight upload (`has_uploading_job` and not held) show a violet "Uploading" badge, the filename, and "Sending file to printer…". Held + uploading is a *failed* upload and renders the existing orange confirmation UI instead. The overlay is computed client-side (`displayStatus()` in Fleet.jsx) and never written to `printers.status`; the Uploading chip/count appears in the filter row and uploading printers are excluded from the Idle count.
-- IP address is not shown on cards, but a `klipper` printer's card header has a **Mainsail ↗** link that opens `http://<printer.ip>` in a new tab (`e.stopPropagation()` so it doesn't also trigger the card's own click-to-open-detail behavior)
+- IP address is not shown on cards, but a `klipper` or `octoprint` printer's card header has a web-interface link (**Mainsail ↗**, **OctoPrint ↗**, or **OctoEverywhere ↗** if the printer has an `octoeverywhere_url` set: see `client/src/webUiLink.js`) that opens in a new tab (`e.stopPropagation()` so it doesn't also trigger the card's own click-to-open-detail behavior)
 - Empty state message when no printers are registered
 
 **Status color scheme (aligned to Prusa UI):**
@@ -258,13 +262,15 @@ Responsive grid of decommissioned printers — printers that have been pulled fr
 5. Clicking Save calls `POST /api/printers` with the operator-selected model
 6. Saved rows are removed from the flagged list and the imported count increments
 
-**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
+**Section order** (tuned for first-run flow): Server Alerts → Printer Models → Groups → Filament Library → Add Printer → CSV Import → Farm Name → Single Sign-On (admin only) → Dispatch Settings → Farm Backup → Polling info. Models, Groups, and Filaments come first because the Add Printer form depends on them.
 
 **Groups section:** lists every registered group (`GET /api/groups`) with a Delete button per row and a name-only add form (`POST /api/groups`). Modeled on the Printer Models section, minus the type/color hierarchy Filament Library has. Deleting a group is blocked with an inline error naming the printer/G-code/project count still referencing it (`DELETE /api/groups/:name`, `409`). A group doesn't have to be created here first: typing a new name on a printer (Add Printer form, Printers bulk-edit, PrinterDetail, or CSV import) registers it automatically; this section exists for pre-creating a group before any printer uses it, and for cleanup.
 
-**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail. A **Test Connection** button under the IP/hostname field checks reachability against whatever is currently in the form, before the printer is ever saved (same `POST /api/printers/test-connection` the printer-edit form's button uses). The same **Camera** section (rotation, flip, and for `klipper` a crowsnest camera picker via `POST /api/printers/list-cameras`) as the printer-edit form's, described above, also works pre-save here.
+**Add Printer form:** shows a per-brand help box (`CREDENTIAL_HELP`) explaining where to find each brand's credentials (PrusaLink API key, Bambu LAN access code + serial, Elegoo/Klipper no key). If no models exist for the selected brand, an inline hint points at the Printer Models section. The Group field is a `<datalist>` autocomplete, same as Printers bulk-edit and PrinterDetail. A **Test Connection** button under the IP/hostname field checks reachability against whatever is currently in the form, before the printer is ever saved (same `POST /api/printers/test-connection` the printer-edit form's button uses). The same **Camera** section (rotation, flip, and for `klipper` a crowsnest camera picker via `POST /api/printers/list-cameras`) and **OctoEverywhere URL** field as the printer-edit form's, described above, also work pre-save here.
 
 **Farm Name section:** saves the `farm_name` setting (`PUT /api/settings/farm_name`); `App.jsx` fetches it on load and shows it in the sidebar/topbar, falling back to "Print Farm".
+
+**Single Sign-On section (admin only, hidden entirely for an operator):** a checkbox for the `auto_sso_redirect` setting, saved immediately on toggle (`PUT /api/settings/auto_sso_redirect`) rather than needing a separate Save button. If OIDC itself isn't configured (`GET /api/auth/status`'s `oidcEnabled`), the checkbox is replaced with a note pointing at the environment variables instead, since the toggle would do nothing yet. See `docs/auth.md`'s "Automatic SSO redirect" section for the full behavior, including the `/backup-login` fallback.
 
 **Farm Backup section:** Export and Restore buttons — see [api.md](api.md) for the backup endpoints.
 

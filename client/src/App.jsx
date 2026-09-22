@@ -64,17 +64,26 @@ export default function App() {
 
   // undefined = still checking the session; null = confirmed logged out.
   if (user === undefined) return null;
-  if (user === null) return <Login />;
+  // Login renders here, before BrowserRouter mounts (see its own comment on
+  // the /backup-login path reset), so this checks the raw pathname rather
+  // than a route match.
+  if (user === null) return <Login forceLocal={window.location.pathname === '/backup-login'} />;
 
   const NAV_ITEMS = navItems(user.role);
 
   return (
     <BrowserRouter>
       {/* Responsive layout: sidebar on desktop, top nav bar on mobile */}
+      {/* #layout is a fixed height:100vh, not min-height: with min-height, a page
+          whose content is taller than the viewport stretches #layout (and the
+          sidebar flex-stretched to match it) past the viewport too, pushing
+          "Sign out" below the fold and forcing a whole-page scroll to reach it.
+          Fixed height instead keeps the sidebar pinned to the actual viewport,
+          with #main's own overflow-y: auto scrolling just the content area. */}
       <style>{`
-        #layout { display: flex; min-height: 100vh; }
-        #sidebar { width: 180px; flex-shrink: 0; background: #131720; border-right: 1px solid #1e2433; display: flex; flex-direction: column; padding: 16px 8px; gap: 4px; }
-        #topbar { display: none; background: #131720; border-bottom: 1px solid #1e2433; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
+        #layout { display: flex; height: 100vh; }
+        #sidebar { width: 180px; flex-shrink: 0; background: #131720; border-right: 1px solid #1e2433; display: flex; flex-direction: column; padding: 16px 8px; gap: 4px; overflow-y: auto; }
+        #topbar { display: none; background: #131720; border-bottom: 1px solid #1e2433; padding: 8px 12px; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
         #main { flex: 1; padding: 24px 28px; overflow-y: auto; min-width: 0; }
         @media (max-width: 600px) {
           #layout { flex-direction: column; }

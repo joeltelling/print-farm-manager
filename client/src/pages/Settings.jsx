@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useToast } from '../useToast';
 import { useConfirm } from '../useConfirm';
+import { useAuth } from '../AuthContext';
 
 const inputStyle = {
   background: '#0f172a',
@@ -43,6 +44,7 @@ const CREDENTIAL_HELP = {
 };
 
 export default function Settings() {
+  const { user } = useAuth();
   const [showToast, toastEl] = useToast();
   const [confirm, confirmModal] = useConfirm();
   const [importing, setImporting] = useState(false);
@@ -186,7 +188,7 @@ export default function Settings() {
     }
   }
 
-  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', serial_number: '', model: '', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false, camera_uid: '', camera_rotation: 0, camera_flip_h: false, camera_flip_v: false });
+  const [addForm, setAddForm] = useState({ name: '', ip: '', api_key: '', serial_number: '', model: '', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false, camera_uid: '', camera_rotation: 0, camera_flip_h: false, camera_flip_v: false, octoeverywhere_url: '' });
   const [addResult, setAddResult] = useState(null);
   const [addError, setAddError] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -276,12 +278,13 @@ export default function Settings() {
           camera_rotation: addForm.camera_rotation,
           camera_flip_h: addForm.camera_flip_h,
           camera_flip_v: addForm.camera_flip_v,
+          octoeverywhere_url: addForm.octoeverywhere_url.trim() || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Add failed');
       setAddResult(data);
-      setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false, camera_uid: '', camera_rotation: 0, camera_flip_h: false, camera_flip_v: false });
+      setAddForm({ name: '', ip: '', api_key: '', serial_number: '', model: 'mk4s', group_name: '', type: 'prusa', loaded_material: '', loaded_color: '', auto_advance: false, camera_uid: '', camera_rotation: 0, camera_flip_h: false, camera_flip_v: false, octoeverywhere_url: '' });
       setTestResult(null);
       setCameraList(null);
     } catch (err) {
@@ -373,15 +376,46 @@ export default function Settings() {
   const [farmName, setFarmName] = useState('');
   const [farmNameError, setFarmNameError] = useState(null);
 
+  // Auto SSO redirect: admin-only (server enforces this too; see
+  // routes/settings.js). oidcEnabled comes from /api/auth/status, not
+  // /api/settings: it reflects whether OIDC env vars are actually set, which
+  // this toggle is meaningless without.
+  const [autoSsoRedirect, setAutoSsoRedirect] = useState(false);
+  const [oidcEnabled, setOidcEnabled] = useState(false);
+  const [ssoError, setSsoError] = useState(null);
+
   useEffect(() => {
     fetch('/api/settings')
       .then(r => r.json())
       .then(data => {
         if (data.dispatch_batch_size) setBatchSize(data.dispatch_batch_size);
         if (data.farm_name) setFarmName(data.farm_name);
+        setAutoSsoRedirect(data.auto_sso_redirect === '1');
       })
       .catch(() => {});
-  }, []);
+    if (user?.role === 'admin') {
+      fetch('/api/auth/status').then(r => r.json()).then(data => setOidcEnabled(!!data.oidcEnabled)).catch(() => {});
+    }
+  }, [user]);
+
+  async function handleToggleAutoSso(checked) {
+    setSsoError(null);
+    const previous = autoSsoRedirect;
+    setAutoSsoRedirect(checked); // optimistic: this is a simple on/off, not a value worth a Save button
+    try {
+      const res = await fetch('/api/settings/auto_sso_redirect', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: checked ? '1' : '0' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      showToast(checked ? 'Single sign-on redirect enabled' : 'Single sign-on redirect disabled');
+    } catch (err) {
+      setAutoSsoRedirect(previous);
+      setSsoError(err.message);
+    }
+  }
 
   async function handleSaveBatchSize() {
     setBatchSizeError(null);
@@ -1235,6 +1269,21 @@ export default function Settings() {
                 )}
               </div>
             )}
+            {(addForm.type === 'klipper' || addForm.type === 'octoprint') && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: 11, color: '#64748b', marginBottom: 4 }}>OctoEverywhere URL</label>
+                <input
+                  value={addForm.octoeverywhere_url}
+                  onChange={e => setAddForm(p => ({ ...p, octoeverywhere_url: e.target.value }))}
+                  placeholder="optional: https://xxxxx.octoeverywhere.com"
+                  style={inputStyle}
+                />
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                  When set, the "Open Web UI" links on Fleet and the Dashboard use this instead
+                  of the local IP, for reaching the printer off the local network.
+                </div>
+              </div>
+            )}
           </div>
           <button
             type="submit"
@@ -1404,6 +1453,37 @@ export default function Settings() {
           <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{farmNameError}</div>
         )}
       </section>
+
+      {/* Single Sign-On: admin only; see docs/auth.md */}
+      {user?.role === 'admin' && (
+        <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Single Sign-On</h2>
+          <p style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+            When enabled, the login page skips straight to your identity provider instead of
+            showing the local email/password form. <code style={{ fontFamily: 'monospace', color: '#94a3b8' }}>/backup-login</code>{' '}
+            always shows the local form, as a fallback if the identity provider is unreachable.
+          </p>
+          {!oidcEnabled ? (
+            <div style={{ fontSize: 13, color: '#64748b' }}>
+              OIDC is not configured on this server (see docs/auth.md for the environment variables).
+              Configure it first to enable this.
+            </div>
+          ) : (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#e2e8f0', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={autoSsoRedirect}
+                onChange={e => handleToggleAutoSso(e.target.checked)}
+                style={{ accentColor: '#3b82f6' }}
+              />
+              Automatically redirect to single sign-on
+            </label>
+          )}
+          {ssoError && (
+            <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 13 }}>{ssoError}</div>
+          )}
+        </section>
+      )}
 
       {/* Dispatch Settings */}
       <section style={{ background: '#1e2433', borderRadius: 10, padding: 20, marginBottom: 24, maxWidth: 640 }}>

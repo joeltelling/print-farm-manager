@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { cameraTransform } from '../cameraTransform';
+import { rotationFitTransform, useNaturalSize } from '../cameraTransform';
 import { useParams, useNavigate } from 'react-router-dom';
 
 function formatTimestamp(ms) {
@@ -82,6 +82,7 @@ export default function PrinterDetail() {
   const [camera, setCamera]     = useState(null);
   const [cameraError, setCameraError] = useState(false);
   const [liveView, setLiveView] = useState(false);
+  const [natural, onImgLoad] = useNaturalSize();
   const [jobHistory, setJobHistory] = useState({ jobs: [], page: 1, total_pages: 1, total: 0 });
   const [jobPage, setJobPage]   = useState(1);
   const [loading, setLoading]   = useState(true);
@@ -252,6 +253,7 @@ export default function PrinterDetail() {
       camera_rotation: printer.camera_rotation || 0,
       camera_flip_h: !!printer.camera_flip_h,
       camera_flip_v: !!printer.camera_flip_v,
+      octoeverywhere_url: printer.octoeverywhere_url || '',
     });
     setDetailsError(null);
     setEditingDetails(true);
@@ -333,6 +335,7 @@ export default function PrinterDetail() {
           camera_rotation: detailsDraft.camera_rotation,
           camera_flip_h: detailsDraft.camera_flip_h,
           camera_flip_v: detailsDraft.camera_flip_v,
+          octoeverywhere_url: detailsDraft.octoeverywhere_url.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -665,6 +668,22 @@ export default function PrinterDetail() {
                 )}
               </div>
             )}
+            {(printer.type === 'klipper' || printer.type === 'octoprint') && (
+              <label style={{ ...detailLabelStyle, marginTop: 10 }}>
+                OctoEverywhere URL
+                <input
+                  value={detailsDraft.octoeverywhere_url}
+                  onChange={e => setDetailsDraft(d => ({ ...d, octoeverywhere_url: e.target.value }))}
+                  disabled={savingDetails}
+                  placeholder="optional: https://xxxxx.octoeverywhere.com"
+                  style={detailInputStyle}
+                />
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 4, fontWeight: 400 }}>
+                  When set, the "Open Web UI" links on Fleet and the Dashboard use this instead
+                  of the local IP, for reaching the printer off the local network.
+                </div>
+              </label>
+            )}
             {detailsError && (
               <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 6 }}>{detailsError}</div>
             )}
@@ -775,7 +794,8 @@ export default function PrinterDetail() {
               src={camera.streamUrl}
               alt={`${printer.name} camera feed`}
               onError={() => setCameraError(true)}
-              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
+              onLoad={onImgLoad}
+              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a', transform: rotationFitTransform(camera, natural) }}
             />
           ) : camera.snapshotUrl ? (
             <img
@@ -783,7 +803,8 @@ export default function PrinterDetail() {
               src={camera.snapshotUrl}
               alt={`${printer.name} camera snapshot`}
               onError={() => setCameraError(true)}
-              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a', transform: cameraTransform(camera) }}
+              onLoad={onImgLoad}
+              style={{ width: '100%', maxWidth: 480, borderRadius: 6, display: 'block', background: '#0a0f1a', transform: rotationFitTransform(camera, natural) }}
             />
           ) : (
             <div style={{
