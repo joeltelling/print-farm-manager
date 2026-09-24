@@ -197,4 +197,106 @@ function rebuildMissingLedgers(db, { now = Date.now() } = {}) {
   return result;
 }
 
-module.exports = { SOURCES, ensureSchema, adjustPartQty, deleteForPart, rebuildMissingLedgers };
+// Sources whose rows represent one plate crediting the part (for per-printer plate counts).
+const PLATE_CREDIT_SOURCES = [SOURCES.PRINT_FINISHED, SOURCES.OPERATOR_CONFIRM, SOURCES.REBUILT_JOB];
+
+// Everything the part audit page needs, in one read. Returns null when the part does
+// not exist.
+//
+//   entries              ledger rows, oldest first, joined to job and gcode details
+//   uncredited_failures  jobs that started printing and ended failed or cancelled
+//                        without ever changing the count (no ledger row). These are
+//                        context only: they had no effect on completed_qty.
+//   printers             per-printer summary, largest net contribution first. Rows with
+//                        no printer (manual edits, baseline) are grouped under
+//                        printer_id null.
+//   reconciliation       ledger_sum vs completed_qty; matches is false if they differ
+function getPartAudit(db, partId) {
+  ensureSchema(db);
+
+  const part = db.prepare(`
+    SELECT id, project_id, name, target_qty, completed_qty, status, created_at, updated_at
+    FROM parts WHERE id = ?
+  `).get(partId);
+  if (!part) return null;
+
+  const project = db.prepare('SELECT id, name, status FROM projects WHERE id = ?').get(part.project_id) || null;
+
+  const entries = db.prepare(`
+    SELECT l.id, l.created_at, l.source, l.delta, l.balance_after, l.note,
+           l.job_id, l.printer_id, l.printer_name, l.gcode_id,
+           pr.id IS NOT NULL AS printer_exists,
+           pr.name           AS printer_current_name,
+           g.filename        AS gcode_filename,
+           j.parts_per_plate AS parts_per_plate,
+           j.status          AS job_status,
+           j.started_at      AS job_started_at,
+           j.finished_at     AS job_finished_at
+    FROM part_qty_ledger l
+    LEFT JOIN printers pr ON pr.id = l.printer_id
+    LEFT JOIN gcodes   g  ON g.id  = l.gcode_id
+    LEFT JOIN jobs     j  ON j.id  = l.job_id
+    WHERE l.part_id = ?
+    ORDER BY l.created_at, l.id
+  `).all(partId).map(e => ({ ...e, printer_exists: !!e.printer_exists }));
+
+  // started_at excludes queued jobs cancelled when the part closed (never printed).
+  // 'failed' jobs from a previous session that the scheduler recovered are 'finished'
+  // by now, so they are not listed here.
+  const uncreditedFailures = db.prepare(`
+    SELECT j.id AS job_id, j.status, j.parts_per_plate, j.started_at, j.finished_at,
+           COALESCE(j.finished_at, j.started_at) AS created_at,
+           j.printer_id, pr.name AS printer_name, pr.id IS NOT NULL AS printer_exists,
+           j.gcode_id, g.filename AS gcode_filename
+    FROM jobs j
+    LEFT JOIN printers pr ON pr.id = j.printer_id
+    LEFT JOIN gcodes   g  ON g.id  = j.gcode_id
+    WHERE j.part_id = ?
+      AND j.status IN ('failed', 'cancelled')
+      AND j.started_at IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM part_qty_ledger l WHERE l.job_id = j.id)
+    ORDER BY COALESCE(j.finished_at, j.started_at), j.id
+  `).all(partId).map(f => ({ ...f, printer_exists: !!f.printer_exists }));
+
+  const byPrinter = new Map();
+  const bucket = (printerId, name, exists) => {
+    const key = printerId ?? 'none';
+    if (!byPrinter.has(key)) {
+      byPrinter.set(key, {
+        printer_id: printerId ?? null, printer_name: name ?? null, printer_exists: !!exists,
+        plates: 0, added: 0, removed: 0, net: 0, failed_plates: 0,
+      });
+    }
+    return byPrinter.get(key);
+  };
+  for (const e of entries) {
+    const b = bucket(e.printer_id, e.printer_current_name ?? e.printer_name, e.printer_exists);
+    if (PLATE_CREDIT_SOURCES.includes(e.source)) b.plates++;
+    if (e.source === SOURCES.MARKED_FAILED) b.failed_plates++;
+    if (e.delta > 0) b.added += e.delta;
+    if (e.delta < 0) b.removed -= e.delta;
+    b.net += e.delta;
+  }
+  for (const f of uncreditedFailures) {
+    bucket(f.printer_id, f.printer_name, f.printer_exists).failed_plates++;
+  }
+  const printers = [...byPrinter.values()].sort((a, b) =>
+    (a.printer_id == null) - (b.printer_id == null) || b.net - a.net || String(a.printer_name).localeCompare(String(b.printer_name)));
+
+  const ledgerSum = entries.reduce((sum, e) => sum + e.delta, 0);
+
+  return {
+    part,
+    project,
+    entries,
+    uncredited_failures: uncreditedFailures,
+    printers,
+    reconciliation: {
+      ledger_sum: ledgerSum,
+      completed_qty: part.completed_qty || 0,
+      matches: ledgerSum === (part.completed_qty || 0),
+    },
+  };
+}
+
+module.exports = { SOURCES, ensureSchema, adjustPartQty, deleteForPart, rebuildMissingLedgers, getPartAudit };

@@ -33,6 +33,13 @@ module.exports = (db, scheduler = null) => {
   // Diagnostic: why is (or isn't) this part dispatching?
   // Mirrors the scheduler's eligibility rules (sweepIdlePrinters + candidate query)
   // so operators can self-diagnose "why isn't my part printing" from the UI.
+  // GET /api/parts/:id/audit: the part's quantity audit trail (see server/partLedger.js).
+  router.get('/:id/audit', (req, res) => {
+    const audit = partLedger.getPartAudit(db, req.params.id);
+    if (!audit) return res.status(404).json({ error: 'Part not found' });
+    res.json(audit);
+  });
+
   router.get('/:id/dispatch-status', (req, res) => {
     const part = db.prepare(`
       SELECT parts.*, ${ACTIVE_QTY_SQL},

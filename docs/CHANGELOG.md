@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-24: part audit API
+
+Phase 2 of 3 of the part audit trail: `GET /api/parts/:id/audit` returns everything the audit page needs in one read. That covers the part and project, every ledger entry joined to its job, printer, and G-code, and a per-printer summary (plates credited, parts added and removed, net contribution, failed plates). It also returns a reconciliation flag that turns false if the ledger ever stops adding up to `completed_qty`. It also lists uncredited failures: jobs that started printing and ended failed or cancelled without changing the count, so the page can show the full failure picture and not only the deductions. Read-only; no part-count path touched.
+
+Checked against the demo seed through a running server in `DEMO_MODE`: the Standard Benchy part returned 6 entries, 1 uncredited failure, and a matching reconciliation (47 of 47).
+
+### Changes
+- `server/partLedger.js`: `getPartAudit()` builds the response.
+- `server/routes/parts.js`: `GET /:id/audit`, declared before the other `/:id` routes.
+- `server/tests/part-audit.test.js` (new): 404, entry joins and ordering, uncredited-failure inclusion and exclusion rules, per-printer summary, deleted and renamed printers, deleted G-code, reconciliation.
+- `docs/api.md`: `GET /api/parts/:id/audit` entry; `PUT /api/parts/:id` notes the `manual_edit` ledger row.
+
+---
+
 ## 2026-09-24: part quantity ledger (audit trail foundation)
 
 Joel asked for a per-part audit page showing how a part's printed total was built up: which printers and which print jobs added to it, and which failures took away from it. Until now `parts.completed_qty` was a single running number with no record of why it changed, spread across eight separate code paths (the scheduler's automatic FINISHED credit, four set-ready branches, two complete-and-decommission branches, mark-job-failure, and manual edits on the Projects page).

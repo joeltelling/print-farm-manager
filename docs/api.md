@@ -352,6 +352,51 @@ Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirro
 - `reasons` — populated when `dispatchable` is `false`: global blockers (project not active, part complete, no G-code, remaining qty already covered by in-progress jobs) followed by per-G-code availability problems (no printers of that model, group/material/color mismatch, all matching printers busy or held).
 - `notes` — populated when `dispatchable` is `true`: advisory per-G-code items (e.g. one G-code can dispatch but another has no ready printers).
 
+### `GET /api/parts/:id/audit`
+
+The part's quantity audit trail: every change to `completed_qty`, which printer and job it came from, and the failures that took parts away. Read-only; backs the part audit page. Data comes from `part_qty_ledger` (see [database.md](database.md#part_qty_ledger)).
+
+```json
+{
+  "part": { "id": 3, "project_id": 2, "name": "2x4 Gridfinity Bin", "target_qty": 200, "completed_qty": 134, "status": "open", "created_at": 1789083501777, "updated_at": 1790289501777 },
+  "project": { "id": 2, "name": "Gridfinity Organizer Set", "status": "active" },
+  "entries": [
+    {
+      "id": 41, "created_at": 1790203101777, "source": "print_finished", "delta": 6, "balance_after": 32,
+      "note": null, "job_id": 88, "printer_id": 1, "printer_name": "MK4S_01", "printer_exists": true,
+      "printer_current_name": "MK4S_01", "gcode_id": 7, "gcode_filename": "gridfinity_2x4_mk4s.bgcode",
+      "parts_per_plate": 6, "job_status": "finished", "job_started_at": 1790195901777, "job_finished_at": 1790203101777
+    },
+    {
+      "id": 42, "created_at": 1790203401777, "source": "operator_adjust", "delta": -1, "balance_after": 31,
+      "note": "Operator confirmed 5 of 6 good (Set Ready)", "job_id": 88, "printer_id": 1, "printer_name": "MK4S_01",
+      "printer_exists": true, "printer_current_name": "MK4S_01", "gcode_id": 7, "gcode_filename": "gridfinity_2x4_mk4s.bgcode",
+      "parts_per_plate": 6, "job_status": "finished", "job_started_at": 1790195901777, "job_finished_at": 1790203101777
+    }
+  ],
+  "uncredited_failures": [
+    {
+      "job_id": 90, "status": "failed", "parts_per_plate": 6, "started_at": 1790210000000, "finished_at": null,
+      "created_at": 1790210000000, "printer_id": 2, "printer_name": "MK4S_02", "printer_exists": true,
+      "gcode_id": 7, "gcode_filename": "gridfinity_2x4_mk4s.bgcode"
+    }
+  ],
+  "printers": [
+    { "printer_id": 1, "printer_name": "MK4S_01", "printer_exists": true, "plates": 5, "added": 30, "removed": 1, "net": 29, "failed_plates": 0 },
+    { "printer_id": 2, "printer_name": "MK4S_02", "printer_exists": true, "plates": 0, "added": 0, "removed": 0, "net": 0, "failed_plates": 1 },
+    { "printer_id": null, "printer_name": null, "printer_exists": false, "plates": 0, "added": 105, "removed": 0, "net": 105, "failed_plates": 0 }
+  ],
+  "reconciliation": { "ledger_sum": 134, "completed_qty": 134, "matches": true }
+}
+```
+
+- `entries`: ledger rows, oldest first. `source` is one of `print_finished`, `operator_confirm`, `operator_adjust`, `marked_failed`, `manual_edit`, `rebuilt_job`, `baseline` (meanings in [database.md](database.md#part_qty_ledger)). `delta` is the change actually applied; `balance_after` is `completed_qty` right after it. `printer_name` is the name when the row was written; `printer_current_name` is the printer's name now, or `null` (with `printer_exists: false`) if the printer was deleted. `gcode_filename` and the `job_*` fields are `null` when the G-code or job no longer exists, and for manual edits and baseline rows.
+- `uncredited_failures`: jobs for this part that started printing and ended `failed` or `cancelled` without ever changing the count. They had no effect on `completed_qty` and are listed for context. Excludes queued jobs cancelled before they started, and jobs that have ledger rows (a credited plate later marked failed appears in `entries` as a `marked_failed` deduction instead). Jobs from before the ledger existed that were credited then marked failed also appear here, because the old schema cannot tell them apart; their net effect is zero either way.
+- `printers`: one row per printer that appears in `entries` or `uncredited_failures`, largest `net` first. `plates` counts credited plates (`print_finished`, `operator_confirm`, `rebuilt_job`); `added`/`removed` sum positive/negative deltas; `failed_plates` counts `marked_failed` deductions plus uncredited failures. Manual edits and baseline rows are grouped last under `printer_id: null`.
+- `reconciliation.matches` is `false` when the ledger does not add up to `completed_qty`, which means some write bypassed the ledger.
+
+**Errors:** `404` `{ "error": "Part not found" }`.
+
 ### `POST /api/parts`
 
 Required: `project_id`, `name`, `target_qty`.
@@ -363,6 +408,8 @@ A new part always starts `open` with `completed_qty: 0`. If the parent project's
 Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`.
 
 **`completed_qty` auto-status:** when `completed_qty` is included in the request body, `status` is recalculated server-side — `closed` if `completed_qty >= target_qty`, `open` otherwise. An explicit `status` field in the body is ignored when `completed_qty` is also present.
+
+**Audit trail:** a `completed_qty` that differs from the stored value writes one `manual_edit` row to `part_qty_ledger` (visible in `GET /api/parts/:id/audit`). Sending the unchanged value, as the Projects page does on every quantity save, writes nothing.
 
 **Reactivation:** if this update flips the part from `closed` back to `open` (e.g. raising `target_qty` above `completed_qty`) and the parent project's status is `completed`, the project is reactivated to `active` and the scheduler sweeps for idle printers immediately, same behavior as `POST /api/parts` and `POST /api/projects/:id/reactivate`.
 
