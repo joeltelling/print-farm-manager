@@ -8,7 +8,7 @@ No cloud. No subscriptions. No vendor lock-in.
 
 > **Security note:** This app has no built-in authentication. It is designed to run on a trusted local network only. Do not expose port 3000 (or 5173 in dev) to the internet — your printer API keys are served to any client that can reach the server. Run it behind your router's firewall or a local VPN.
 
-> **About this fork:** Print Farm Manager was created by Joel Telling (3D Printing Nerd) at [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager), which is no longer receiving commits. This repository, [seanlw/print-farm-manager](https://github.com/seanlw/print-farm-manager), continues the project: it keeps its own CI, publishes its own Docker image, keeps dependencies current with Dependabot, and adds an optional [Spoolman integration](docs/spoolman.md) that does not exist upstream. It remains MIT licensed.
+> **About this fork:** Print Farm Manager was created by Joel Telling (3D Printing Nerd) at [joeltelling/print-farm-manager](https://github.com/joeltelling/print-farm-manager). This repository, [seanlw/print-farm-manager](https://github.com/seanlw/print-farm-manager), is a fork that keeps its own CI, publishes its own Docker image, keeps dependencies current with Dependabot, and adds an optional [Spoolman integration](docs/spoolman.md) that does not exist upstream. It remains MIT licensed.
 
 ---
 
