@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-09-24: part audit page
+
+Phase 3 of 3 of the part audit trail. Clicking a part's progress bar (or the new "Audit ›" label beside its percentage) on the Projects page opens `/parts/:id/audit`. The page shows how the part's printed total was built up: a step chart of the running total against the target, a per-printer breakdown of what each machine contributed and lost, and a filterable timeline of every credit, correction, deduction, and failure with its printer, job number, and G-code file. Failures that never credited (a plate that failed or was stopped before any count was added) are included as dimmed zero-change rows and gray chart markers, so the page shows every failure and not only the ones that took parts away. The Back link returns to the Projects page with the part's project already open.
+
+Read-only, no new dependencies: the chart is hand-drawn SVG, and the layout switches to stacked cards below 600 px. Checked with `npm run build` and screenshots against the demo seed at 1280 px and 390 px (no horizontal page scroll on the phone width), including the hover tooltip and the Back link round trip.
+
+### Changes
+- `client/src/pages/PartAudit.jsx` (new): the audit page.
+- `client/src/App.jsx`: `/parts/:id/audit` route.
+- `client/src/pages/Projects.jsx`: each part's count label and progress bar link to its audit page, with an "Audit ›" affordance; the page opens the project passed as `openProjectId` in router state, so the audit page's Back link returns to it.
+- `docs/web-app.md`: Part Audit Page section, the Projects audit link, key-files table.
+
+---
+
 ## 2026-09-24: part audit API
 
 Phase 2 of 3 of the part audit trail: `GET /api/parts/:id/audit` returns everything the audit page needs in one read. That covers the part and project, every ledger entry joined to its job, printer, and G-code, and a per-printer summary (plates credited, parts added and removed, net contribution, failed plates). It also returns a reconciliation flag that turns false if the ledger ever stops adding up to `completed_qty`. It also lists uncredited failures: jobs that started printing and ended failed or cancelled without changing the count, so the page can show the full failure picture and not only the deductions. Read-only; no part-count path touched.

@@ -25,6 +25,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Settings.jsx` | CSV import, flagged-row resolution, printer models |
 | `client/src/pages/Dashboard.jsx` | TV command center dashboard |
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
+| `client/src/pages/PartAudit.jsx` | Per-part quantity audit trail (`/parts/:id/audit`) |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
@@ -244,6 +245,8 @@ Primary operator screen for setting up and launching print runs.
 - **Project-level targeting defaults:** two rows shown when a filament library or a group registry exists. *Filament*: Material/Color dropdowns → `PUT /api/projects/:id/filament`. *Groups*: checkboxes sourced from `GET /api/groups` → `PUT /api/projects/:id/groups`. Both apply to every G-code in the project that doesn't set its own override, and both are visible again in the per-gcode Targeting row below (Upload G-code and each G-code file's estimate row): a per-gcode value always wins over the project default, and the per-gcode picker's empty state reads "inherits project: X" instead of "all groups"/"any material" when a project default is set. See the "Targeting cascade" note in [database.md](database.md).
 - **Parts list:** each row shows name (with ▲/▼ priority buttons), a 3-segment progress bar, a fixed-width status badge (Open/Closed), and a Details toggle. A red `×` delete button appears at the far right — clicking it confirms then calls `DELETE /api/parts/:id`, which cascades to all jobs and G-code files for that part. Deletion is blocked (with an alert) if the part has an active uploading or printing job. All other editing is behind the Details button.
 
+  **Audit link:** the count label, progress bar, and the blue "Audit ›" next to the percentage are one link to the part's audit page (`/parts/:id/audit`, see below). The link is `draggable={false}` so dragging from it still reorders the row. Renaming stays in the Details panel.
+
   **Progress bar segments:** green = `completed_qty` (confirmed done); blue = `active_qty` (parts currently printing across all active jobs); dark background = not yet started. When active jobs push the total past `target_qty`, the bar rescales against `max(target, completed + active)` and an amber tick marks the target. The count label shows `976 +24 printing / 1000` when jobs are active.
 - **▲/▼ ordering buttons:** move a part up or down in dispatch priority. Updates `sort_order` via `PUT /api/parts/reorder`. Optimistic — local state reorders immediately.
 - **Details panel** (per part, toggle with "Details" button): four sections:
@@ -252,6 +255,22 @@ Primary operator screen for setting up and launching print runs.
   - *G-code Files* — lists each uploaded file with filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
   - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline. A successful upload also triggers a scheduler sweep: this is what actually makes a brand-new part (added via the form below) dispatchable, since the scheduler requires a matching G-code.
 - **Add Part form:** name + target quantity → `POST /api/parts`. If the parent project had `completed`, it's reactivated to `active` immediately, no separate manual reactivate step needed. The new part itself isn't dispatchable yet, though: it has no G-code, so uploading one (above) is what actually triggers dispatch.
+
+## Part Audit Page
+
+`client/src/pages/PartAudit.jsx`, route `/parts/:id/audit`, opened from a part's progress bar on the Projects page.
+
+Shows how a part's completed count was built up: which printers and print jobs added to it, which failures and corrections took away from it, and in what order. Read-only. It loads `GET /api/parts/:id/audit` once on mount and again on the **Refresh** button. There is no background polling (it is not a live page), so there is no toast or confirm modal.
+
+- **Back link** returns to the Projects page with this part's project already open (passes `openProjectId` in router state; `Projects.jsx` uses it as the initial selected project).
+- **Header:** part name and Open/Closed status, completed of target with a progress bar, and five figures: plates credited, parts added, parts removed, failed plates, printers involved.
+- **Reconciliation banner** (amber) if the ledger does not add up to `completed_qty`. It should never appear; if it does, some write bypassed `server/partLedger.js`.
+- **Pre-tracking note** when the part has `rebuilt_job` or `baseline` entries, explaining that history before the upgrade was rebuilt from job records.
+- **Completed total over time:** a hand-drawn SVG step chart (no chart library) of the running total, with the target as an amber line, red dots on deductions and corrections, and hollow gray rings on failures that were never credited. Hovering (or dragging on touch) snaps a crosshair to the nearest event and shows a tooltip with the time, event, printer, job, and change. The SVG is drawn at the container's measured width (`ResizeObserver`) so markers and text are never stretched.
+- **By printer:** one row per printer with plates credited, parts added, parts removed, failed plates, and net contribution (with a small bar). Printer names link to `/printers/:id`; a deleted printer shows its name with "(deleted)". Manual edits and the pre-tracking balance are grouped last under "No printer". On phones the Added and Removed columns are hidden.
+- **Timeline:** every ledger entry plus every uncredited failure, newest first (toggle for oldest first), filterable by printer and by event type (credits, deductions and corrections, failures not credited, manual edits and pre-tracking). Columns: time, event badge, printer, job number, G-code file, change (signed), running total, note. Uncredited failures show a change of 0 and are dimmed. Shows 100 rows at a time with a "Show more" button. Below 600 px the table becomes stacked cards.
+
+Event badges: *Print finished* (scheduler saw FINISHED), *Operator confirmed* (Set Ready or Complete and Decommission credited a job the scheduler never did), *Count corrected* (operator entered fewer or more good parts than the plate held), *Marked failed* (a credited plate was marked as a failed print), *Manual edit* (Have field edited on the Projects page), *Finished (pre-tracking)* and *Pre-tracking balance* (the one-time rebuild), *Failed, not credited* and *Stopped, not credited* (jobs that ended without changing the count).
 
 ## Jobs Page
 

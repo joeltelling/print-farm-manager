@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useToast } from '../useToast';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
@@ -894,7 +895,9 @@ export default function Projects() {
   });
 
   // Detail view
-  const [selectedId, setSelectedId]       = useState(null);
+  // The part audit page links back here with the part's project to reopen.
+  const location = useLocation();
+  const [selectedId, setSelectedId]       = useState(() => location.state?.openProjectId ?? null);
   const [detailProject, setDetailProject] = useState(null);
   const [parts, setParts]                 = useState([]);
   const [gcodesMap, setGcodesMap]         = useState({});
@@ -1649,8 +1652,15 @@ export default function Projects() {
                 <span style={{ fontWeight: 600, fontSize: 14 }}>{part.name}</span>
               </div>
 
-              {/* Progress */}
-              <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Progress: links to the part's audit trail. draggable={false} so a drag
+                  started here still reorders the row instead of dragging the link. */}
+              <Link
+                to={`/parts/${part.id}/audit`}
+                draggable={false}
+                title="View audit trail: how this count was built, by printer and job"
+                className="part-progress-link"
+                style={{ flex: 1, minWidth: 0, color: 'inherit', textDecoration: 'none', borderRadius: 4 }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 3 }}>
                   <span>
                     {part.completed_qty}
@@ -1660,7 +1670,10 @@ export default function Projects() {
                     {' / '}
                     {part.target_qty}
                   </span>
-                  <span>{pct}%</span>
+                  <span>
+                    {pct}%
+                    <span style={{ color: '#3b82f6', marginLeft: 8, fontWeight: 600 }}>Audit ›</span>
+                  </span>
                 </div>
                 <div style={{ position: 'relative', background: '#0f172a', borderRadius: 4, height: 8 }}>
                   {/* Completed segment */}
@@ -1691,7 +1704,7 @@ export default function Projects() {
                     }} />
                   )}
                 </div>
-              </div>
+              </Link>
 
               {/* Status indicator — dot + text (not a pill, so it doesn't read as a button
                   next to the Details toggle). Fixed width keeps bar length consistent. */}
