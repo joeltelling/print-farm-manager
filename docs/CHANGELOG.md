@@ -2,6 +2,36 @@
 
 ---
 
+## 2026-09-24: part quantity ledger (audit trail foundation)
+
+Joel asked for a per-part audit page showing how a part's printed total was built up: which printers and which print jobs added to it, and which failures took away from it. Until now `parts.completed_qty` was a single running number with no record of why it changed, spread across eight separate code paths (the scheduler's automatic FINISHED credit, four set-ready branches, two complete-and-decommission branches, mark-job-failure, and manual edits on the Projects page).
+
+This is phase 1 of 3: the data layer only. Nothing changes for operators yet. Every change to `completed_qty` now goes through one helper, `adjustPartQty()` in the new `server/partLedger.js`, which runs the same UPDATE the old inline SQL did and appends a row to the new append-only `part_qty_ledger` table in the same transaction. Each row records the job, printer (with a name snapshot that survives renames and deletes), G-code, the change actually applied, the running total after it, a source (`print_finished`, `operator_confirm`, `operator_adjust`, `marked_failed`, `manual_edit`), and a readable note such as "Operator confirmed 24 of 25 good (Set Ready)".
+
+Part-count behavior is mechanically preserved: same amounts, same conditions, same zero clamps, same part/project close and reopen logic. The ledger never credits anything on its own; it only records changes made by the existing events, so it cannot introduce a phantom credit and inherits their restart, reconnect, and poll-flap protection. New tests assert that a repeated FINISHED poll, a restart with a printer still latched on FINISHED, and a stale failed job from a previous session each write no ledger row. A new guard test scans the server source and fails if any file other than `partLedger.js` writes `completed_qty` directly; run against the previous code it flags all eight original call sites. The set-ready branches live inside `server/index.js` and are covered by that guard plus the helper tests, not by an end-to-end route test.
+
+Existing installs get a one-time history rebuild on the first start after upgrading: each finished job (including legacy `done` jobs) becomes a `rebuilt_job` row at its finish time, and when those do not add up to the current count (the old schema never stored operator count corrections or manual edits) one clearly labelled `baseline` row covers the difference. The rebuild never changes `completed_qty`. `node server/scripts/audit-dry-run.js` runs it against a snapshot of the live DB taken with SQLite's online backup API, so it can be checked on real farm data before deploying; `--check` is a read-only reconciliation of the live ledger afterwards.
+
+Verified against the demo seed and a real server start in `DEMO_MODE`: 16 job rows and 5 baseline rows rebuilt, zero mismatches, a second start rebuilds nothing. Not yet run against the production farm DB.
+
+Found while building this, not fixed here: mark-job-failure deducts the job's full `parts_per_plate` even when the operator already corrected that plate's count. Reproduced on a part at 10 whose last plate held 4: complete-and-decommission with 3 of 4 good takes it to 9, then mark-job-failure on the same job deducts 4 (to 5) instead of the 3 that were actually credited (to 6), leaving the count one part too low. The new ledger shows it directly as `operator_adjust -1` followed by `marked_failed -4`. Left for a separate change because it alters part-count behavior.
+
+### Changes
+- `server/partLedger.js` (new): `part_qty_ledger` schema, `adjustPartQty()`, `deleteForPart()`, and `rebuildMissingLedgers()`.
+- `server/db.js`: creates the ledger table and runs the rebuild for parts with no ledger rows on startup.
+- `server/scheduler.js`: `_handleFinished` credits through `adjustPartQty` (`print_finished`, with a note when recovering a job marked failed after a connection drop this session).
+- `server/index.js`: all three crediting branches of set-ready go through `adjustPartQty` (`operator_adjust` for a corrected count, `operator_confirm` for missed finish, connection-drop recovery, stopped on printer, and stalled upload).
+- `server/routes/printers.js`: complete-and-decommission and mark-job-failure go through `adjustPartQty`.
+- `server/routes/parts.js`: `PUT /api/parts/:id` records a `manual_edit` row only when `completed_qty` actually changes; part delete removes the part's ledger rows.
+- `server/routes/projects.js`: draft project delete removes each part's ledger rows.
+- `server/routes/backup.js`: export includes `part_qty_ledger`; restore clears it, restores backed-up rows, rebuilds parts from older backups, syncs its autoincrement, and reports the row count.
+- `server/seed-demo.js`: clears the ledger so the next start rebuilds it from the seeded jobs.
+- `server/scripts/audit-dry-run.js` (new): snapshot dry run, `--check` reconciliation, `--part` timeline.
+- `server/tests/part-ledger.test.js` (new), `server/tests/part-ledger-guard.test.js` (new); ledger cases added to `scheduler-finished.test.js`, `printers-decommission.test.js`, and `backup-restore.test.js`.
+- `docs/database.md`: `part_qty_ledger` table, sources, invariant, rebuild, and dry-run script. `docs/api.md`: backup export/restore include the ledger. `docs/README.md`: project map.
+
+---
+
 ## 2026-09-01: printerIdle bypass let dispatch exceed dispatch_batch_size
 
 Joel batch-confirmed a stack of held printers via Set Ready (N) with `dispatch_batch_size` set to 5, then individually confirmed roughly ten more printers that had shown a false failed-upload hold (the upload attempt was reported failed on our side, but the printer had actually completed the print). Fleet's uploading count briefly showed 7 concurrent uploads against the configured limit of 5.

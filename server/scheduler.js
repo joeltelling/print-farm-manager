@@ -4,6 +4,7 @@ const path = require('path');
 const { getDriver } = require('./drivers');
 const notifications = require('./notifications');
 const events = require('./events');
+const partLedger = require('./partLedger');
 
 const GCODE_DIR = path.join(__dirname, 'gcode');
 
@@ -542,12 +543,18 @@ class JobScheduler extends EventEmitter {
     this.db.prepare(`UPDATE jobs SET status = 'finished', finished_at = ? WHERE id = ?`)
       .run(now, job.id);
 
-    // Increment completed_qty
-    this.db.prepare(`
-      UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?
-    `).run(job.parts_per_plate, now, job.part_id);
-
-    const part = this.db.prepare('SELECT * FROM parts WHERE id = ?').get(job.part_id);
+    // Increment completed_qty (and record it in the part ledger)
+    const part = partLedger.adjustPartQty(this.db, {
+      partId: job.part_id,
+      delta: job.parts_per_plate,
+      source: partLedger.SOURCES.PRINT_FINISHED,
+      job,
+      printer,
+      note: job.status === 'failed'
+        ? 'Printer reported FINISHED after a connection drop this session'
+        : null,
+      now,
+    });
 
     console.log(`[scheduler] ${printer.name} finished — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
 

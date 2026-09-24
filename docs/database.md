@@ -4,7 +4,7 @@
 
 `server/db.js` manages the SQLite database. It opens the connection, sets pragmas, and runs `CREATE TABLE IF NOT EXISTS` for all tables on every startup. New columns on existing installs are added via `ALTER TABLE` migrations wrapped in `try/catch` — SQLite throws if the column already exists, which is silently ignored.
 
-On startup, `db.js` also runs one-time idempotent data migrations: seeding `printer_models` from existing printer/gcode records, and backfilling `printer_events` decommission entries for printers that were decommissioned before the events table existed.
+On startup, `db.js` also runs one-time idempotent data migrations: seeding `printer_models` from existing printer/gcode records, and backfilling `printer_events` decommission entries for printers that were decommissioned before the events table existed. It also creates `part_qty_ledger` and rebuilds a ledger for any part that has none yet (see below).
 
 ## Driver
 
@@ -111,6 +111,8 @@ A Part is **open** while `completed_qty < target_qty`. It transitions to **close
 
 `sort_order` controls dispatch priority within a project — the scheduler picks the lowest `sort_order` part first. Set via `PUT /api/parts/reorder`. New parts default to `0` and fall back to `created_at` as a tiebreaker.
 
+`completed_qty` is never written directly: every change goes through `adjustPartQty()` in `server/partLedger.js`, which also appends a `part_qty_ledger` row (see below). `server/tests/part-ledger-guard.test.js` fails if any other server file assigns `completed_qty` in an UPDATE.
+
 `print_time_seconds` and `material_grams` on parts are legacy columns retained for schema compatibility but no longer written to. Time and material estimates are now stored per-gcode (see below) so they can vary by printer model.
 
 ### gcodes
@@ -187,6 +189,47 @@ CREATE TABLE IF NOT EXISTS printer_events (
 | `note` | Events route (`POST /api/printers/:id/events`) | Operator-entered text |
 
 **Backfill migration:** on first server start after this table was introduced, any printer with `is_active = 0` and `decommissioned_at` set automatically receives a synthetic `decommission` event using the stored timestamp and note — idempotent across restarts.
+
+### part_qty_ledger
+
+Append-only audit trail behind `parts.completed_qty`: one row per change, recording which job and printer it came from and why. The schema lives in `server/partLedger.js` (`ensureSchema`), not inline in `db.js`, so there is one definition.
+
+```sql
+CREATE TABLE IF NOT EXISTS part_qty_ledger (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  part_id        INTEGER NOT NULL,   -- no FK; rows are deleted with their part
+  job_id         INTEGER,            -- null for manual edits and baseline rows
+  printer_id     INTEGER,            -- no FK; history survives printer deletion
+  printer_name   TEXT,               -- snapshot at write time, survives rename/delete
+  gcode_id       INTEGER,
+  delta          INTEGER NOT NULL,   -- change actually applied (after the zero clamp)
+  balance_after  INTEGER NOT NULL,   -- completed_qty right after this change
+  source         TEXT NOT NULL,      -- see table below
+  note           TEXT,               -- human-readable detail
+  created_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_part_qty_ledger_part ON part_qty_ledger(part_id, created_at);
+```
+
+**Invariant:** for every part, `SUM(delta)` equals `completed_qty`. `adjustPartQty()` runs the `parts` UPDATE and the ledger INSERT in one transaction, and records the change that actually happened, so a clamped deduction (for example `-4` against a count of `3`) is stored as `-3`.
+
+The ledger never credits anything on its own. Rows are written only from inside the existing events that already change the count, so it inherits their protection against double-firing across restarts, MQTT reconnects, and poll flaps.
+
+| `source` | Written by | Meaning |
+|---|---|---|
+| `print_finished` | `scheduler.js` `_handleFinished` | Printer reported FINISHED; full plate credited automatically |
+| `operator_confirm` | `index.js` set-ready (missed finish, connection-drop recovery, stopped on printer, stalled upload); `printers.js` complete-and-decommission (missed finish) | Operator confirmed a job the scheduler never credited |
+| `operator_adjust` | `index.js` set-ready and `printers.js` complete-and-decommission (normal finish, count changed) | Operator corrected the count of an already-credited plate, e.g. 24 of 25 good |
+| `marked_failed` | `printers.js` mark-job-failure (finished job) | Credited plate marked as a failed print; plate deducted |
+| `manual_edit` | `parts.js` `PUT /api/parts/:id` | Operator typed a new completed count (only written when the value actually changes) |
+| `rebuilt_job` | `rebuildMissingLedgers()` | One-time: a finished (or legacy `done`) job that predates the ledger |
+| `baseline` | `rebuildMissingLedgers()` | One-time: balances rebuilt rows against `completed_qty` for history the old schema never stored |
+
+**One-time rebuild:** on every startup, `db.js` calls `rebuildMissingLedgers()` for parts with no ledger rows. On the first start after upgrading, that is every existing part with a count or finished jobs; afterwards, parts always have rows from their first credit, so it finds nothing. Each finished job becomes a `rebuilt_job` row at its `finished_at`. Failed jobs are not rebuilt as deductions: the old schema cannot tell a job that was credited then marked failed from one that was never credited, and the net effect is zero either way. The old schema also never stored operator count corrections or manual edits, so when the rebuilt rows do not add up to `completed_qty`, one `baseline` row (dated at the rebuild) covers the difference. The rebuild never changes `completed_qty`. Backup restore runs the same rebuild for parts restored from a backup that predates the ledger.
+
+**Deletes:** part delete and draft project delete remove the part's rows; backup restore replaces the whole table. `seed-demo.js` clears it so the next start rebuilds from the seeded jobs.
+
+**Checking it:** `node server/scripts/audit-dry-run.js` snapshots the live DB and runs the rebuild on the snapshot only; `--check` is a read-only reconciliation of a DB that already has a ledger (exit code 1 on any mismatch); `--part <id>` prints one part's timeline. Run with `--help` for details.
 
 ## Conventions
 

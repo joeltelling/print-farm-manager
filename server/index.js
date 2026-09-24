@@ -18,6 +18,7 @@ const PrinterPoller  = require('./poller');
 const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
 const events         = require('./events');
+const partLedger     = require('./partLedger');
 const backup         = require('./backup');
 
 const printersRouter     = require('./routes/printers')(db);
@@ -211,11 +212,16 @@ const server = app.listen(PORT, () => {
         const confirmedQty = parseInt(confirmed_qty, 10);
         if (!isNaN(confirmedQty) && confirmedQty !== finishedJob.parts_per_plate) {
           const delta = confirmedQty - finishedJob.parts_per_plate; // negative = fewer good parts
-          db.prepare(`
-            UPDATE parts SET completed_qty = MAX(0, completed_qty + ?), updated_at = ? WHERE id = ?
-          `).run(delta, now, finishedJob.part_id);
-
-          const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(finishedJob.part_id);
+          const part = partLedger.adjustPartQty(db, {
+            partId: finishedJob.part_id,
+            delta,
+            clamp: true,
+            source: partLedger.SOURCES.OPERATOR_ADJUST,
+            job: finishedJob,
+            printer,
+            note: `Operator confirmed ${confirmedQty} of ${finishedJob.parts_per_plate} good (Set Ready)`,
+            now,
+          });
           if (part.completed_qty < part.target_qty && part.status === 'closed') {
             db.prepare(`UPDATE parts SET status = 'open', updated_at = ? WHERE id = ?`).run(now, part.id);
             console.log(`[server] Part "${part.name}" reopened — confirmed qty reduced`);
@@ -270,12 +276,21 @@ const server = app.listen(PORT, () => {
         db.prepare(`UPDATE jobs SET status = 'finished', finished_at = ? WHERE id = ?`)
           .run(now, activeJob.id);
 
-        db.prepare(`
-          UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?
-        `).run(creditQty, now, activeJob.part_id);
-
-        const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(activeJob.part_id);
         const label = printingJob ? 'missed-finish' : activeJob.status === 'cancelled' ? 'cancelled-confirmed-good' : 'MQTT-recovered finish';
+        const noteByLabel = {
+          'missed-finish':            'finish was missed by the server',
+          'cancelled-confirmed-good': 'job was stopped on the printer',
+          'MQTT-recovered finish':    'job was marked failed after a connection drop',
+        };
+        const part = partLedger.adjustPartQty(db, {
+          partId: activeJob.part_id,
+          delta: creditQty,
+          source: partLedger.SOURCES.OPERATOR_CONFIRM,
+          job: activeJob,
+          printer,
+          note: `Operator confirmed ${creditQty} of ${activeJob.parts_per_plate} good (Set Ready; ${noteByLabel[label]})`,
+          now,
+        });
         console.log(`[server] ${printer.name} ${label} confirmed good — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
 
         if (part.completed_qty >= part.target_qty) {
@@ -308,9 +323,15 @@ const server = app.listen(PORT, () => {
               : uploadingJob.parts_per_plate;
             db.prepare("UPDATE jobs SET status = 'finished', finished_at = ?, started_at = COALESCE(started_at, ?) WHERE id = ?")
               .run(now, now, uploadingJob.id);
-            db.prepare("UPDATE parts SET completed_qty = completed_qty + ?, updated_at = ? WHERE id = ?")
-              .run(creditQty, now, uploadingJob.part_id);
-            const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(uploadingJob.part_id);
+            const part = partLedger.adjustPartQty(db, {
+              partId: uploadingJob.part_id,
+              delta: creditQty,
+              source: partLedger.SOURCES.OPERATOR_CONFIRM,
+              job: uploadingJob,
+              printer,
+              note: `Operator confirmed ${creditQty} of ${uploadingJob.parts_per_plate} good (Set Ready; upload had stalled)`,
+              now,
+            });
             console.log(`[server] ${printer.name} upload-stalled job ${uploadingJob.id} confirmed finished — Part "${part.name}" ${part.completed_qty}/${part.target_qty}`);
             if (part.completed_qty >= part.target_qty) {
               db.prepare(`UPDATE parts SET status = 'closed', updated_at = ? WHERE id = ?`).run(now, part.id);

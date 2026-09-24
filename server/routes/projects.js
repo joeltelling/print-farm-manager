@@ -1,6 +1,7 @@
 const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
+const partLedger = require('../partLedger');
 const router  = express.Router();
 
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
@@ -113,6 +114,7 @@ module.exports = (db, scheduler = null) => {
           db.prepare('DELETE FROM gcodes WHERE id = ?').run(gcode.id);
         }
 
+        partLedger.deleteForPart(db, part.id);
         db.prepare('DELETE FROM parts WHERE id = ?').run(part.id);
       }
       db.prepare('DELETE FROM projects WHERE id = ?').run(project.id);

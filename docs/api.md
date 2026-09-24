@@ -630,7 +630,7 @@ All error responses use this shape:
 
 ### `GET /api/backup`
 
-Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
+Downloads a full farm snapshot as `farm-backup-YYYY-MM-DD.json`. Includes `printers`, `projects`, `parts`, `gcodes`, `jobs`, `printer_events`, `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, `settings`, `part_qty_ledger` (the part audit trail), and gcode file contents (base64 encoded, keyed by on-disk filename). No request body.
 
 **Response:** `Content-Disposition: attachment` JSON file.
 
@@ -641,6 +641,8 @@ Replaces all farm data from a previously exported backup file. Clears the DB and
 Each table's restore INSERT covers the columns the *live* schema currently has (derived from `PRAGMA table_info`) that are also present in the backup's data, rather than a hardcoded list: so printer `serial_number`/`loaded_material`/`loaded_color`, project `required_material`/`required_color`/`allowed_groups`, part `print_time_seconds`/`material_grams`, and gcode `ams_slot`/`material_grams`/`allowed_groups`/`required_material`/`required_color` all round-trip correctly, along with any future column a migration adds. A column present in the live schema but missing from every row of a given backup (e.g. an older backup that predates it) is omitted from the INSERT entirely so the column's own schema default applies, instead of failing on `NOT NULL` columns like `parts.sort_order`.
 
 `printer_models`, `printer_groups`, `filament_types`, `filament_colors`, and `settings` are restored the same way, but each is only cleared and rewritten if that key is present in the uploaded file: restoring a backup taken before these were added to the export leaves the farm's current printer models, groups, filament library, and settings untouched rather than wiping them with nothing to restore.
+
+`part_qty_ledger` is always cleared on restore, because its rows describe the parts being replaced. Ledger rows in the backup are restored as-is; parts from an older backup without a `part_qty_ledger` key get the same one-time history rebuild as an upgraded install (see [database.md](database.md#part_qty_ledger)).
 
 **Request:** `multipart/form-data` with field `file` — the `.json` backup file. Max 500 MB.
 
@@ -656,7 +658,8 @@ Each table's restore INSERT covers the columns the *live* schema currently has (
   "printer_models": 6,
   "printer_groups": 4,
   "filament_types": 3,
-  "filament_colors": 9
+  "filament_colors": 9,
+  "part_qty_ledger": 410
 }
 ```
 | `500` | Unhandled server error |

@@ -82,6 +82,9 @@ db.exec(`
 for (const t of ['jobs', 'printer_events', 'gcodes', 'parts', 'projects', 'printers', 'printer_models']) {
   db.prepare(`DELETE FROM ${t}`).run();
 }
+// The part ledger may exist if the server has run against this DB before. Clear it so
+// server/db.js rebuilds it from the freshly seeded jobs on the next start.
+try { db.prepare('DELETE FROM part_qty_ledger').run(); } catch (_) {}
 // Reset autoincrement counters so IDs start from 1
 try {
   db.exec(`DELETE FROM sqlite_sequence WHERE name IN

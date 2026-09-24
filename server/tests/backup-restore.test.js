@@ -442,6 +442,86 @@ describe('Backup export/restore: config tables (printer models, printer groups, 
   });
 });
 
+// Part quantity ledger (server/partLedger.js) is a table added after these tests were
+// written. It must round-trip like every other table (CLAUDE.md sync pair: new table ->
+// backup export AND restore), and restoring a backup from before the ledger existed must
+// leave each restored part with a ledger that adds up to its completed_qty.
+describe('Backup export/restore: part quantity ledger', () => {
+  const partLedger = require('../partLedger');
+
+  function seedCreditedPart() {
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO jobs (part_id, printer_id, gcode_id, parts_per_plate, status, started_at, finished_at, created_at)
+      VALUES (1, 1, 1, 4, 'finished', ?, ?, ?)
+    `).run(now - 5000, now - 1000, now - 6000);
+    const job = db.prepare('SELECT * FROM jobs WHERE id = 1').get();
+    partLedger.adjustPartQty(db, {
+      partId: 1, delta: 4, source: partLedger.SOURCES.PRINT_FINISHED, job, now: now - 1000,
+    });
+    partLedger.adjustPartQty(db, {
+      partId: 1, delta: -1, clamp: true, source: partLedger.SOURCES.OPERATOR_ADJUST, job,
+      note: 'Operator confirmed 3 of 4 good', now,
+    });
+  }
+
+  test('export includes part_qty_ledger rows', async () => {
+    seedCreditedPart();
+    const res = await request(app).get('/api/backup');
+    expect(res.status).toBe(200);
+    expect(res.body.part_qty_ledger).toHaveLength(2);
+    expect(res.body.part_qty_ledger[1]).toMatchObject({
+      part_id: 1, job_id: 1, printer_id: 1, printer_name: 'Bambu_01', delta: -1, balance_after: 3,
+      source: 'operator_adjust', note: 'Operator confirmed 3 of 4 good',
+    });
+  });
+
+  test('restore round-trips ledger rows exactly and replaces the existing ledger', async () => {
+    seedCreditedPart();
+    const exportRes = await request(app).get('/api/backup');
+    const exported = exportRes.body.part_qty_ledger;
+    const backupFile = writeTempBackupFile(exportRes.body);
+    try {
+      // A stray row that is not in the backup must not survive the restore.
+      partLedger.adjustPartQty(db, { partId: 1, setTo: 99, source: partLedger.SOURCES.MANUAL_EDIT });
+
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+      expect(restoreRes.body.part_qty_ledger).toBe(2);
+
+      const rows = db.prepare('SELECT * FROM part_qty_ledger ORDER BY id').all();
+      expect(rows).toEqual(exported);
+      expect(db.prepare('SELECT completed_qty FROM parts WHERE id = 1').get().completed_qty).toBe(3);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+
+  test('restoring a backup from before the ledger rebuilds history that sums to completed_qty', async () => {
+    seedCreditedPart();
+    const exportRes = await request(app).get('/api/backup');
+    const backup = exportRes.body;
+    delete backup.part_qty_ledger;
+    const backupFile = writeTempBackupFile(backup);
+    try {
+      const restoreRes = await request(app).post('/api/backup/restore').attach('file', backupFile);
+      expect(restoreRes.status).toBe(200);
+
+      const rows = db.prepare('SELECT * FROM part_qty_ledger WHERE part_id = 1 ORDER BY id').all();
+      // One rebuilt row for the finished 4-part job, one baseline row for the -1 the
+      // old schema never recorded.
+      expect(rows.map(r => [r.source, r.delta, r.balance_after])).toEqual([
+        ['rebuilt_job', 4, 4],
+        ['baseline', -1, 3],
+      ]);
+      expect(rows.reduce((sum, r) => sum + r.delta, 0))
+        .toBe(db.prepare('SELECT completed_qty FROM parts WHERE id = 1').get().completed_qty);
+    } finally {
+      fs.unlinkSync(backupFile);
+    }
+  });
+});
+
 // Reported (PR review, second round): restore wrote each backup.gcode_files entry straight
 // through path.join(GCODE_DIR, key) with no validation. A key like `../../server/index.js`
 // resolves outside GCODE_DIR, so a crafted backup could overwrite arbitrary files the server

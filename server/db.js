@@ -301,4 +301,18 @@ try {
   }
 } catch (_) {}
 
+// Part quantity ledger (audit trail behind parts.completed_qty). The table definition
+// lives in partLedger.js. The rebuild only touches parts with no ledger rows yet, so on
+// every start after the first it finds nothing to do. It never changes completed_qty.
+try {
+  const partLedger = require('./partLedger');
+  partLedger.ensureSchema(db);
+  const rebuilt = partLedger.rebuildMissingLedgers(db);
+  if (rebuilt.parts > 0) {
+    console.log(`[db] Part ledger rebuilt for ${rebuilt.parts} part(s): ${rebuilt.rebuiltRows} job row(s), ${rebuilt.baselineRows} baseline row(s)`);
+  }
+} catch (err) {
+  console.error('[db] Part ledger setup failed:', err.message);
+}
+
 module.exports = db;

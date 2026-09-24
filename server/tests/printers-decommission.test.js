@@ -401,3 +401,84 @@ describe('POST /api/printers/:id/complete-and-decommission', () => {
     expect(part.completed_qty).toBe(4);
   });
 });
+
+// ── Part ledger (audit trail) ─────────────────────────────────────────────────
+//
+// Every operator action on this router that changes completed_qty must leave exactly
+// one ledger row naming the job and printer, and actions that change nothing must
+// leave none. See server/partLedger.js.
+
+describe('printer operator actions: part ledger', () => {
+  function ledgerRows(partId) {
+    require('../partLedger').ensureSchema(db);
+    return db.prepare('SELECT * FROM part_qty_ledger WHERE part_id = ? ORDER BY id').all(partId);
+  }
+
+  test('mark-job-failure on a credited finished job records a marked_failed deduction', async () => {
+    const partId    = seedPart(seedProject(), 10, 4);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_ledger_fail_${Date.now()}` });
+    const jobId     = seedJob(printerId, partId, gcodeId, 'finished', 4);
+
+    await request(app).post(`/api/printers/${printerId}/mark-job-failure`).send({ note: 'spaghetti' });
+
+    const rows = ledgerRows(partId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      job_id: jobId, printer_id: printerId, gcode_id: gcodeId,
+      delta: -4, balance_after: 0, source: 'marked_failed', note: 'Marked as failed print: spaghetti',
+    });
+    expect(rows[0].printer_name).toMatch(/^Printer_ledger_fail_/);
+  });
+
+  test('mark-job-failure on a job that was never credited records nothing', async () => {
+    const partId    = seedPart(seedProject(), 10, 0);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_ledger_printing_${Date.now()}` });
+    seedJob(printerId, partId, gcodeId, 'printing', 4);
+
+    await request(app).post(`/api/printers/${printerId}/mark-job-failure`);
+
+    expect(ledgerRows(partId)).toHaveLength(0);
+  });
+
+  test('complete-and-decommission with a reduced count records an operator_adjust row', async () => {
+    const partId    = seedPart(seedProject(), 10, 4);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_ledger_adj_${Date.now()}` });
+    const jobId     = seedJob(printerId, partId, gcodeId, 'finished', 4);
+
+    await request(app).post(`/api/printers/${printerId}/complete-and-decommission`).send({ confirmed_qty: 3 });
+
+    const rows = ledgerRows(partId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      job_id: jobId, delta: -1, balance_after: 3, source: 'operator_adjust',
+      note: 'Operator confirmed 3 of 4 good (Complete and Decommission)',
+    });
+  });
+
+  test('complete-and-decommission on a missed finish records an operator_confirm credit', async () => {
+    const partId    = seedPart(seedProject(), 10, 0);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_ledger_conf_${Date.now()}`, status: 'IDLE' });
+    const jobId     = seedJob(printerId, partId, gcodeId, 'printing', 4);
+
+    await request(app).post(`/api/printers/${printerId}/complete-and-decommission`).send({});
+
+    const rows = ledgerRows(partId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ job_id: jobId, delta: 4, balance_after: 4, source: 'operator_confirm' });
+  });
+
+  test('complete-and-decommission with no change to the count records nothing', async () => {
+    const partId    = seedPart(seedProject(), 10, 4);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_ledger_none_${Date.now()}` });
+    seedJob(printerId, partId, gcodeId, 'finished', 4);
+
+    await request(app).post(`/api/printers/${printerId}/complete-and-decommission`).send({ confirmed_qty: 4 });
+
+    expect(ledgerRows(partId)).toHaveLength(0);
+  });
+});

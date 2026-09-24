@@ -4,6 +4,7 @@ const Papa = require('papaparse');
 const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
+const partLedger = require('../partLedger');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -299,8 +300,16 @@ module.exports = (db) => {
     if (printingJob) {
       const creditQty = parsedQty != null ? parsedQty : printingJob.parts_per_plate;
       db.prepare(`UPDATE jobs SET status = 'finished', finished_at = ? WHERE id = ?`).run(now, printingJob.id);
-      db.prepare(`UPDATE parts SET completed_qty = MAX(0, completed_qty + ?), updated_at = ? WHERE id = ?`)
-        .run(creditQty, now, printingJob.part_id);
+      partLedger.adjustPartQty(db, {
+        partId: printingJob.part_id,
+        delta: creditQty,
+        clamp: true,
+        source: partLedger.SOURCES.OPERATOR_CONFIRM,
+        job: printingJob,
+        printer,
+        note: `Operator confirmed ${creditQty} of ${printingJob.parts_per_plate} good (Complete and Decommission; finish was missed by the server)`,
+        now,
+      });
       settlePart(printingJob.part_id);
       console.log(`[printers] ${printer.name} missed-finish credited ${creditQty} — decommissioning for maintenance`);
     } else if (parsedQty != null) {
@@ -312,8 +321,16 @@ module.exports = (db) => {
       `).get(printer.id);
       if (finishedJob && parsedQty !== finishedJob.parts_per_plate) {
         const delta = parsedQty - finishedJob.parts_per_plate; // negative = fewer good parts
-        db.prepare(`UPDATE parts SET completed_qty = MAX(0, completed_qty + ?), updated_at = ? WHERE id = ?`)
-          .run(delta, now, finishedJob.part_id);
+        partLedger.adjustPartQty(db, {
+          partId: finishedJob.part_id,
+          delta,
+          clamp: true,
+          source: partLedger.SOURCES.OPERATOR_ADJUST,
+          job: finishedJob,
+          printer,
+          note: `Operator confirmed ${parsedQty} of ${finishedJob.parts_per_plate} good (Complete and Decommission)`,
+          now,
+        });
         settlePart(finishedJob.part_id);
         console.log(`[printers] ${printer.name} confirmed ${parsedQty}/${finishedJob.parts_per_plate} good on decommission (delta ${delta > 0 ? '+' : ''}${delta})`);
       }
@@ -388,12 +405,18 @@ module.exports = (db) => {
 
     if (job.status === 'finished') {
       // Normal case: job was already credited when FINISHED was seen. Undo the increment.
-      db.prepare(`
-        UPDATE parts SET completed_qty = MAX(0, completed_qty - ?), updated_at = ? WHERE id = ?
-      `).run(job.parts_per_plate, now, job.part_id);
+      const part = partLedger.adjustPartQty(db, {
+        partId: job.part_id,
+        delta: -job.parts_per_plate,
+        clamp: true,
+        source: partLedger.SOURCES.MARKED_FAILED,
+        job,
+        printer,
+        note: req.body?.note ? `Marked as failed print: ${req.body.note}` : 'Marked as failed print',
+        now,
+      });
 
-      // Reload part — reopen if it was closed by this job
-      const part = db.prepare('SELECT * FROM parts WHERE id = ?').get(job.part_id);
+      // Reopen the part if it was closed by this job
       if (part.status === 'closed' && part.completed_qty < part.target_qty) {
         db.prepare("UPDATE parts SET status = 'open', updated_at = ? WHERE id = ?").run(now, part.id);
 

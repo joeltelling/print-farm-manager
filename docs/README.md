@@ -38,10 +38,13 @@ print-farm-manager/
 ├── server/
 │   ├── index.js          # Express entry point
 │   ├── db.js             # SQLite connection + schema init + startup migrations
+│   ├── partLedger.js     # Part quantity ledger: every completed_qty change + audit trail
 │   ├── poller.js         # Printer polling loop (EventEmitter)
 │   ├── scheduler.js      # Job dispatch engine (EventEmitter)
 │   ├── events.js         # Printer event log helper — insert(printerId, type, note)
 │   ├── notifications.js  # In-memory operator alert store
+│   ├── scripts/
+│   │   └── audit-dry-run.js  # Part ledger dry run on a DB snapshot + reconciliation check
 │   └── routes/
 │       ├── printers.js   # CRUD + CSV import + decommission/recommission
 │       ├── events.js     # GET/POST /api/printers/:id/events
