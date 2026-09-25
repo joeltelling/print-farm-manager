@@ -319,6 +319,10 @@ module.exports = (db) => {
         SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
         ORDER BY finished_at DESC LIMIT 1
       `).get(printer.id);
+      // Deliberately against parts_per_plate, not partLedger.jobNetCredit: the Fleet UI
+      // pre-fills confirmed_qty with the full plate, so adjusting against the net would
+      // turn a routine confirm on a re-held printer into a phantom +1 after an earlier
+      // correction. See the 2026-09-25 CHANGELOG entry.
       if (finishedJob && parsedQty !== finishedJob.parts_per_plate) {
         const delta = parsedQty - finishedJob.parts_per_plate; // negative = fewer good parts
         partLedger.adjustPartQty(db, {
@@ -403,11 +407,14 @@ module.exports = (db) => {
 
     db.prepare("UPDATE jobs SET status = 'failed' WHERE id = ?").run(job.id);
 
-    if (job.status === 'finished') {
-      // Normal case: job was already credited when FINISHED was seen. Undo the increment.
+    // Normal case: job was already credited when FINISHED was seen. Undo what it actually
+    // contributes, which is less than the full plate if an operator already corrected the
+    // count (deducting parts_per_plate here once took a part from 9 to 5 instead of 6).
+    const credited = job.status === 'finished' ? partLedger.jobNetCredit(db, job) : 0;
+    if (credited > 0) {
       const part = partLedger.adjustPartQty(db, {
         partId: job.part_id,
-        delta: -job.parts_per_plate,
+        delta: -credited,
         clamp: true,
         source: partLedger.SOURCES.MARKED_FAILED,
         job,

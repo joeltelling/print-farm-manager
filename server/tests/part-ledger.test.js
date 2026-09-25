@@ -168,6 +168,58 @@ describe('adjustPartQty', () => {
   });
 });
 
+// ── jobNetCredit ──────────────────────────────────────────────────────────────
+//
+// mark-job-failure deducts this value from an already-credited job.
+
+describe('jobNetCredit', () => {
+  function creditedJob(ppp = 4) {
+    const printerId = seedPrinter();
+    const partId = seedPart(seedProject());
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(seedJob(partId, printerId, { status: 'printing', ppp }));
+    return { partId, job };
+  }
+
+  test('falls back to parts_per_plate for a job with no ledger rows', () => {
+    const { job } = creditedJob(6);
+    expect(partLedger.jobNetCredit(db, job)).toBe(6);
+  });
+
+  test('is the full plate right after the automatic credit', () => {
+    const { partId, job } = creditedJob();
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: SOURCES.PRINT_FINISHED, job });
+    expect(partLedger.jobNetCredit(db, job)).toBe(4);
+  });
+
+  test('reflects an operator correction', () => {
+    const { partId, job } = creditedJob();
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: SOURCES.PRINT_FINISHED, job });
+    partLedger.adjustPartQty(db, { partId, delta: -1, clamp: true, source: SOURCES.OPERATOR_ADJUST, job });
+    expect(partLedger.jobNetCredit(db, job)).toBe(3);
+  });
+
+  test('reflects a partial operator confirmation of a missed finish', () => {
+    const { partId, job } = creditedJob();
+    partLedger.adjustPartQty(db, { partId, delta: 2, source: SOURCES.OPERATOR_CONFIRM, job });
+    expect(partLedger.jobNetCredit(db, job)).toBe(2);
+  });
+
+  test('is zero once the plate has been marked failed', () => {
+    const { partId, job } = creditedJob();
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: SOURCES.PRINT_FINISHED, job });
+    partLedger.adjustPartQty(db, { partId, delta: -4, clamp: true, source: SOURCES.MARKED_FAILED, job });
+    expect(partLedger.jobNetCredit(db, job)).toBe(0);
+  });
+
+  test('counts only this job, not other jobs on the same part', () => {
+    const { partId, job } = creditedJob();
+    const other = db.prepare('SELECT * FROM jobs WHERE id = ?').get(seedJob(partId, job.printer_id, { status: 'printing' }));
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: SOURCES.PRINT_FINISHED, job });
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: SOURCES.PRINT_FINISHED, job: other });
+    expect(partLedger.jobNetCredit(db, job)).toBe(4);
+  });
+});
+
 // ── rebuildMissingLedgers ─────────────────────────────────────────────────────
 
 describe('rebuildMissingLedgers', () => {

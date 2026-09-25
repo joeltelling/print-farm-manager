@@ -482,3 +482,77 @@ describe('printer operator actions: part ledger', () => {
     expect(ledgerRows(partId)).toHaveLength(0);
   });
 });
+
+// ── Corrections and failures deduct what the job actually credited ────────────
+//
+// Reported during the part audit trail work (2026-09-24): mark-job-failure deducted
+// the job's full parts_per_plate even when the operator had already corrected that
+// plate's count. Reproduced on a part at 10 with a 4-part plate: complete-and-
+// decommission at 3 good took it to 9, then mark-job-failure took it to 5 instead of 6.
+// mark-job-failure now deducts the job's net credit in part_qty_ledger.
+
+describe('mark-job-failure deducts what the job actually credited', () => {
+  const partLedger = require('../partLedger');
+  const count = partId => db.prepare('SELECT completed_qty FROM parts WHERE id = ?').get(partId).completed_qty;
+
+  // A finished 4-part job credited through the ledger, as _handleFinished does.
+  function seedCreditedJob(label, partQtyBefore = 6) {
+    const partId    = seedPart(seedProject(), 20, partQtyBefore);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_net_${label}_${Date.now()}` });
+    const jobId     = seedJob(printerId, partId, gcodeId, 'finished', 4);
+    const job       = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: partLedger.SOURCES.PRINT_FINISHED, job });
+    return { partId, printerId, job };
+  }
+
+  test('mark-job-failure after a 3-of-4 correction deducts 3, not 4', async () => {
+    const { partId, printerId } = seedCreditedJob('fail_after_adjust');      // 6 + 4 = 10
+    await request(app).post(`/api/printers/${printerId}/complete-and-decommission`).send({ confirmed_qty: 3 });
+    expect(count(partId)).toBe(9);
+
+    await request(app).post(`/api/printers/${printerId}/mark-job-failure`).send({});
+
+    expect(count(partId)).toBe(6);
+    const rows = db.prepare('SELECT source, delta FROM part_qty_ledger WHERE part_id = ? ORDER BY id').all(partId);
+    expect(rows.map(r => [r.source, r.delta])).toEqual([
+      ['print_finished', 4], ['operator_adjust', -1], ['marked_failed', -3],
+    ]);
+  });
+
+  test('mark-job-failure on a plate confirmed as 0 good deducts nothing', async () => {
+    const { partId, printerId, job } = seedCreditedJob('fail_after_zero');
+    partLedger.adjustPartQty(db, { partId, delta: -4, clamp: true, source: partLedger.SOURCES.OPERATOR_ADJUST, job });
+    expect(count(partId)).toBe(6);
+
+    const res = await request(app).post(`/api/printers/${printerId}/mark-job-failure`).send({});
+
+    expect(res.status).toBe(200);
+    expect(count(partId)).toBe(6);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM part_qty_ledger WHERE part_id = ? AND source = 'marked_failed'").get(partId).n).toBe(0);
+  });
+
+  // Safety pin: the Fleet UI pre-fills confirmed_qty with the full plate. If a printer
+  // is re-held against a job the operator already corrected, confirming with that
+  // pre-filled value must not re-credit the correction.
+  test('complete-and-decommission with the pre-filled full plate after a correction adds nothing', async () => {
+    const { partId, printerId, job } = seedCreditedJob('decomm_prefill');
+    partLedger.adjustPartQty(db, { partId, delta: -1, clamp: true, source: partLedger.SOURCES.OPERATOR_ADJUST, job });
+    expect(count(partId)).toBe(9);
+
+    await request(app).post(`/api/printers/${printerId}/complete-and-decommission`).send({ confirmed_qty: 4 });
+
+    expect(count(partId)).toBe(9);
+  });
+
+  test('a job with no ledger rows still falls back to parts_per_plate', async () => {
+    const partId    = seedPart(seedProject(), 20, 10);
+    const gcodeId   = seedGcode(partId);
+    const printerId = seedPrinter({ name: `Printer_net_fallback_${Date.now()}` });
+    seedJob(printerId, partId, gcodeId, 'finished', 4);
+
+    await request(app).post(`/api/printers/${printerId}/mark-job-failure`).send({});
+
+    expect(count(partId)).toBe(6);
+  });
+});

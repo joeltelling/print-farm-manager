@@ -213,6 +213,8 @@ CREATE INDEX IF NOT EXISTS idx_part_qty_ledger_part ON part_qty_ledger(part_id, 
 
 **Invariant:** for every part, `SUM(delta)` equals `completed_qty`. `adjustPartQty()` runs the `parts` UPDATE and the ledger INSERT in one transaction, and records the change that actually happened, so a clamped deduction (for example `-4` against a count of `3`) is stored as `-3`.
 
+**Job net credit:** `jobNetCredit(db, job)` sums a job's ledger rows: what that job currently contributes to its part. mark-job-failure deducts it, so a plate already corrected to 3 of 4 loses 3, not 4. Set Ready and Complete and Decommission deliberately still apply `confirmed_qty` against `parts_per_plate`: the Fleet UI pre-fills that field with the full plate, and on a printer re-held against the same finished job a net-based difference would re-credit an earlier correction. A job with no ledger rows falls back to `parts_per_plate`.
+
 The ledger never credits anything on its own. Rows are written only from inside the existing events that already change the count, so it inherits their protection against double-firing across restarts, MQTT reconnects, and poll flaps.
 
 | `source` | Written by | Meaning |

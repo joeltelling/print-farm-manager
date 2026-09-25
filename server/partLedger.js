@@ -119,6 +119,24 @@ function adjustPartQty(db, {
   })();
 }
 
+// How many parts a job currently contributes to its part's completed_qty: the sum of
+// its ledger rows (credit, operator corrections, failure deduction). mark-job-failure
+// deducts this rather than parts_per_plate, so a plate the operator already corrected
+// to 3 of 4 loses 3, not 4. A job with no ledger rows (possible only if the ledger
+// missed it) falls back to parts_per_plate, the pre-ledger behavior.
+//
+// Set Ready and Complete and Decommission deliberately do NOT adjust against this:
+// the Fleet UI pre-fills their confirmed_qty with the full plate, so on a printer
+// re-held against the same finished job, a net-based difference would re-credit an
+// earlier correction as a phantom +1.
+function jobNetCredit(db, job) {
+  ensureSchema(db);
+  const row = db.prepare(
+    'SELECT COUNT(*) AS n, COALESCE(SUM(delta), 0) AS net FROM part_qty_ledger WHERE job_id = ?'
+  ).get(job.id);
+  return row.n > 0 ? row.net : job.parts_per_plate;
+}
+
 // Delete a part's ledger rows. Called wherever the part itself is deleted.
 function deleteForPart(db, partId) {
   ensureSchema(db);
@@ -305,4 +323,4 @@ function getPartAudit(db, partId) {
   };
 }
 
-module.exports = { SOURCES, ensureSchema, adjustPartQty, deleteForPart, rebuildMissingLedgers, getPartAudit };
+module.exports = { SOURCES, ensureSchema, adjustPartQty, jobNetCredit, deleteForPart, rebuildMissingLedgers, getPartAudit };

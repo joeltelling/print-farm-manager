@@ -135,7 +135,7 @@ Removes the printer from active duty (`is_active = 0`). It will no longer be pol
 
 Operator confirms the last print was successful, then takes the machine offline for maintenance instead of releasing it to the job queue.
 
-- **Normal case** (job already in `finished` status): `_handleFinished` already credited `completed_qty`; nothing is re-credited. The printer is simply decommissioned.
+- **Normal case** (job already in `finished` status): `_handleFinished` already credited `completed_qty`; nothing is re-credited. If `confirmed_qty` is sent and differs from the job's `parts_per_plate`, the difference is applied, same as `set-ready`. The printer is then decommissioned.
 - **Missed-finish case** (job still in `printing` status): credits `completed_qty` by `parts_per_plate`, marks the job `finished`, and closes the Part / Project if targets are met — same logic as `set-ready`, but ending in decommission rather than dispatch.
 
 Returns the updated printer object.
@@ -156,7 +156,7 @@ Marks the printer's most relevant active or recently-completed job as `failed`, 
 2. **Finished fallback:** if no active job exists, finds the most recent `finished` job — but only if no subsequent job was created for this printer after it finished. This scope guard prevents the endpoint from reaching back and decrementing `completed_qty` on an old job from a previous cycle when the printer is held for an unrelated reason.
 
 **Per-status behaviour:**
-- `finished` — `completed_qty` decremented by `parts_per_plate`. Part reopened if it was closed by this job; Project reopened if it was completed.
+- `finished`: `completed_qty` decremented by what the job currently contributes, its net in `part_qty_ledger`. That is `parts_per_plate` unless an operator already corrected the plate's count (a plate confirmed as 3 of 4 good deducts 3); nothing is deducted if it already contributes 0. Part reopened if it was closed by this job; Project reopened if it was completed.
 - `printing` — no qty change (was never credited).
 - `uploading` — no qty change (print never started).
 

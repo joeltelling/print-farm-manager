@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-09-25: mark-job-failure deducted the full plate after a count correction
+
+Found while building the part audit trail and reproduced in a test: on a part at 10 whose last plate held 4, Complete and Decommission with 3 of 4 good correctly took the count to 9, but marking that same job failed then deducted the full plate (to 5) instead of the 3 it actually contributed (to 6), leaving the part one short. mark-job-failure assumed a finished job always contributes exactly `parts_per_plate`.
+
+Fixed with the new `partLedger.jobNetCredit()`, which sums a job's `part_qty_ledger` rows: exactly what it contributes to the count right now. mark-job-failure deducts that, and nothing when it is 0. For an uncorrected job the net is the full plate, so normal behavior is unchanged: against Joel's 2026-09-24 farm backup, all 9,203 finished jobs have a net credit equal to their `parts_per_plate` after the rebuild. A job with no ledger rows falls back to `parts_per_plate`. The deduction is still backed by one operator action on one job, and the endpoint only matches `finished` jobs and flips them to `failed`, so it cannot fire twice for the same job. It can only ever deduct less than before, never credit.
+
+Deliberately not changed: Set Ready and Complete and Decommission still apply `confirmed_qty` against `parts_per_plate`. Switching them to the net credit was tried and backed out. The Fleet page pre-fills `confirmed_qty` with the full plate, so on a printer re-held against the same finished job, a net-based difference would turn a routine confirm into a phantom +1 re-credit of the earlier correction. The remaining, pre-existing edge (typing the same correction twice on a re-held printer applies it twice) needs the Fleet pre-fill to show the job's current net credit first, and is left for Joel to decide on. A new test pins the safe behavior: confirming the pre-filled full plate after a correction adds nothing.
+
+### Changes
+- `server/partLedger.js`: `jobNetCredit()`.
+- `server/routes/printers.js`: mark-job-failure deducts the job's net credit; comment on complete-and-decommission explaining why it stays against `parts_per_plate`.
+- `server/tests/printers-decommission.test.js`: regression test for mark-failed after a correction (fails before the fix: 5 instead of 6), a plate confirmed as 0, the no-ledger fallback, and the pre-fill safety pin.
+- `server/tests/part-ledger.test.js`: `jobNetCredit` unit tests.
+- `docs/api.md`: mark-job-failure deducts the net credit; complete-and-decommission's normal case now documents its existing `confirmed_qty` correction. `docs/database.md`: job net credit.
+
+---
+
 ## 2026-09-25: audit trail fixes from the first real-data run
 
 First real run of `server/scripts/audit-dry-run.js`, against Joel's 2026-09-24 23:00 hourly farm backup (158 parts, 9,203 finished jobs): zero mismatches, no completed counts changed, 9,203 rebuilt job rows and 35 baseline rows. With `--db <file>`, the script rebuilds that file in place, but its closing line still said the snapshot "can be deleted" and implied nothing had been written. It now says the file passed was modified and the live DB was not.
