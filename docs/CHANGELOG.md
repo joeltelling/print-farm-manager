@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-09-25: audit dry-run message when given a DB file
+
+First real run of `server/scripts/audit-dry-run.js`, against Joel's 2026-09-24 23:00 hourly farm backup (158 parts, 9,203 finished jobs): zero mismatches, no completed counts changed, 9,203 rebuilt job rows and 35 baseline rows. With `--db <file>`, the script rebuilds that file in place, but its closing line still said the snapshot "can be deleted" and implied nothing had been written. It now says the file passed was modified and the live DB was not.
+
+### Changes
+- `server/scripts/audit-dry-run.js`: closing message distinguishes `--db` (file modified in place) from the default snapshot mode.
+
+---
+
 ## 2026-09-24: part audit page
 
 Phase 3 of 3 of the part audit trail. Clicking a part's progress bar (or the new "Audit ›" label beside its percentage) on the Projects page opens `/parts/:id/audit`. The page shows how the part's printed total was built up: a step chart of the running total against the target, a per-printer breakdown of what each machine contributed and lost, and a filterable timeline of every credit, correction, deduction, and failure with its printer, job number, and G-code file. Failures that never credited (a plate that failed or was stopped before any count was added) are included as dimmed zero-change rows and gray chart markers, so the page shows every failure and not only the ones that took parts away. The Back link returns to the Projects page with the part's project already open.

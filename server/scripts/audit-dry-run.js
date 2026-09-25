@@ -163,7 +163,9 @@ async function dryRun(args) {
   if (args.part) printTimeline(db, args.part);
   db.close();
 
-  console.log(`\n[audit] Done. The snapshot at ${target} can be deleted; the live DB was not modified.`);
+  console.log(args.db
+    ? `\n[audit] Done. ${target} now contains the rebuilt ledger; the file you passed was modified, the live DB was not.`
+    : `\n[audit] Done. The snapshot at ${target} can be deleted; the live DB was not modified.`);
   return changed.length === 0 ? 0 : 1;
 }
 
