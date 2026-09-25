@@ -203,6 +203,26 @@ describe('rebuildMissingLedgers', () => {
     expect(ledgerSum(partId)).toBe(7);
   });
 
+  test('dates the baseline row at the part last update, not at the rebuild', () => {
+    const printerId = seedPrinter();
+    const partId = seedPart(seedProject(), { completed: 3 });
+    seedJob(partId, printerId, { ppp: 4, finishedAt: 1000 });
+    db.prepare('UPDATE parts SET updated_at = 5000 WHERE id = ?').run(partId); // operator corrected it later
+
+    partLedger.rebuildMissingLedgers(db, { now: 9000 });
+    expect(ledger(partId).find(r => r.source === 'baseline').created_at).toBe(5000);
+  });
+
+  test('never dates the baseline row before the last rebuilt job', () => {
+    const printerId = seedPrinter();
+    const partId = seedPart(seedProject(), { completed: 3 });
+    seedJob(partId, printerId, { ppp: 4, finishedAt: 7000 });
+    db.prepare('UPDATE parts SET updated_at = 2000 WHERE id = ?').run(partId);
+
+    partLedger.rebuildMissingLedgers(db, { now: 9000 });
+    expect(ledger(partId).find(r => r.source === 'baseline').created_at).toBe(7000);
+  });
+
   test('a manually entered count with no jobs becomes a single baseline row', () => {
     const partId = seedPart(seedProject(), { completed: 12 });
     partLedger.rebuildMissingLedgers(db);

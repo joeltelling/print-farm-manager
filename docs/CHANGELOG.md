@@ -2,12 +2,21 @@
 
 ---
 
-## 2026-09-25: audit dry-run message when given a DB file
+## 2026-09-25: audit trail fixes from the first real-data run
 
 First real run of `server/scripts/audit-dry-run.js`, against Joel's 2026-09-24 23:00 hourly farm backup (158 parts, 9,203 finished jobs): zero mismatches, no completed counts changed, 9,203 rebuilt job rows and 35 baseline rows. With `--db <file>`, the script rebuilds that file in place, but its closing line still said the snapshot "can be deleted" and implied nothing had been written. It now says the file passed was modified and the live DB was not.
 
+Previewing the audit page on that backup also surfaced two things the demo data hid, both fixed before the ledger reaches the farm:
+
+- Baseline rows were dated at the moment of the rebuild, which pinned months-old corrections to upgrade day. Part 94 ("v2.3 Battery Clip", July 300 Polymaker) has 20 finished 25-part plates (500) against a count of 300, last touched on 2026-06-29; its -200 baseline showed as a drop on 2026-09-25. Baseline rows are now dated at the part's `updated_at`, clamped to no earlier than its last rebuilt job and no later than the rebuild.
+- For a closed part, the chart's time axis still ran to today, squeezing a May to June print run into the left sixth of the chart. Closed parts now end the axis at their last event; open parts still run to now.
+
 ### Changes
 - `server/scripts/audit-dry-run.js`: closing message distinguishes `--db` (file modified in place) from the default snapshot mode.
+- `server/partLedger.js`: `rebuildMissingLedgers()` dates baseline rows at the part's `updated_at`, clamped between its last rebuilt job and `now`.
+- `server/tests/part-ledger.test.js`: covers both clamps.
+- `client/src/pages/PartAudit.jsx`: chart time axis ends at the last event for closed parts.
+- `docs/database.md`, `docs/web-app.md`: documented both.
 
 ---
 

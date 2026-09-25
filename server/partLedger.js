@@ -138,15 +138,18 @@ function deleteForPart(db, partId) {
 // the count is zero either way. The audit endpoint lists them as uncredited failures.
 //
 // The old system never stored operator count corrections or manual edits, so the
-// rebuilt rows may not add up to completed_qty. One baseline row, dated at the time of
-// the rebuild, covers the difference and says so, instead of guessing where it went.
+// rebuilt rows may not add up to completed_qty. One baseline row covers the difference
+// and says so, instead of guessing where it went. It is dated at parts.updated_at (the
+// last time anything touched the part, so no later than the unrecorded change), but
+// never before the part's last rebuilt job and never after `now`. Dating it at the
+// rebuild itself would pin a months-old correction to upgrade day on the audit chart.
 //
 // Never changes parts.completed_qty. Returns { parts, rebuiltRows, baselineRows }.
 function rebuildMissingLedgers(db, { now = Date.now() } = {}) {
   ensureSchema(db);
 
   const parts = db.prepare(`
-    SELECT p.id, p.completed_qty FROM parts p
+    SELECT p.id, p.completed_qty, p.updated_at FROM parts p
     WHERE NOT EXISTS (SELECT 1 FROM part_qty_ledger l WHERE l.part_id = p.id)
   `).all();
 
@@ -171,13 +174,16 @@ function rebuildMissingLedgers(db, { now = Date.now() } = {}) {
       if (jobs.length === 0 && current === 0) continue;
 
       let balance = 0;
+      let lastJobAt = 0;
       for (const job of jobs) {
         balance += job.parts_per_plate;
+        const at = job.finished_at ?? job.started_at ?? job.created_at;
+        lastJobAt = Math.max(lastJobAt, at || 0);
         insert.run(
           part.id, job.id, job.printer_id, job.printer_name ?? null, job.gcode_id ?? null,
           job.parts_per_plate, balance, SOURCES.REBUILT_JOB,
           'Rebuilt from job history (recorded before audit tracking)',
-          job.finished_at ?? job.started_at ?? job.created_at
+          at
         );
         result.rebuiltRows++;
       }
@@ -186,7 +192,7 @@ function rebuildMissingLedgers(db, { now = Date.now() } = {}) {
         insert.run(
           part.id, null, null, null, null, current - balance, current, SOURCES.BASELINE,
           'Unrecorded prior adjustments (operator count changes or manual edits before audit tracking)',
-          now
+          Math.min(now, Math.max(lastJobAt, part.updated_at || 0) || now)
         );
         result.baselineRows++;
       }

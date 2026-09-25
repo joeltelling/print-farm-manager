@@ -136,7 +136,7 @@ function useElementWidth() {
 
 // Step chart of the running completed total over time, with the target line and
 // markers for deductions (red) and failures that never credited (gray ring).
-function RunningTotalChart({ entries, failures, target, eventLabel }) {
+function RunningTotalChart({ entries, failures, target, closed, eventLabel }) {
   const [wrapRef, width] = useElementWidth();
   const [hover, setHover] = useState(null);
 
@@ -157,14 +157,16 @@ function RunningTotalChart({ entries, failures, target, eventLabel }) {
     ].sort((a, b) => a.t - b.t);
 
     let t0 = entries[0].created_at;
-    let t1 = Math.max(Date.now(), points[points.length - 1].t);
+    // A closed part's story ends at its last event; stretching to today would squeeze
+    // months of printing into a sliver. An open part runs to now (the flat tail is real).
+    let t1 = closed ? points[points.length - 1].t : Math.max(Date.now(), points[points.length - 1].t);
     if (failures.length > 0) t0 = Math.min(t0, failures[0].created_at);
     if (t1 - t0 < 3600_000) t0 = t1 - 3600_000; // at least an hour of range
     const maxY = Math.max(target, ...entries.map(e => e.balance_after), 1);
     const step = niceStep(maxY);
     const yMax = Math.ceil((maxY * 1.05) / step) * step;
     return { start, points, t0, t1, yMax, step };
-  }, [entries, failures, target]);
+  }, [entries, failures, target, closed]);
 
   if (!model) return null;
 
@@ -520,6 +522,7 @@ export default function PartAudit() {
                 entries={audit.entries}
                 failures={audit.uncredited_failures}
                 target={part.target_qty}
+                closed={part.status === 'closed'}
                 eventLabel={{ deduction: 'Deduction or correction', failure: 'Failed, not credited' }}
               />
             </div>
