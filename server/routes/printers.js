@@ -5,6 +5,7 @@ const axios = require('axios');
 const router = express.Router();
 const events = require('../events');
 const partLedger = require('../partLedger');
+const confirmCount = require('../confirmCount');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -71,6 +72,17 @@ module.exports = (db) => {
       WHERE p.is_active = 1
       ORDER BY p.name
     `).all();
+
+    // For held printers: the finished job an "N good" confirmation would correct, what it
+    // currently contributes to its part, and its plate size. The Fleet page pre-fills the
+    // count with confirm_credited and sends confirm_job_id back, so the operator always
+    // confirms against the same job the server corrects (see server/confirmCount.js).
+    for (const p of printers) {
+      const target = p.is_held === 1 ? confirmCount.finishedConfirmTarget(db, p.id) : null;
+      p.confirm_job_id          = target ? target.id : null;
+      p.confirm_parts_per_plate = target ? target.parts_per_plate : null;
+      p.confirm_credited        = target ? partLedger.jobNetCredit(db, target) : null;
+    }
     res.json(printers);
   });
 
@@ -265,6 +277,13 @@ module.exports = (db) => {
       ? parseInt(confirmed_qty, 10)
       : null;
 
+    // The Fleet page sends the job_id it pre-filled the count for (see server/confirmCount.js).
+    // If that is no longer the job a confirmation corrects, refuse before changing anything.
+    const jobId = confirmCount.parseJobId(req.body);
+    if (confirmCount.jobIdMismatch(db, printer.id, jobId)) {
+      return res.status(409).json({ error: confirmCount.JOB_CHANGED_ERROR });
+    }
+
     // Reconcile a part's status with its completed_qty: close (and maybe complete the project) when
     // the target is met, reopen (and reactivate the project) when a reduced count drops below it.
     const settlePart = (partId) => {
@@ -313,30 +332,23 @@ module.exports = (db) => {
       settlePart(printingJob.part_id);
       console.log(`[printers] ${printer.name} missed-finish credited ${creditQty} — decommissioning for maintenance`);
     } else if (parsedQty != null) {
-      // Normal case: job already 'finished' and credited the full plate by _handleFinished. If the
-      // operator adjusted the count, apply the delta against what was already booked (same as set-ready).
-      const finishedJob = db.prepare(`
-        SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
-        ORDER BY finished_at DESC LIMIT 1
-      `).get(printer.id);
-      // Deliberately against parts_per_plate, not partLedger.jobNetCredit: the Fleet UI
-      // pre-fills confirmed_qty with the full plate, so adjusting against the net would
-      // turn a routine confirm on a re-held printer into a phantom +1 after an earlier
-      // correction. See the 2026-09-25 CHANGELOG entry.
-      if (finishedJob && parsedQty !== finishedJob.parts_per_plate) {
-        const delta = parsedQty - finishedJob.parts_per_plate; // negative = fewer good parts
-        partLedger.adjustPartQty(db, {
-          partId: finishedJob.part_id,
-          delta,
-          clamp: true,
-          source: partLedger.SOURCES.OPERATOR_ADJUST,
-          job: finishedJob,
-          printer,
-          note: `Operator confirmed ${parsedQty} of ${finishedJob.parts_per_plate} good (Complete and Decommission)`,
-          now,
-        });
+      // Normal case: job already 'finished' and credited the full plate by _handleFinished.
+      // Apply the operator's confirmed count to it (same as set-ready). With a job_id the
+      // count is the plate's total good parts and targets confirmCount's shared job rule;
+      // without one, the latest finished job and parts_per_plate, as before.
+      const finishedJob = jobId != null
+        ? confirmCount.finishedConfirmTarget(db, printer.id)
+        : db.prepare(`
+            SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
+            ORDER BY finished_at DESC LIMIT 1
+          `).get(printer.id);
+      const applied = finishedJob && confirmCount.applyConfirmedCount(db, {
+        job: finishedJob, printer, confirmedQty: parsedQty, total: jobId != null,
+        via: 'Complete and Decommission', now,
+      });
+      if (applied) {
         settlePart(finishedJob.part_id);
-        console.log(`[printers] ${printer.name} confirmed ${parsedQty}/${finishedJob.parts_per_plate} good on decommission (delta ${delta > 0 ? '+' : ''}${delta})`);
+        console.log(`[printers] ${printer.name} confirmed ${parsedQty}/${finishedJob.parts_per_plate} good on decommission (delta ${applied.delta > 0 ? '+' : ''}${applied.delta})`);
       }
     }
     // Normal case with no qty adjustment: job already 'finished' was credited by _handleFinished — nothing to do.

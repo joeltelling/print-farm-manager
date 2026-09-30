@@ -47,7 +47,9 @@ Returns all active printers (`is_active = 1`) ordered by name.
 
 `job_name`, `job_progress`, and `job_time_remaining` are non-null only while `status = "PRINTING"`, and are cleared to `null` when the printer leaves that state.
 
-`last_parts_per_plate` is the `parts_per_plate` from the most recent finished (or currently printing) job — used by the Fleet UI to pre-fill the confirmed-qty input.
+`last_parts_per_plate` is the `parts_per_plate` from the most recent finished (or currently printing) job, the Fleet UI's fallback for the confirmed-qty input.
+
+`confirm_job_id`, `confirm_parts_per_plate`, and `confirm_credited` are set only on held printers whose next "N good" confirmation corrects an already-finished job (`null` otherwise, including while an uploading or printing job is pending). They name that job, its plate size, and what it currently contributes to its part (its net in `part_qty_ledger`: the full plate unless an operator already corrected it). The Fleet UI pre-fills the count with `confirm_credited` and sends `confirm_job_id` back as `job_id` on `set-ready` and `complete-and-decommission`. The job is chosen by `finishedConfirmTarget()` in `server/confirmCount.js`, the same rule those endpoints use.
 
 `has_active_job` is `1` if the printer currently has a job in `uploading` or `printing` status, `0` otherwise — used by the Fleet UI to show the OFFLINE-with-job confirmation buttons.
 
@@ -118,10 +120,17 @@ Releases the printer's hold (`is_held = 0`) and immediately dispatches the next 
 
 Accepts an optional body:
 ```json
-{ "confirmed_qty": 24 }
+{ "confirmed_qty": 24, "job_id": 1381 }
 ```
 
-If `confirmed_qty` is provided and differs from the `parts_per_plate` of the printer's most recent finished job, the delta is applied to the part's `completed_qty` (e.g. operator confirms 24 of 25 good → `completed_qty` decremented by 1). If the auto-credit had closed the part, it is reopened. Omitting the body leaves `completed_qty` unchanged.
+When the printer's last print is a finished job that was already credited, `confirmed_qty` corrects it:
+
+- **With `job_id`** (what the Fleet UI sends, from `confirm_job_id`): `confirmed_qty` is the plate's **total** good count. The part is adjusted by `confirmed_qty` minus what the job currently contributes, so 24 of 25 subtracts 1 and confirming 24 again changes nothing. If `job_id` is not the job this confirmation would correct (a new print finished, a print started, or the job was stopped on the printer since the page loaded), the request is refused with `409` and nothing changes.
+- **Without `job_id`** (older clients, scripts): `confirmed_qty` is compared to the job's `parts_per_plate`, as before. Sending the same correction twice applies it twice.
+
+If the correction closes or reopens the part, its status follows. Omitting `confirmed_qty` leaves `completed_qty` unchanged.
+
+**Errors:** `404` printer not found; `409` `{ "error": "This printer's last print changed since the page loaded. Refresh and confirm the count again." }` when `job_id` no longer matches.
 
 **OFFLINE-with-job exception:** if the printer's current status is `OFFLINE` and it has a `printing` job (no finished job), qty is not credited and the job is not marked finished. The printer is simply unheld and the job continues to its natural finish. This is the "Job OK" path from the Fleet UI — the operator is confirming the job is still running, not that it completed.
 
@@ -135,7 +144,7 @@ Removes the printer from active duty (`is_active = 0`). It will no longer be pol
 
 Operator confirms the last print was successful, then takes the machine offline for maintenance instead of releasing it to the job queue.
 
-- **Normal case** (job already in `finished` status): `_handleFinished` already credited `completed_qty`; nothing is re-credited. If `confirmed_qty` is sent and differs from the job's `parts_per_plate`, the difference is applied, same as `set-ready`. The printer is then decommissioned.
+- **Normal case** (job already in `finished` status): `_handleFinished` already credited `completed_qty`; nothing is re-credited. `confirmed_qty` corrects it exactly as in `set-ready`: with `job_id` it is the plate's total good count against the job's current contribution (and a stale `job_id` is a `409` with nothing changed, the printer staying active); without `job_id` it is compared to `parts_per_plate` against the latest finished job, as before. The printer is then decommissioned.
 - **Missed-finish case** (job still in `printing` status): credits `completed_qty` by `parts_per_plate`, marks the job `finished`, and closes the Part / Project if targets are met — same logic as `set-ready`, but ending in decommission rather than dispatch.
 
 Returns the updated printer object.

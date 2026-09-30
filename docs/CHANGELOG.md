@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-09-30: confirming the same good-part count twice applied it twice
+
+Set Ready and Complete and Decommission treated the operator's "N good" as "N fewer than a full plate": the server compared it to `parts_per_plate`, and the Fleet page always pre-filled the full plate. If a printer was held again for the same finished print after a correction (for example 3 of 4 good), retyping 3 subtracted another part. The 2026-09-25 mark-failed fix deliberately left this alone, because switching the server to the ledger net while the page still pre-filled the full plate would have turned a routine confirm into a phantom +1.
+
+Now the count is the plate's **total** good parts, and the page and server agree on which job it is for:
+
+- `GET /api/printers` reports, for held printers, the finished job a confirmation would correct (`confirm_job_id`), its plate size, and what it currently counts for (`confirm_credited`, its ledger net). The job comes from `finishedConfirmTarget()` in the new `server/confirmCount.js`, which is now also the rule Set Ready itself uses, so there is one copy.
+- The Fleet page pre-fills the count with `confirm_credited` and sends `confirm_job_id` back as `job_id`.
+- With a `job_id`, the server applies the confirmed count minus what the job currently counts for. 24 of 25 still subtracts 1; confirming the pre-filled value, or the same correction again, changes nothing; raising a correction back up credits only the difference. If the `job_id` no longer names the job being corrected (a newer finish, a print started, or a stop on the printer since the page loaded), the request is refused with 409 before anything changes, and the page asks the operator to refresh.
+- Requests without a `job_id` (an old browser tab left open, or a script) keep the previous behavior exactly.
+
+Each correction is still backed by one operator confirmation of one specific finished job, and because the count is now a total it is idempotent: repeating it, or a printer being held again, cannot move the count. Missed-finish, connection-drop, stopped-on-printer, and stalled-upload credits are unchanged. Against Joel's 2026-09-29 20:00 farm backup, every printer with a confirm target pre-fills the full plate, so day-to-day confirms look and behave as before.
+
+Checked end to end in the running app on demo data, through the real Set Ready endpoint: a 4-part plate confirmed as 3 took the part from 51 to 50; held again, the card pre-filled 3 and confirming left it at 50 with a single "Count corrected" ledger row; a page made stale by a newer finish got the 409 toast and the count stayed at 50. Not yet run on the farm.
+
+### Changes
+- `server/confirmCount.js` (new): `finishedConfirmTarget()`, `applyConfirmedCount()`, and the `job_id` check.
+- `server/index.js`: set-ready uses the shared target rule, refuses a stale `job_id` with 409, and applies the count through `applyConfirmedCount()`.
+- `server/routes/printers.js`: complete-and-decommission does the same; `GET /api/printers` adds `confirm_job_id`, `confirm_parts_per_plate`, `confirm_credited` for held printers.
+- `client/src/pages/Fleet.jsx`: pre-fills the count from `confirm_credited`, sends `job_id` with Set Ready and Complete and Decommission, and refetches after a 409.
+- `server/tests/confirm-count.test.js` (new): target rule, total vs legacy counts, the new printer fields, and complete-and-decommission with a current, repeated, stale, and absent `job_id` (the repeat and stale cases fail against the old route).
+- `docs/api.md`, `docs/web-app.md`, `docs/database.md`: documented the total count, `job_id`, the 409, and the new printer fields.
+
+---
+
 ## 2026-09-30: ledger repair for credits made while untracked code ran
 
 The audit page on the farm showed its reconciliation banner for part 166 ("SKU2 - Main", AgXRP 200 SKU1 SKU2): completed 93, ledger 89. Cause, confirmed from the 2026-09-29 20:00 hourly backup: while switching the farm back to `main`, `update.bat` ran once before the audit trail PR was merged, restarting the pre-ledger code for about a minute. Four finished jobs (MK4S_01, 02, 04, 05, finished 5:37:13 to 5:37:43 PM local) were credited to `completed_qty` by that code with no ledger rows. The next `update.bat` brought the ledger back, but the startup rebuild skips parts that already have rows. Counts were right throughout; only the history was missing those four rows. No other part was affected.

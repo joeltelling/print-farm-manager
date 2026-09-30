@@ -19,6 +19,7 @@ const JobScheduler   = require('./scheduler');
 const notifications  = require('./notifications');
 const events         = require('./events');
 const partLedger     = require('./partLedger');
+const confirmCount   = require('./confirmCount');
 const backup         = require('./backup');
 
 const printersRouter     = require('./routes/printers')(db);
@@ -185,43 +186,37 @@ const server = app.listen(PORT, () => {
       "SELECT * FROM jobs WHERE printer_id = ? AND status = 'uploading' ORDER BY created_at DESC LIMIT 1"
     ).get(printer.id);
 
-    const printingJobEarly = !uploadingJobEarly && db.prepare(
-      "SELECT id FROM jobs WHERE printer_id = ? AND status = 'printing' ORDER BY started_at DESC LIMIT 1"
-    ).get(printer.id);
-
-    let finishedJob = (uploadingJobEarly || printingJobEarly) ? null : db.prepare(`
-      SELECT * FROM jobs WHERE printer_id = ? AND status = 'finished'
-      ORDER BY finished_at DESC LIMIT 1
-    `).get(printer.id);
-
+    // The finished job a confirmation corrects (null when a pending uploading/printing
+    // job or a job stopped after the last finish takes priority; see the missed-finish
+    // path below). confirmCount.finishedConfirmTarget is the single copy of this rule,
+    // shared with GET /api/printers so the Fleet pre-fill names the same job.
+    //
     // A cancelled job newer than the last finished one means the printer was stopped
     // (STOPPED status) after its last normal finish. The stopped job is the one the
-    // operator is confirming — fall through to the missed-finish path below, which
+    // operator is confirming, so it falls through to the missed-finish path, which
     // resolves it via the cancelled lookup. Without this, confirmed_qty would be
     // misapplied as a delta against the older finished job's part.
-    if (finishedJob) {
-      const newerCancelled = db.prepare(`
-        SELECT 1 FROM jobs WHERE printer_id = ? AND status = 'cancelled' AND finished_at > ? LIMIT 1
-      `).get(printer.id, finishedJob.finished_at);
-      if (newerCancelled) finishedJob = null;
+    const finishedJob = confirmCount.finishedConfirmTarget(db, printer.id);
+
+    // The Fleet page sends the job_id it pre-filled the count for. If that is no longer
+    // the job this confirmation would correct, the printer changed since the page loaded:
+    // refuse before touching anything and let the operator re-confirm on fresh data.
+    const jobId = confirmCount.parseJobId(req.body);
+    if (confirmCount.jobIdMismatch(db, printer.id, jobId)) {
+      return res.status(409).json({ error: confirmCount.JOB_CHANGED_ERROR });
     }
 
     if (finishedJob) {
-      // Normal case: apply confirmed_qty delta if the operator adjusted the count.
+      // Normal case: apply the operator's confirmed count to the already-credited job.
+      // With a job_id it is the plate's total good count (idempotent); without one it is
+      // compared to parts_per_plate as before. See server/confirmCount.js.
       if (confirmed_qty != null) {
         const confirmedQty = parseInt(confirmed_qty, 10);
-        if (!isNaN(confirmedQty) && confirmedQty !== finishedJob.parts_per_plate) {
-          const delta = confirmedQty - finishedJob.parts_per_plate; // negative = fewer good parts
-          const part = partLedger.adjustPartQty(db, {
-            partId: finishedJob.part_id,
-            delta,
-            clamp: true,
-            source: partLedger.SOURCES.OPERATOR_ADJUST,
-            job: finishedJob,
-            printer,
-            note: `Operator confirmed ${confirmedQty} of ${finishedJob.parts_per_plate} good (Set Ready)`,
-            now,
-          });
+        const applied = confirmCount.applyConfirmedCount(db, {
+          job: finishedJob, printer, confirmedQty, total: jobId != null, via: 'Set Ready', now,
+        });
+        if (applied) {
+          const { part, delta } = applied;
           if (part.completed_qty < part.target_qty && part.status === 'closed') {
             db.prepare(`UPDATE parts SET status = 'open', updated_at = ? WHERE id = ?`).run(now, part.id);
             console.log(`[server] Part "${part.name}" reopened — confirmed qty reduced`);
