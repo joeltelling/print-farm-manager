@@ -15,6 +15,13 @@
 //
 //   node server/scripts/audit-dry-run.js --check
 //   node server/scripts/audit-dry-run.js --check --db C:\path\to\farm.db
+//
+// Repair (--repair): for parts --check reports as mismatched, adds the missing ledger
+// rows (see partLedger.repairMismatchedLedgers). Previews only, writing nothing, unless
+// --apply is also given. Never changes a completed count. Safe while the server runs.
+//
+//   node server/scripts/audit-dry-run.js --repair            (preview against the live DB)
+//   node server/scripts/audit-dry-run.js --repair --apply    (write the rows)
 
 const path     = require('path');
 const fs       = require('fs');
@@ -25,10 +32,12 @@ const LIVE_DB  = path.join(__dirname, '..', 'data', 'farm.db');
 const SNAP_DIR = path.join(__dirname, '..', 'data', 'audit-dry-run');
 
 function parseArgs(argv) {
-  const args = { check: false, db: null, part: null };
+  const args = { check: false, repair: false, apply: false, db: null, part: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--check') args.check = true;
+    else if (a === '--repair') args.repair = true;
+    else if (a === '--apply') args.apply = true;
     else if (a === '--db') args.db = argv[++i];
     else if (a === '--part') args.part = parseInt(argv[++i], 10);
     else if (a === '--help' || a === '-h') args.help = true;
@@ -191,6 +200,50 @@ function check(args) {
   return mismatches.length === 0 ? 0 : 1;
 }
 
+function repair(args) {
+  const file = path.resolve(args.db || LIVE_DB);
+  const db = new Database(file, { readonly: !args.apply, fileMustExist: true, timeout: 10000 });
+  console.log(`[audit] Ledger repair ${args.apply ? '(APPLYING)' : '(preview only, nothing written)'} on ${file}`);
+  if (!hasLedger(db)) {
+    console.log('  This DB has no part ledger yet; nothing to repair.');
+    db.close();
+    return 1;
+  }
+
+  const report = partLedger.repairMismatchedLedgers(db, { apply: args.apply });
+  if (report.length === 0) {
+    console.log('  Nothing to repair: every part\'s ledger adds up to its completed count.');
+    db.close();
+    return 0;
+  }
+  for (const r of report) {
+    console.log(`  part ${r.part_id} "${r.name}": completed ${r.completed_qty}, ledger ${r.ledger_sum}`);
+    for (const j of r.recovered) {
+      console.log(`    ${args.apply ? 'added' : 'would add'} recovered_job +${j.parts_per_plate}  job ${j.job_id} on ${j.printer_name ?? '(deleted printer)'}, finished ${fmtTime(j.finished_at)}`);
+    }
+    if (r.remainder !== 0) {
+      console.log(`    ${args.apply ? 'added' : 'would add'} baseline ${r.remainder > 0 ? '+' : ''}${r.remainder}  (not explained by a finished job)`);
+    }
+  }
+
+  if (args.apply) {
+    console.log('');
+    printMismatches(findMismatches(db));
+  } else {
+    console.log('\n  Run again with --apply to write these rows.');
+  }
+  if (args.part) printTimeline(db, args.part);
+  db.close();
+  return args.apply && findMismatchesCount(file) > 0 ? 1 : 0;
+}
+
+function findMismatchesCount(file) {
+  const db = new Database(file, { readonly: true, fileMustExist: true });
+  const n = findMismatches(db).length;
+  db.close();
+  return n;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -198,6 +251,8 @@ async function main() {
     console.log(header.map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
     return 0;
   }
+  if (args.apply && !args.repair) throw new Error('--apply only works together with --repair.');
+  if (args.repair) return repair(args);
   return args.check ? check(args) : dryRun(args);
 }
 

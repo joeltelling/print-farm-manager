@@ -343,6 +343,101 @@ describe('rebuildMissingLedgers', () => {
   });
 });
 
+// ── repairMismatchedLedgers ───────────────────────────────────────────────────
+//
+// Real trigger (2026-09-29 farm): update.bat restarted the pre-ledger code for about a
+// minute during the upgrade. Four finished jobs were credited to completed_qty with no
+// ledger rows, and the startup rebuild skipped the part because it already had rows.
+
+describe('repairMismatchedLedgers', () => {
+  // A part with a tracked credit, then one job credited by code that skipped the ledger
+  // (count bumped directly), then another tracked credit.
+  function partWithGap() {
+    const printerId = seedPrinter('MK4S_01');
+    const partId = seedPart(seedProject());
+    const tracked1 = db.prepare('SELECT * FROM jobs WHERE id = ?').get(seedJob(partId, printerId, { status: 'finished', ppp: 2, finishedAt: 1000 }));
+    partLedger.adjustPartQty(db, { partId, delta: 2, source: SOURCES.PRINT_FINISHED, job: tracked1, now: 1000 });
+    const gapJobId = seedJob(partId, printerId, { status: 'finished', ppp: 3, finishedAt: 2000 });
+    db.prepare('UPDATE parts SET completed_qty = completed_qty + 3 WHERE id = ?').run(partId);
+    const tracked2 = db.prepare('SELECT * FROM jobs WHERE id = ?').get(seedJob(partId, printerId, { status: 'finished', ppp: 2, finishedAt: 3000 }));
+    partLedger.adjustPartQty(db, { partId, delta: 2, source: SOURCES.PRINT_FINISHED, job: tracked2, now: 3000 });
+    return { partId, gapJobId };
+  }
+
+  test('preview reports the missing job and writes nothing', () => {
+    const { partId, gapJobId } = partWithGap();
+    const before = ledger(partId);
+
+    const report = partLedger.repairMismatchedLedgers(db);
+
+    expect(report).toHaveLength(1);
+    expect(report[0]).toMatchObject({ part_id: partId, completed_qty: 7, ledger_sum: 4, remainder: 0 });
+    expect(report[0].recovered.map(j => j.job_id)).toEqual([gapJobId]);
+    expect(ledger(partId)).toEqual(before);
+  });
+
+  test('apply adds a recovered_job row at the finish time with a continuous running total', () => {
+    const { partId, gapJobId } = partWithGap();
+    const before = ledger(partId);
+
+    partLedger.repairMismatchedLedgers(db, { apply: true });
+
+    const rows = ledger(partId).sort((a, b) => a.created_at - b.created_at);
+    expect(rows.map(r => [r.source, r.delta, r.balance_after, r.created_at])).toEqual([
+      ['print_finished', 2, 2, 1000],
+      ['recovered_job', 3, 5, 2000],
+      ['print_finished', 2, 7, 3000],
+    ]);
+    expect(rows[1].job_id).toBe(gapJobId);
+    expect(rows[1].printer_name).toBe('MK4S_01');
+    // Existing rows are untouched.
+    for (const r of before) expect(ledger(partId).find(x => x.id === r.id)).toEqual(r);
+    expect(ledgerSum(partId)).toBe(completed(partId));
+  });
+
+  test('never changes completed_qty and is a no-op the second time', () => {
+    const { partId } = partWithGap();
+    partLedger.repairMismatchedLedgers(db, { apply: true });
+    const rows = ledger(partId);
+
+    expect(partLedger.repairMismatchedLedgers(db, { apply: true })).toEqual([]);
+    expect(ledger(partId)).toEqual(rows);
+    expect(completed(partId)).toBe(7);
+  });
+
+  test('a change not explained by a finished job gets one labelled baseline row', () => {
+    const { partId } = partWithGap();
+    db.prepare('UPDATE parts SET completed_qty = completed_qty - 1 WHERE id = ?').run(partId); // untracked correction
+
+    const report = partLedger.repairMismatchedLedgers(db, { apply: true, now: 9000 });
+
+    expect(report[0].remainder).toBe(-1);
+    const last = ledger(partId).find(r => r.source === 'baseline');
+    expect(last).toMatchObject({ delta: -1, balance_after: 6, created_at: 9000 });
+    expect(last.note).toMatch(/without audit tracking/);
+    expect(ledgerSum(partId)).toBe(completed(partId));
+  });
+
+  test('parts that already add up are left alone, even with untracked failed jobs', () => {
+    const printerId = seedPrinter();
+    const partId = seedPart(seedProject());
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(seedJob(partId, printerId, { status: 'finished' }));
+    partLedger.adjustPartQty(db, { partId, delta: 4, source: SOURCES.PRINT_FINISHED, job });
+    seedJob(partId, printerId, { status: 'failed' });
+
+    expect(partLedger.repairMismatchedLedgers(db, { apply: true })).toEqual([]);
+    expect(ledger(partId)).toHaveLength(1);
+  });
+
+  test('recovered rows count as plates in the audit summary', () => {
+    const { partId } = partWithGap();
+    partLedger.repairMismatchedLedgers(db, { apply: true });
+    const audit = partLedger.getPartAudit(db, partId);
+    expect(audit.printers[0]).toMatchObject({ plates: 3, net: 7 });
+    expect(audit.reconciliation.matches).toBe(true);
+  });
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 function buildApp(factoryPath, mount) {

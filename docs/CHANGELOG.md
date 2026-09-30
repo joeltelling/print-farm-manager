@@ -2,6 +2,23 @@
 
 ---
 
+## 2026-09-30: ledger repair for credits made while untracked code ran
+
+The audit page on the farm showed its reconciliation banner for part 166 ("SKU2 - Main", AgXRP 200 SKU1 SKU2): completed 93, ledger 89. Cause, confirmed from the 2026-09-29 20:00 hourly backup: while switching the farm back to `main`, `update.bat` ran once before the audit trail PR was merged, restarting the pre-ledger code for about a minute. Four finished jobs (MK4S_01, 02, 04, 05, finished 5:37:13 to 5:37:43 PM local) were credited to `completed_qty` by that code with no ledger rows. The next `update.bat` brought the ledger back, but the startup rebuild skips parts that already have rows. Counts were right throughout; only the history was missing those four rows. No other part was affected.
+
+New `repairMismatchedLedgers()`, run through `audit-dry-run.js --repair` (preview) and `--repair --apply`. For each part whose ledger does not add up, each finished job with no ledger rows gets a `recovered_job` row at its finish time, with its running total continuing from the row before it. Rows written after the gap already carry the true total, so none are changed. Anything still unexplained gets one labelled `baseline` row. It never changes `completed_qty`. Checked against a copy of that backup: the four jobs recovered as 86 to 89, the 5:38 PM row continues at 90, the part reconciles, and a second run is a no-op.
+
+Deliberately manual rather than run at startup: an automatic heal would also hide a future bug that changes a count without recording it, which is what the reconciliation check is for.
+
+### Changes
+- `server/partLedger.js`: `repairMismatchedLedgers()` and the `recovered_job` source (counted as a credited plate in the audit summary).
+- `server/scripts/audit-dry-run.js`: `--repair` (preview) and `--repair --apply`.
+- `client/src/pages/PartAudit.jsx`: "Finished (recovered)" badge.
+- `server/tests/part-ledger.test.js`: repair preview, apply with continuous running totals and untouched existing rows, idempotence, the unexplained-change baseline, consistent parts left alone, and the audit summary.
+- `docs/database.md`, `docs/api.md`, `docs/web-app.md`: documented the repair and the new source.
+
+---
+
 ## 2026-09-25: mark-job-failure deducted the full plate after a count correction
 
 Found while building the part audit trail and reproduced in a test: on a part at 10 whose last plate held 4, Complete and Decommission with 3 of 4 good correctly took the count to 9, but marking that same job failed then deducted the full plate (to 5) instead of the 3 it actually contributed (to 6), leaving the part one short. mark-job-failure assumed a finished job always contributes exactly `parts_per_plate`.

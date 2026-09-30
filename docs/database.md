@@ -225,13 +225,16 @@ The ledger never credits anything on its own. Rows are written only from inside 
 | `marked_failed` | `printers.js` mark-job-failure (finished job) | Credited plate marked as a failed print; plate deducted |
 | `manual_edit` | `parts.js` `PUT /api/parts/:id` | Operator typed a new completed count (only written when the value actually changes) |
 | `rebuilt_job` | `rebuildMissingLedgers()` | One-time: a finished (or legacy `done`) job that predates the ledger |
-| `baseline` | `rebuildMissingLedgers()` | One-time: balances rebuilt rows against `completed_qty` for history the old schema never stored |
+| `baseline` | `rebuildMissingLedgers()`, `repairMismatchedLedgers()` | Balances the ledger against `completed_qty` for changes that were never recorded (the note says which) |
+| `recovered_job` | `repairMismatchedLedgers()` (manual) | A finished job credited while a version without the ledger was running |
 
 **One-time rebuild:** on every startup, `db.js` calls `rebuildMissingLedgers()` for parts with no ledger rows. On the first start after upgrading, that is every existing part with a count or finished jobs; afterwards, parts always have rows from their first credit, so it finds nothing. Each finished job becomes a `rebuilt_job` row at its `finished_at`. Failed jobs are not rebuilt as deductions: the old schema cannot tell a job that was credited then marked failed from one that was never credited, and the net effect is zero either way. The old schema also never stored operator count corrections or manual edits, so when the rebuilt rows do not add up to `completed_qty`, one `baseline` row covers the difference. It is dated at the part's `updated_at` (the last time anything touched the part, so no earlier than the unrecorded change it balances), but never before the part's last rebuilt job and never after the rebuild itself. The rebuild never changes `completed_qty`. Backup restore runs the same rebuild for parts restored from a backup that predates the ledger.
 
 **Deletes:** part delete and draft project delete remove the part's rows; backup restore replaces the whole table. `seed-demo.js` clears it so the next start rebuilds from the seeded jobs.
 
 **Checking it:** `node server/scripts/audit-dry-run.js` snapshots the live DB and runs the rebuild on the snapshot only; `--check` is a read-only reconciliation of a DB that already has a ledger (exit code 1 on any mismatch); `--part <id>` prints one part's timeline. Run with `--help` for details.
+
+**Repairing a mismatch:** if code without the ledger runs after a part already has rows (for example, `update.bat` restarting the pre-ledger version mid-upgrade), its credits reach `completed_qty` but not the ledger, and the startup rebuild skips the part because it already has rows. `--repair` previews the fix and `--repair --apply` writes it (`repairMismatchedLedgers()`): each finished job of a mismatched part with no ledger rows gets a `recovered_job` row at its finish time, with `balance_after` continuing from the row before it (rows written after the gap already carry the true running total, so no existing row is changed). Anything still unexplained gets one `baseline` row at the repair time. It never changes `completed_qty`. The repair is deliberately manual, never run at startup: healing automatically would also hide a future bug that changes the count without recording it.
 
 ## Conventions
 

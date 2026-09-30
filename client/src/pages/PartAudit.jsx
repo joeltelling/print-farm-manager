@@ -35,6 +35,7 @@ const EVENT_META = {
   print_finished:   { label: 'Print finished',        bg: '#14532d', color: '#86efac', kind: 'credit' },
   operator_confirm: { label: 'Operator confirmed',    bg: '#1e3a5f', color: '#93c5fd', kind: 'credit' },
   rebuilt_job:      { label: 'Finished (pre-tracking)', bg: '#1e2433', color: '#86efac', kind: 'credit' },
+  recovered_job:    { label: 'Finished (recovered)',  bg: '#1e2433', color: '#86efac', kind: 'credit' },
   operator_adjust:  { label: 'Count corrected',       bg: '#78350f', color: '#fcd34d', kind: 'deduction' },
   marked_failed:    { label: 'Marked failed',         bg: '#7f1d1d', color: '#fca5a5', kind: 'deduction' },
   manual_edit:      { label: 'Manual edit',           bg: '#1e2a3a', color: '#7dd3fc', kind: 'manual' },

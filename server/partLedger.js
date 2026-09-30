@@ -25,6 +25,7 @@ const SOURCES = {
   MANUAL_EDIT:      'manual_edit',      // operator typed a new completed count on the part
   REBUILT_JOB:      'rebuilt_job',      // one-time rebuild from a finished job that predates the ledger
   BASELINE:         'baseline',         // one-time balancing row for history the old system never recorded
+  RECOVERED_JOB:    'recovered_job',    // manual repair: finished job credited while untracked code ran
 };
 
 const SCHEMA_SQL = `
@@ -222,7 +223,104 @@ function rebuildMissingLedgers(db, { now = Date.now() } = {}) {
 }
 
 // Sources whose rows represent one plate crediting the part (for per-printer plate counts).
-const PLATE_CREDIT_SOURCES = [SOURCES.PRINT_FINISHED, SOURCES.OPERATOR_CONFIRM, SOURCES.REBUILT_JOB];
+// Manual repair for parts whose ledger no longer adds up to completed_qty. Deliberately
+// NOT run at startup: an automatic heal would also paper over a future bug that
+// changes the count without recording it, which is exactly what the reconciliation
+// check exists to catch. Run it on purpose, via server/scripts/audit-dry-run.js
+// --repair, after the cause is understood.
+//
+// The known cause is code without the ledger running after a part already has rows
+// (for example, the pre-ledger version restarted during an upgrade). Its credits land
+// in completed_qty but not in the ledger, and the startup rebuild skips the part
+// because it already has rows. So, per mismatched part:
+//   1. each finished (or legacy done) job with no ledger rows gets one recovered_job
+//      row at its finish time, with balance_after continuing from the ledger row just
+//      before it. Rows written after the gap already carry the true running total
+//      (adjustPartQty reads it back from parts), so no existing row is touched;
+//   2. whatever still does not add up (a correction or mark-failed made by the
+//      untracked code) gets one baseline row at `now`, labelled as such.
+// Never changes completed_qty. With apply: false it only reports what it would write.
+// Returns [{ part_id, name, completed_qty, ledger_sum, recovered: [...], remainder }].
+function repairMismatchedLedgers(db, { apply = false, now = Date.now() } = {}) {
+  ensureSchema(db);
+
+  const mismatched = db.prepare(`
+    SELECT p.id, p.name, p.completed_qty, COALESCE(SUM(l.delta), 0) AS ledger_sum
+    FROM parts p
+    LEFT JOIN part_qty_ledger l ON l.part_id = p.id
+    GROUP BY p.id
+    HAVING COALESCE(SUM(l.delta), 0) != COALESCE(p.completed_qty, 0)
+    ORDER BY p.id
+  `).all();
+
+  const missingJobs = db.prepare(`
+    SELECT j.*, pr.name AS printer_name FROM jobs j
+    LEFT JOIN printers pr ON pr.id = j.printer_id
+    WHERE j.part_id = ? AND j.status IN ('finished', 'done')
+      AND NOT EXISTS (SELECT 1 FROM part_qty_ledger l WHERE l.job_id = j.id)
+    ORDER BY COALESCE(j.finished_at, j.started_at, j.created_at), j.id
+  `);
+  const balanceBefore = db.prepare(`
+    SELECT balance_after FROM part_qty_ledger
+    WHERE part_id = ? AND created_at <= ?
+    ORDER BY created_at DESC, id DESC LIMIT 1
+  `);
+  const insert = db.prepare(`
+    INSERT INTO part_qty_ledger
+      (part_id, job_id, printer_id, printer_name, gcode_id, delta, balance_after, source, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const report = [];
+  const run = () => {
+    for (const part of mismatched) {
+      const current = part.completed_qty || 0;
+      let sum = part.ledger_sum;
+      const recovered = [];
+
+      for (const job of missingJobs.all(part.id)) {
+        const at = job.finished_at ?? job.started_at ?? job.created_at;
+        // Recovered rows are inserted in time order, so each one sees the previous
+        // recovered row when computing its running total.
+        const prev = apply
+          ? (balanceBefore.get(part.id, at)?.balance_after ?? 0)
+          : null;
+        recovered.push({
+          job_id: job.id, printer_name: job.printer_name ?? null,
+          parts_per_plate: job.parts_per_plate, finished_at: at,
+        });
+        sum += job.parts_per_plate;
+        if (apply) {
+          insert.run(
+            part.id, job.id, job.printer_id, job.printer_name ?? null, job.gcode_id ?? null,
+            job.parts_per_plate, prev + job.parts_per_plate, SOURCES.RECOVERED_JOB,
+            'Recovered: finished while a version without audit tracking was running',
+            at
+          );
+        }
+      }
+
+      const remainder = current - sum;
+      if (remainder !== 0 && apply) {
+        insert.run(
+          part.id, null, null, null, null, remainder, current, SOURCES.BASELINE,
+          'Unrecorded change made while a version without audit tracking was running',
+          now
+        );
+      }
+      report.push({
+        part_id: part.id, name: part.name, completed_qty: current,
+        ledger_sum: part.ledger_sum, recovered, remainder,
+      });
+    }
+  };
+
+  if (apply) db.transaction(run)();
+  else run();
+  return report;
+}
+
+const PLATE_CREDIT_SOURCES = [SOURCES.PRINT_FINISHED, SOURCES.OPERATOR_CONFIRM, SOURCES.REBUILT_JOB, SOURCES.RECOVERED_JOB];
 
 // Everything the part audit page needs, in one read. Returns null when the part does
 // not exist.
@@ -323,4 +421,7 @@ function getPartAudit(db, partId) {
   };
 }
 
-module.exports = { SOURCES, ensureSchema, adjustPartQty, jobNetCredit, deleteForPart, rebuildMissingLedgers, getPartAudit };
+module.exports = {
+  SOURCES, ensureSchema, adjustPartQty, jobNetCredit, deleteForPart,
+  rebuildMissingLedgers, repairMismatchedLedgers, getPartAudit,
+};
