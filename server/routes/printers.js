@@ -6,6 +6,7 @@ const router = express.Router();
 const events = require('../events');
 const partLedger = require('../partLedger');
 const confirmCount = require('../confirmCount');
+const { dropConnection } = require('../drivers');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -33,7 +34,17 @@ function resolveModel(rawModel, name) {
   return normalizeModel(rawModel) || inferModel(name);
 }
 
-module.exports = (db) => {
+// Loaded filament is compared by exact string equality against project and G-code
+// requirements (server/candidate-query.js), so a stray space typed into the printer's
+// Material field would silently stop it matching "PETG". Trim on the way in; empty
+// clears the value.
+function cleanFilament(v) {
+  return (typeof v === 'string' ? v.trim() : v) || null;
+}
+
+// scheduler is optional, only needed at runtime for sweepIdlePrinters after an edit
+// changes what a printer can print. Tests pass null so there is no live scheduler dependency.
+module.exports = (db, scheduler = null) => {
   // Silently keeps the printer_groups registry a superset of every group name
   // ever assigned to a printer, so a group can never again vanish from a
   // picker just because no printer currently carries it. Zero added friction:
@@ -146,7 +157,7 @@ module.exports = (db) => {
         INSERT INTO printers (name, ip, api_key, serial_number, group_name, type, model, loaded_material, loaded_color, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(name, ip, api_key || '', serial_number || '', group_name || null, printerType, normalized,
-             loaded_material || null, loaded_color || null, Date.now());
+             cleanFilament(loaded_material), cleanFilament(loaded_color), Date.now());
       // Best-effort convenience: a failure here must never turn an already-
       // committed printer creation into a reported error.
       if (group_name && group_name.trim()) {
@@ -176,8 +187,8 @@ module.exports = (db) => {
     }
 
     // loaded_material / loaded_color: if key is present in body, use the value (even if empty → null to clear)
-    const newMaterial = 'loaded_material' in req.body ? (loaded_material || null) : printer.loaded_material;
-    const newColor    = 'loaded_color'    in req.body ? (loaded_color    || null) : printer.loaded_color;
+    const newMaterial = 'loaded_material' in req.body ? cleanFilament(loaded_material) : printer.loaded_material;
+    const newColor    = 'loaded_color'    in req.body ? cleanFilament(loaded_color)    : printer.loaded_color;
 
     // Compute effective new values for all tracked fields (COALESCE: body wins, else keep existing)
     const after = {
@@ -231,6 +242,35 @@ module.exports = (db) => {
         }
       }
 
+      // If anything the driver connects with changed, drop the cached connection so
+      // the next poll reconnects with the new settings. Persistent drivers otherwise
+      // keep retrying with the values they were created with until a server restart.
+      // api_key is checked from the body (COALESCE semantics: null/omitted keeps the
+      // old value) because it is deliberately absent from FIELD_LABELS: logging an
+      // access code change would write the secret into the event history.
+      const connectionChanged =
+        after.ip            !== printer.ip ||
+        after.serial_number !== printer.serial_number ||
+        after.type          !== printer.type ||
+        (api_key != null && api_key !== printer.api_key);
+      if (connectionChanged) {
+        // printer.type, not after.type: the cached connection lives under the old driver.
+        dropConnection(printer.type, printer.id);
+        console.log(`[printers] ${after.name} connection settings changed, dropped cached driver connection`);
+      }
+
+      // An idle printer only asks for work when it transitions into IDLE, so loading
+      // PETG on a printer that is already idle used to leave it sitting there next to a
+      // PETG part until something else happened to trigger a sweep. Sweep now whenever
+      // the edit changes what this printer is eligible for. Safe to call unconditionally
+      // on those edits: the sweep already filters to idle, unheld, active printers.
+      const targetingChanged =
+        after.model           !== printer.model ||
+        after.group_name      !== printer.group_name ||
+        after.loaded_material !== printer.loaded_material ||
+        after.loaded_color    !== printer.loaded_color;
+      if (targetingChanged && scheduler) scheduler.sweepIdlePrinters();
+
       res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id));
     } catch (err) {
       if (err.message.includes('UNIQUE')) {
@@ -245,6 +285,8 @@ module.exports = (db) => {
     const printer = db.prepare('SELECT * FROM printers WHERE id = ?').get(req.params.id);
     if (!printer) return res.status(404).json({ error: 'Printer not found' });
     db.prepare('DELETE FROM printers WHERE id = ?').run(req.params.id);
+    // The row is gone; without this the driver's client would auto-reconnect forever.
+    dropConnection(printer.type, printer.id);
     res.json({ success: true });
   });
 
@@ -255,6 +297,10 @@ module.exports = (db) => {
     const now = Date.now();
     db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ? WHERE id = ?').run(now, printer.id);
     events.insert(printer.id, 'decommission', req.body?.note ?? null);
+    // The poller skips inactive printers, but a persistent driver client would keep
+    // auto-reconnecting on its own. On Bambu that steals the printer's single LAN
+    // slot from any replacement row pointed at the same machine.
+    dropConnection(printer.type, printer.id);
     console.log(`[printers] ${printer.name} decommissioned`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
   });
@@ -356,6 +402,7 @@ module.exports = (db) => {
     const decommNote = req.body?.note ?? null;
     db.prepare('UPDATE printers SET is_active = 0, is_held = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, decommNote, printer.id);
     events.insert(printer.id, 'decommission', decommNote ?? 'operator confirmed successful print — taken offline for maintenance');
+    dropConnection(printer.type, printer.id);
     console.log(`[printers] ${printer.name} decommissioned after confirmed good print`);
     res.json(db.prepare('SELECT * FROM printers WHERE id = ?').get(printer.id));
   });
@@ -411,6 +458,7 @@ module.exports = (db) => {
       const noJobNote = req.body?.note ?? null;
       db.prepare('UPDATE printers SET is_active = 0, decommissioned_at = ?, decommission_note = ? WHERE id = ?').run(now, noJobNote, printer.id);
       events.insert(printer.id, 'job_failed', noJobNote ?? 'No tracked job — printer decommissioned for investigation');
+      dropConnection(printer.type, printer.id);
       console.log(`[printers] ${printer.name} decommissioned (no tracked job to mark failed)`);
       return res.json({ success: true, job_id: null });
     }
@@ -460,6 +508,7 @@ module.exports = (db) => {
       ? `Job ${job.id} — part: ${failedPart?.name ?? 'unknown'} — ${failNote}`
       : `Job ${job.id} — part: ${failedPart?.name ?? 'unknown'}`;
     events.insert(printer.id, 'job_failed', eventNote);
+    dropConnection(printer.type, printer.id);
 
     console.log(`[printers] Job ${job.id} marked failed — ${printer.name} decommissioned pending investigation`);
     res.json({ success: true, job_id: job.id });

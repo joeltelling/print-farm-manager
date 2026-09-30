@@ -22,7 +22,6 @@ const partLedger     = require('./partLedger');
 const confirmCount   = require('./confirmCount');
 const backup         = require('./backup');
 
-const printersRouter     = require('./routes/printers')(db);
 const jobsRouter         = require('./routes/jobs')(db);
 const backupRouter       = require('./routes/backup')(db);
 const dashboardRouter    = require('./routes/dashboard')(db);
@@ -31,6 +30,7 @@ const modelsRouter       = require('./routes/models')(db);
 const groupsRouter       = require('./routes/groups')(db);
 const filamentsRouter    = require('./routes/filaments')(db);
 const printerJobsRouter  = require('./routes/printer-jobs')(db);
+const scheduleRouter     = require('./routes/schedule')(db);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -38,7 +38,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 // API routes
-app.use('/api/printers',        printersRouter);
 app.use('/api/printers/:id/jobs', printerJobsRouter);
 app.use('/api/jobs',            jobsRouter);
 app.use('/api/backup',          backupRouter);
@@ -47,6 +46,7 @@ app.use('/api/settings',        settingsRouter);
 app.use('/api/models',          modelsRouter);
 app.use('/api/groups',          groupsRouter);
 app.use('/api/filaments',       filamentsRouter);
+app.use('/api/schedule',        scheduleRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -88,10 +88,12 @@ const server = app.listen(PORT, () => {
   const poller    = new PrinterPoller(db);
   const scheduler = new JobScheduler(db, poller);
 
-  // Mount projects, parts, and gcodes routers here so they have access to the
-  // scheduler: projects for complete/reactivate, parts for the sweep after adding a
-  // part (or raising target_qty) reactivates a completed project, gcodes for the sweep
-  // after an upload gives a part its first matching G-code.
+  // Mount printers, projects, parts, and gcodes routers here so they have access to the
+  // scheduler: printers for the sweep after a filament, group, or model edit makes an
+  // idle printer eligible, projects for complete/reactivate and targeting edits, parts
+  // for the sweep after adding a part (or raising target_qty) reactivates a completed
+  // project, gcodes for the sweep after an upload or a targeting edit.
+  app.use('/api/printers', require('./routes/printers')(db, scheduler));
   app.use('/api/projects', require('./routes/projects')(db, scheduler));
   app.use('/api/parts',    require('./routes/parts')(db, scheduler));
   app.use('/api/gcodes',   require('./routes/gcodes')(db, scheduler));

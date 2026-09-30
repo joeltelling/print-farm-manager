@@ -23,6 +23,7 @@ beforeAll(() => {
       created_at INTEGER, updated_at INTEGER);
     CREATE TABLE parts (id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT,
       target_qty INTEGER, completed_qty INTEGER DEFAULT 0, status TEXT DEFAULT 'open',
+      print_time_seconds INTEGER,
       created_at INTEGER, updated_at INTEGER);
     CREATE TABLE jobs (id INTEGER PRIMARY KEY, part_id INTEGER, printer_id INTEGER,
       gcode_id INTEGER, parts_per_plate INTEGER, status TEXT DEFAULT 'queued',

@@ -4,6 +4,10 @@ const path = require('path');
 const fs = require('fs');
 const router = express.Router();
 
+const zip = require('../zip-reader');
+const { readSlicerMetadata } = require('../slicer-metadata');
+const { normalizePrintTime, normalizeMaterialGrams } = require('../estimate-input');
+
 const GCODE_DIR = path.join(__dirname, '..', 'gcode');
 
 const storage = multer.diskStorage({
@@ -62,32 +66,34 @@ function extractMaterialGramsFromFilename(filename) {
   return null;
 }
 
-// Accepts: bare integer (seconds), HH:MM:SS, H:MM, or component form (2h15m, 1h 30m, etc.)
-function normalizePrintTime(raw) {
-  if (!raw && raw !== 0) return null;
-  const s = String(raw).trim();
-  if (/^\d+$/.test(s)) return parseInt(s, 10);
-  let m = s.match(/^(\d{1,3}):(\d{2}):(\d{2})$/);
-  if (m) return +m[1] * 3600 + +m[2] * 60 + +m[3];
-  m = s.match(/^(\d{1,3}):(\d{2})$/);
-  if (m) return +m[1] * 3600 + +m[2] * 60;
-  let total = 0, found = false;
-  m = s.match(/(\d+)\s*h/i); if (m) { total += +m[1] * 3600; found = true; }
-  m = s.match(/(\d+)\s*m/i); if (m) { total += +m[1] * 60;   found = true; }
-  m = s.match(/(\d+)\s*s/i); if (m) { total += +m[1];        found = true; }
-  return found ? total : null;
-}
+// ZIP walking lives in server/zip-reader.js, shared with the slicer-metadata parser that
+// reads print time and weight out of the same archive.
 
-// Accepts: bare number (grams), "45g", "45.5 grams", "1.2kg", "1.2 kilograms"
-function normalizeMaterialGrams(raw) {
-  if (!raw && raw !== 0) return null;
-  const s = String(raw).trim();
-  if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
-  let m = s.match(/^(\d+(?:\.\d+)?)\s*kg(?:ilograms?)?$/i);
-  if (m) return parseFloat(m[1]) * 1000;
-  m = s.match(/^(\d+(?:\.\d+)?)\s*g(?:rams?)?$/i);
-  if (m) return parseFloat(m[1]);
-  return null;
+// The Bambu driver prints exactly Metadata/plate_1.gcode from the uploaded .3mf
+// (see server/drivers/bambu.js, project_file payload). A project file saved
+// without slicing has no gcode entry at all, and the printer ignores the print
+// command silently: the job sits in 'printing' forever against an idle machine.
+// Catch that at upload time with an instructive error instead.
+// Returns null when the file is fine, or an error string.
+function validateSliced3mf(filePath) {
+  let names;
+  try {
+    names = zip.listEntryNames(fs.readFileSync(filePath));
+  } catch (_) {
+    names = null;
+  }
+  if (names === null) {
+    return 'This file is not a readable .3mf archive. Export it again from your slicer.';
+  }
+  if (names.includes('Metadata/plate_1.gcode')) return null;
+
+  const otherPlate = names.find(n => /^Metadata\/plate_\d+\.gcode$/.test(n));
+  if (otherPlate) {
+    return `This .3mf contains ${otherPlate.replace('Metadata/', '')} but the farm prints plate_1. ` +
+           'In your slicer, export just the sliced plate (it becomes plate 1 in the exported file).';
+  }
+  return 'This .3mf contains no sliced G-code, so the printer would silently ignore it. ' +
+         'In Bambu Studio / Orca Slicer: Slice Plate first, then File > Export > Export plate sliced file.';
 }
 
 // scheduler is optional, only needed at runtime for sweepIdlePrinters after an upload
@@ -137,6 +143,14 @@ module.exports = (db, scheduler = null) => {
       return res.status(400).json({ error: `Unknown model "${printer_model}". Add it in Settings → Printer Models first.` });
     }
 
+    if (path.extname(req.file.originalname).toLowerCase() === '.3mf') {
+      const sliceError = validateSliced3mf(req.file.path);
+      if (sliceError) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: sliceError });
+      }
+    }
+
     // Enforce uniqueness on (part_id, printer_model) at app layer
     const existing = db.prepare(
       'SELECT id FROM gcodes WHERE part_id = ? AND printer_model = ?'
@@ -151,7 +165,25 @@ module.exports = (db, scheduler = null) => {
     // ams_slot: -1 = external spool, 0–N = AMS slot, null = not applicable (non-Bambu)
     const parsedAmsSlot = ams_slot !== undefined && ams_slot !== '' ? parseInt(ams_slot, 10) : null;
 
-    const parsedMaterialGrams = material_grams ? parseFloat(material_grams) : null;
+    // What the sliced file says about itself beats what the client inferred from the
+    // filename: an Orca or Bambu .3mf carries the slicer's own seconds and grams, and a
+    // plain .gcode carries them in its comments. The filename-derived values the client
+    // posts are the fallback for a .bgcode or a file whose slicer wrote neither.
+    // These estimates drive the forward schedule's block lengths, so a real number here
+    // is the difference between a usable projection and a wall of two-hour defaults.
+    const fileMeta = readSlicerMetadata(req.file.path, req.file.originalname);
+
+    const clientEstSecs = est_print_secs ? parseInt(est_print_secs, 10) : null;
+    const resolvedEstSecs = fileMeta.est_print_secs ?? (Number.isFinite(clientEstSecs) ? clientEstSecs : null);
+
+    const clientGrams = material_grams ? parseFloat(material_grams) : null;
+    const parsedMaterialGrams = fileMeta.material_grams ?? (Number.isFinite(clientGrams) ? clientGrams : null);
+
+    if (fileMeta.source !== 'none') {
+      console.log(`[gcodes] Read estimates from ${fileMeta.source} for "${req.file.originalname}": ` +
+        `${fileMeta.est_print_secs ?? 'no'} secs, ${fileMeta.material_grams ?? 'no'} grams`);
+    }
+
     // allowed_groups: JSON array string e.g. '["MK4S Farm","XL Farm"]', or null = all groups
     const parsedAllowedGroups = allowed_groups && allowed_groups !== '' ? allowed_groups : null;
     const parsedRequiredMaterial = required_material && required_material !== '' ? required_material.trim() : null;
@@ -166,7 +198,7 @@ module.exports = (db, scheduler = null) => {
       req.file.originalname,
       req.file.filename,
       parseInt(parts_per_plate, 10),
-      est_print_secs ? parseInt(est_print_secs, 10) : null,
+      resolvedEstSecs,
       parsedMaterialGrams,
       parsedAmsSlot,
       parsedAllowedGroups,
@@ -222,6 +254,14 @@ module.exports = (db, scheduler = null) => {
 
     db.prepare('UPDATE gcodes SET est_print_secs = ?, material_grams = ?, allowed_groups = ?, required_material = ?, required_color = ? WHERE id = ?')
       .run(estPrintSecs, materialGrams, allowedGroups, requiredMaterial, requiredColor, req.params.id);
+
+    // Loosening a G-code's group or filament targeting can make an already-idle printer a
+    // match, and idle printers never re-ask on their own, so sweep when targeting changed.
+    const targetingChanged =
+      allowedGroups    !== gcode.allowed_groups ||
+      requiredMaterial !== gcode.required_material ||
+      requiredColor    !== gcode.required_color;
+    if (targetingChanged && scheduler) scheduler.sweepIdlePrinters();
 
     res.json(db.prepare('SELECT * FROM gcodes WHERE id = ?').get(req.params.id));
   });

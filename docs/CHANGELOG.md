@@ -44,6 +44,29 @@ Deliberately manual rather than run at startup: an automatic heal would also hid
 
 ---
 
+## 2026-09-29: Filament and targeting edits dispatch immediately; the dispatch check shows which printer matches
+
+Reported on the farm: a project and a printer were both set to PETG, the part's "Why isn't this printing?" check said it was ready and that a matching printer would pick it up, and nothing printed. There was also no way to tell from the check which printer it meant.
+
+**Root cause.** An idle printer only asks the scheduler for work when the poller sees it transition into IDLE (the `printerIdle` event). Loading PETG on a printer that is already idle, or setting a project's filament or groups, changed eligibility without any transition, and none of those routes swept. The printer sat idle next to a matching part until some unrelated event (an upload, a project activation, a restart) ran a sweep. The check's promise of "the next sweep" was therefore misleading: there is no periodic sweep.
+
+**Fix.** `PUT /api/printers/:id` now sweeps when loaded material, loaded color, group, or model changes; `PUT /api/projects/:id/filament` and `/groups` always sweep; `PUT /api/gcodes/:id` sweeps when its targeting changes. The sweep already filters to idle, unheld, active printers, so this only ever dispatches where an IDLE transition would have. Printer material and color are also trimmed on the way in, since matching is exact string equality and `"PETG "` would silently never match `"PETG"`.
+
+**Printer match list.** `GET /api/parts/:id/dispatch-status` now also returns, per G-code, every active printer of that model with its match state (ready, busy, held, wrong filament, wrong group), what it has loaded, and for ready printers what the scheduler would actually hand it next. That next-up answer comes from the shared candidate query in `server/candidate-query.js` plus the same ceiling skip as `_reserveJob`, so it cannot disagree with dispatch. It exposes a second way "ready" could be misleading: a matching printer that will print a higher-priority part first. The check now says so instead of promising this part. On the Projects page each printer name links to its detail page, and a Dispatch now button appears when a ready printer has this part next.
+
+No change to hold semantics or any path that credits `completed_qty`. Verified by the test suite and against seeded demo data; not yet exercised on the production farm.
+
+### Changes
+- `server/routes/printers.js`: factory takes an optional scheduler; sweep after a targeting-relevant edit; `cleanFilament` trims material and color on create and update.
+- `server/routes/projects.js`: sweep after `PUT /:id/filament` and `PUT /:id/groups`.
+- `server/routes/gcodes.js`: sweep after `PUT /:id` when group, material, or color targeting changes.
+- `server/index.js`: printers router mounted with the scheduler, alongside projects, parts, and gcodes.
+- `server/routes/parts.js`: dispatch-status returns `gcodes[].printers[]` with `state` and `next_up`, and a note when higher-priority work is ahead on every ready printer.
+- `client/src/pages/Projects.jsx`: `PrinterMatchList` under the dispatch check, linked printer names, honest ready message, Dispatch now button.
+- `server/tests/targeting-sweep.test.js` (new, 11 tests): sweep and no-sweep cases for all four routes, trimming, 404 without a sweep.
+- `server/tests/dispatch-status.test.js`: 4 new tests for match states, next-up, higher-priority note, and the ceiling skip; schema gained the columns the shared candidate query reads.
+- `docs/api.md`, `docs/web-app.md`: documented the sweeps, trimming, the new response fields, and the printer list.
+
 ## 2026-09-25: mark-job-failure deducted the full plate after a count correction
 
 Found while building the part audit trail and reproduced in a test: on a part at 10 whose last plate held 4, Complete and Decommission with 3 of 4 good correctly took the count to 9, but marking that same job failed then deducted the full plate (to 5) instead of the 3 it actually contributed (to 6), leaving the part one short. mark-job-failure assumed a finished job always contributes exactly `parts_per_plate`.
@@ -154,6 +177,51 @@ Scheduler-only change: no candidate-selection SQL, ceiling math, or `completed_q
 - `docs/poller.md`: noted that the `printerIdle` listener routes through `scheduleForPrinter` and defers behind an in-progress batch sweep.
 
 ---
+## 2026-07-31: Schedule page, a forward projection of what each printer runs next
+
+The Jobs page only ever answered "what happened". Planning a shift needed the opposite view: when does this printer free up, when does this project finish, and what is the farm going to do overnight. The new Schedule page (nav entry directly under Jobs) draws one column per active printer against an Outlook-style time axis, with each print as a coloured block whose height is its anticipated duration.
+
+It is a projection, not a queue. `server/projection.js` is strictly read-only: no job rows, no dispatch, and `parts.completed_qty` is never touched. It replays the scheduler's own selection rules forward against a simulated clock, and to guarantee it cannot disagree with real dispatch, the eligibility predicate and priority ordering moved into `server/candidate-query.js`, which the scheduler and the projection both build their SQL from. Each keeps its own SELECT list, so the scheduler's query text is unchanged and adding a column for the schedule cannot widen it.
+
+**Two farm-policy rules make the projection realistic** rather than lights-out fiction, since every print finishes held for sign-off: a 15-minute changeover between prints on the same printer (swap the plate, confirm the result), and staffed hours of 06:00 to 22:00 local, where a print finishing after 22:00 waits for 06:00 before its changeover. So a print ending at 21:50 is followed by a start at 22:05, and one ending at 23:10 by a start at 06:15. The overnight gaps are shaded on the page, and the values are reported in the payload's `assumptions` so the UI states them instead of presenting the schedule as fact.
+
+**Busy comes from the jobs table, not `printers.status`.** This was a specific complaint: a printer that was just handed a job keeps showing FINISHED for several seconds, because `printers.status` only updates on the next 15 s poll. A job row is written synchronously at reservation, so the projection reads that instead and a just-dispatched printer is busy immediately. Live `job_time_remaining` is preferred for the print actually running. The inverse case is handled too: a job row still saying `printing` while the printer reports FINISHED/IDLE/STOPPED means the plate is off the nozzle and is waiting on a person, so the block ends now rather than running on to an estimate the farm has already outlived. That check is gated on a 90 s window matching the scheduler's `STALE_JOB_GRACE_MS`, because inside it the same shape is simply a fresh dispatch the poller has not caught up with, and collapsing that block would free the lane and project a phantom second job onto a busy printer. Found by running the projection against seeded demo data, where a held printer's finished print was drawn an hour into the future.
+
+**Ties are broken at random, as asked, but not jitterily.** When several printers come free within 60 s of each other and more than one can take the highest-priority part, the winner is a uniform random pick among them, seeded from the schedule fingerprint. An unchanged farm therefore re-renders an identical schedule instead of shuffling blocks on every poll, and any real change reshuffles the tie.
+
+**Block length needs an estimate, so Add Part grew an optional one.** `parts.print_time_seconds` (an existing column, unused since estimates moved per-G-code) is written again as the part-level fallback, via `print_time` on `POST`/`PUT /api/parts`. Precedence is `gcodes.est_print_secs`, then the part estimate, then two hours flagged `time_unknown` and drawn with a `?` marker, so a default is never mistaken for a measurement.
+
+**Uploads now read the slicer's own numbers.** Rather than relying on the filename convention, `POST /api/gcodes/upload` parses the uploaded file: `Metadata/slice_info.config` in an Orca or Bambu `.3mf` (`prediction` in whole seconds and `weight` in grams, from the plate with `index` 1, which is the plate the Bambu driver prints), or the footer comments in a plain `.gcode` (`; estimated printing time (normal mode) = ...` for PrusaSlicer, `; total estimated time: ...` for Orca/Bambu, `; total filament used [g] = ...` for both). File-derived values override the filename-derived fields the client posts, each field falling back independently. `.bgcode` is deliberately not parsed: Prusa's binary container would need its own block reader plus heatshrink, so the filename value stands. Every field name and unit above was verified against slicer source (OrcaSlicer `bbs_3mf.cpp` / `PartPlate.cpp`, PrusaSlicer `GCodeProcessor.cpp`) and cited in `server/slicer-metadata.js`, not inferred from sample files. Reading `.3mf` entries needed real ZIP extraction, so the central-directory walk added with the unsliced-.3mf check moved into `server/zip-reader.js` and grew local-header seeking plus `zlib.inflateRawSync`; entries are size-capped so a several-hundred-MB plate G-code can never be inflated during an upload.
+
+**Freshness is explicit, which is the other half of the reported complaint.** The schedule is derived state, and the operator needs to tell "current" from "stale". `server/schedule-state.js` hashes the projection's inputs and `GET /api/schedule` returns that fingerprint; the page polls the much cheaper `GET /api/schedule/version` every 5 s and, on a mismatch, shows a "Recalculating schedule" state and refetches instead of leaving old blocks on screen. Editing an estimate on the Projects page also fires a `scheduleDirty` window event so an open Schedule tab reacts immediately. It is a hash of the inputs rather than a counter that mutation sites increment, because a counter needs a bump call at every write that matters and goes silently stale the first time a new write path forgets one; hashing cannot forget. `printers.job_progress` and `job_time_remaining` are excluded on purpose, since every poll rewrites them for every printing printer and including them would pin the UI in a permanent recalculating state, which is the same lie as stale data wearing a spinner. The 15 s full refresh stays, because live progress moves an in-progress block's leading edge without changing the fingerprint.
+
+No change to dispatch behaviour, hold semantics, or any path that credits quantity. Not yet exercised on the production farm: verified by the test suite and by running the server against seeded demo data.
+
+### Changes
+- `server/projection.js` (new): read-only forward projection. Availability from the jobs table, changeover and staffed-hours model, estimate precedence with a flagged two-hour default, per-part ceiling accounting mirroring `_reserveJob`, seeded random tie-break, horizon with `truncated` reporting and `MAX_PROJECTED_BLOCKS`/`MAX_ITERATIONS` rails.
+- `server/candidate-query.js` (new): the dispatch eligibility predicate and priority ordering, shared by the scheduler and the projection; `SCHEDULER_COLUMNS` is byte-identical to the previously inline list.
+- `server/scheduler.js`: `_reserveJob` builds its candidate query from `candidateSql(SCHEDULER_COLUMNS, ...)`; same SQL, same bind order, no behaviour change.
+- `server/schedule-state.js` (new): `fingerprint(db)` over printers, active projects and their parts and G-codes, and in-flight jobs; excludes live poll progress.
+- `server/routes/schedule.js` (new): `GET /api/schedule` (`?horizon_hours=`, 400 outside 1 to 168) and `GET /api/schedule/version`.
+- `server/index.js`: mounts `/api/schedule`.
+- `server/zip-reader.js` (new): central-directory walk (moved from `routes/gcodes.js`), local-header seeking, stored and deflate entry reads via `zlib`, `MAX_ENTRY_BYTES` cap.
+- `server/slicer-metadata.js` (new): `.3mf` `slice_info.config` and `.gcode` comment parsing with source citations; returns null rather than guessing.
+- `server/estimate-input.js` (new): `normalizePrintTime` / `normalizeMaterialGrams`, moved out of `routes/gcodes.js` so the parts routes parse operator-typed estimates identically.
+- `server/routes/gcodes.js`: uses the shared ZIP reader and input parsers; upload reads estimates from the file and prefers them over the posted filename-derived values.
+- `server/routes/parts.js`: optional `print_time` on POST and PUT (present-wins, `""` clears, 400 with a format hint, 400 on zero or less), written to `print_time_seconds`.
+- `client/src/pages/Schedule.jsx` (new): the page itself. Sticky headings and time gutter, server-clock now-line, per-project block colours, clipped-block marker, off-hours shading, unavailable-lane hatching, horizon and zoom controls, recalculating state, unscheduled-demand list.
+- `client/src/scheduleDirty.js` (new): `scheduleDirty` event name and `signalScheduleDirty()`.
+- `client/src/App.jsx`: Schedule nav entry (directly under Jobs) and `/schedule` route.
+- `client/src/pages/Projects.jsx`: Est. print time on the Add Part form and in each part's details panel; inline error for a rejected estimate; fires `signalScheduleDirty()` on estimate saves, part adds, quantity edits, and G-code upload/delete.
+- `server/tests/schedule-projection.test.js` (new, 34 tests): clock model, estimate precedence, block placement, the stale-FINISHED and fresh-dispatch cases, availability states, ceiling and priority, tie-break stability and randomness, horizon truncation, and a read-only assertion.
+- `server/tests/schedule-route.test.js` (new, 24 tests): payload shape, horizon validation, and the fingerprint's must-change / must-not-change contract.
+- `server/tests/slicer-metadata.test.js` (new, 32 tests): ZIP reads including deflate and the size cap, `slice_info.config` plate selection and junk rejection, both G-code comment dialects, and large-file head and tail scanning.
+- `server/tests/gcodes-slicer-estimates.test.js` (new, 6 tests): file-derived estimates win over posted values, per-field fallback, `.bgcode` untouched.
+- `server/tests/parts-print-time.test.js` (new, 13 tests): accepted formats, optionality, clearing, validation, and that a quantity-only edit does not wipe the estimate.
+- `server/tests/helpers/build-zip.js`: optional deflate compression and a `buildSliceInfoConfig` fixture.
+- `server/tests/*.test.js` (23 files): `print_time_seconds` added to the inline `parts` schema, which the real schema has had since 2026-04.
+- `docs/schedule.md` (new), `docs/README.md`, `docs/api.md`, `docs/web-app.md`, `docs/database.md`: documented the page, both endpoints, the estimate fields, the upload parsing, and the freshness model.
+- `CLAUDE.md`: two new sync pairs (the shared candidate query, and the grace window shared with the scheduler).
 
 ## 2026-07-30: Projects page only shows Active projects by default
 
@@ -175,6 +243,51 @@ Fixed by adding `priority ASC` to the dashboard's active-projects query, matchin
 - `server/routes/dashboard.js`: `active_projects` query now orders by `priority ASC, created_at ASC` instead of `created_at ASC` alone.
 - `server/tests/dashboard.test.js` (new): covers priority ordering, the `created_at` tiebreaker, and exclusion of non-active projects.
 - `docs/api.md`, `docs/web-app.md`: documented that `active_projects` and the Dashboard's Active Projects panel are ordered by priority, matching the Projects page.
+
+## 2026-07-24: printer edits now reach the driver without a server restart
+
+Reported from a live two-printer Bambu farm. The operator added a P1S with a mistyped access code, then corrected the code on the Settings page, and the printer stayed OFFLINE anyway: the Bambu driver's cached MQTT client kept retrying auth with the original wrong code, because nothing ever told the driver the row had changed. Connection-relevant edits only took effect after a full server restart. The same gap had a second, sneakier symptom on the same farm: a duplicate printer row that was decommissioned (and could have been deleted) left behind a ghost MQTT client that reconnected forever, and since a Bambu printer accepts a single LAN client, the ghost and the real entry kicked each other offline in a loop that looked like a flaky printer.
+
+Persistent-connection drivers (bambu, elegoo-centauri, elegoo-centauri2) keep a module-level Map of `printer.id` to a live client that auto-reconnects with the credentials it was created with. The fix is a `dropConnection` contract: each persistent driver exports its existing internal drop helper, the registry exposes `dropConnection(type, printerId)` (a no-op for stateless drivers and never force-loads a lazy driver), and the printer routes call it whenever `ip`, `api_key`, `serial_number`, or `type` changes on PUT, and on DELETE and all three decommission paths. The next poll recreates the connection from the current row.
+
+Validated on hardware: reproduced the wrong-access-code symptom on a real P1S, applied the fix, and confirmed the corrected code connected on the next poll with no restart.
+
+### Changes
+- `server/drivers/bambu.js`: export `dropConnection` (already implemented, previously unreachable).
+- `server/drivers/elegoo-centauri.js`, `server/drivers/elegoo-centauri2.js`: export their existing `dropConnection` helpers.
+- `server/drivers/index.js`: registry-level `dropConnection(type, printerId)`; tracks loaded drivers so dropping never triggers a lazy require.
+- `server/routes/printers.js`: PUT drops the cached connection when a connection-relevant field changes (api_key compared against the request body, since it is deliberately excluded from event logging); DELETE, `decommission`, `complete-and-decommission`, and `mark-job-failure` always drop it.
+- `server/tests/bambu-driver.test.js`: 3 new tests (client ended, reconnect uses fresh credentials, no-op for unknown id).
+- `server/tests/printers-connection-drop.test.js`: new suite covering every route path that must (and must not) drop, plus the registry helper's no-op guarantees.
+- `docs/driver-authoring.md`: `dropConnection` added to the optional exports contract.
+- `docs/api.md`: connection-drop behavior noted on PUT and DELETE.
+## 2026-07-24: stuck uploading/printing jobs can be force-cancelled from the Jobs page
+
+Reported from a live two-printer Bambu farm. A dispatch uploaded a file and published the print-start command, but the printer (latched on a previous FINISH state) silently never started it. The job row sat in `printing` forever against a machine that was not printing anything. That zombie row blocked part deletion (parts refuse to delete with an active job) and had no exit: the Jobs page cancel action only accepted `queued` jobs, and the only endpoint that could touch an active job, `mark-job-failure`, decommissions the printer as a side effect. The operator's actual fix was hand-editing the database.
+
+`DELETE /api/jobs/:id` now accepts `?force=true` to cancel an `uploading` or `printing` job. The scope is deliberately tiny: the job row becomes `cancelled` with `finished_at` stamped, and nothing else happens. No `completed_qty` credit (an active job has credited nothing yet), no hold release (holds are resolved through Fleet's Set Ready / Bad Print), no printer contact (a physically running print is stopped at the printer or from Fleet). The Jobs page shows a "Force Cancel" button on uploading/printing rows, with a danger confirm that says exactly that. Rows displaying as "Awaiting Sign-off" keep no cancel button: resolving a held printer by cancelling its job would bypass the operator sign-off flow.
+
+One interaction needed guarding: the scheduler marks a job `printing` after its upload settles. If the operator force-cancelled during the transfer (uploads retry for many seconds), that write would have resurrected the cancelled job. Both post-upload writes (normal completion and the checkIfPrinting recovery path) now update only `WHERE status = 'uploading'` and treat zero changed rows as "leave it cancelled".
+
+### Changes
+- `server/routes/jobs.js`: `force` query param on DELETE; `uploading`/`printing` become cancellable with `finished_at` stamped; the 409 for other statuses hints at force; queued path byte-for-byte unchanged.
+- `server/scheduler.js` (`_executeUpload`): both status-to-printing writes guard on `status = 'uploading'` and return null when the job was cancelled mid-upload; the recovery path no longer holds the printer in that case.
+- `client/src/pages/Jobs.jsx`: "Force Cancel" on uploading/printing rows (hidden for Awaiting Sign-off), distinct danger confirm, error toast on failed cancels.
+- `server/tests/jobs-cancel.test.js`: new suite covering both modes, part-count and hold invariants, and 409/404 semantics.
+- `server/tests/scheduler-file.test.js`: 2 new tests proving a mid-upload cancel survives both post-upload write paths.
+- `docs/api.md`, `docs/web-app.md`: endpoint and Jobs page behavior documented.
+## 2026-07-24: unsliced .3mf uploads are rejected at upload time
+
+Three prints in one day "didn't run" on a live two-P1S farm: dispatch uploaded the file and published the print-start command, the printer sat at Ready to Print, and the job hung in `printing` forever. The files turned out to be project .3mfs saved without slicing: no `Metadata/plate_1.gcode` inside, which is the exact archive entry the Bambu driver's `project_file` command points at. The printer accepts the upload, finds no G-code to print, and ignores the command with no error anywhere. Nothing in the farm could tell the operator why.
+
+The upload endpoint now inspects `.3mf` files (a `.3mf` is a ZIP; the route walks the central directory with ~30 lines of buffer parsing, no new dependency, nothing extracted) and rejects with a `400` unless `Metadata/plate_1.gcode` is present. Two distinct messages: a file with no plate G-code at all gets "Slice Plate first, then File > Export > Export plate sliced file", and a file whose only sliced plate is not plate 1 gets told to export just that plate. The Projects upload form already renders upload errors inline, so the operator sees the explanation at the moment of upload instead of a silent zombie job an hour later. Non-`.3mf` uploads (Prusa/Klipper `.gcode`/`.bgcode`) are not inspected.
+
+### Changes
+- `server/routes/gcodes.js`: `listZipEntryNames` (EOCD + central directory walk, ZIP64 detected and treated as unparseable) and `validateSliced3mf`; POST /upload rejects invalid `.3mf` files with an instructive `400` and deletes the file from disk, extension check case-insensitive.
+- `server/tests/gcodes-3mf-validation.test.js`: new suite: sliced accepted, unsliced rejected, wrong-plate rejected, non-ZIP rejected, disk cleanup on rejection, non-.3mf uploads unaffected, case-insensitivity.
+- `server/tests/helpers/build-zip.js`: minimal stored-ZIP builder shared by test suites.
+- `server/tests/gcodes.test.js`: `makeTempGcode` now writes a valid sliced archive for `.3mf` names so the ams_slot tests pass the new validation.
+- `docs/api.md`, `docs/web-app.md`: validation documented on the upload endpoint and the Projects upload form.
 
 ## 2026-07-04: fix adding a part to a completed project couldn't be reactivated
 
@@ -213,6 +326,7 @@ Verified all three trigger points again, this time driven through the actual bro
 - `docs/api.md`: documented the reactivation/sweep behavior on `POST /api/parts`, `PUT /api/parts/:id`, and `POST /api/gcodes/upload`; corrected the `POST /api/parts` wording in round 3.
 
 ---
+
 ## 2026-07-12: dispatch_batch_size means concurrent uploads, not printers considered per pass
 
 Joel batch-confirmed a stack of held printers via Fleet's "Set Ready (N)" button with `dispatch_batch_size` set to 5, and instead of 5 uploads running at once he saw 3 or 4. He walked through it precisely: some of the held printers had the wrong material or color loaded for the part they'd match, so the scheduler correctly found "no candidate" for them and moved on without creating a job, exactly as designed. The bug was in what happened next. `_sweepInBatches` chunked the confirmed printers into fixed slices of `dispatch_batch_size` and processed one slice at a time, waiting for the whole slice to settle before moving to the next. If a slice of 5 had only 1 real candidate, only 1 upload ran, and the scheduler moved on to the *next fixed slice of 5* instead of reaching further into the queue to make up the difference. Joel's framing was the fix: "if I have five set as my limit, then five should be uploading at once, not five being contacted at once with one of the five being able to print."

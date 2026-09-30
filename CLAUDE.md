@@ -76,7 +76,8 @@ If you touch one side of a pair, grep for and update the other in the same commi
 
 | If you change | You must also check |
 |---|---|
-| Scheduler candidate/eligibility SQL (scheduler.js) | `GET /api/parts/:id/dispatch-status` in routes/parts.js, which mirrors it for operator diagnostics |
+| Scheduler candidate/eligibility SQL (server/candidate-query.js) | `GET /api/parts/:id/dispatch-status` in routes/parts.js, which mirrors it in JS for operator diagnostics. The scheduler and server/projection.js both build their SQL from candidate-query.js, so those two cannot drift; the JS mirror still can |
+| `STALE_JOB_GRACE_MS` (scheduler.js) | `FRESH_DISPATCH_GRACE_MS` (server/projection.js): same 90 s "freshly dispatched, not stale" line, drawn for the same reason on both the dispatch and the projection side |
 | Any new table or column | server/routes/backup.js export AND restore (column lists derive from the live schema; keep it that way), plus server/tests/backup-restore.test.js seeding and asserting it |
 | Driver registry (drivers/index.js) | routes/models.js VALID_CONNECTORS, routes/printers.js NO_API_KEY_TYPES, and every brand touchpoint in client/src/pages/Settings.jsx (find them with `grep -rn "octoprint" client/src`) |
 | A route's request/response shape | docs/api.md entry and the route's test file |

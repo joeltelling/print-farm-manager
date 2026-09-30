@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useToast } from '../useToast';
 import EmptyState from '../components/EmptyState';
 import { useConfirm } from '../useConfirm';
+import { signalScheduleDirty } from '../scheduleDirty';
 
 // ── Estimate helpers ──────────────────────────────────────────────────────────
 
@@ -23,6 +24,67 @@ function formatMaterialForInput(grams) {
 }
 
 // Model options are loaded from /api/models at runtime — no hardcoded list here.
+
+// Printer match states from GET /api/parts/:id/dispatch-status, in the order the
+// diagnostic checks them. Fallback covers any state a newer server adds.
+const MATCH_STATE = {
+  ready:          { text: '#86efac', label: 'Ready' },
+  busy:           { text: '#93c5fd', label: 'Busy' },
+  held:           { text: '#fcd34d', label: 'Awaiting sign-off' },
+  wrong_filament: { text: '#fca5a5', label: 'Wrong filament' },
+  wrong_group:    { text: '#94a3b8', label: 'Not in allowed group' },
+  unknown:        { text: '#94a3b8', label: 'Unknown' },
+};
+
+// Per-G-code printer list under the dispatch diagnostic: every active printer of the
+// G-code's model, what it has loaded, whether it matches, and (for ready printers) what
+// the scheduler would actually hand it next. Each name links to the printer's detail
+// page, where loaded material and color are set.
+function PrinterMatchList({ gcodes, partId }) {
+  if (!gcodes || gcodes.length === 0) return null;
+  return (
+    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {gcodes.map(g => {
+        const want = [g.required_material, g.required_color].filter(Boolean).join(' / ') || 'any filament';
+        const groups = g.allowed_groups ? g.allowed_groups.join(', ') : 'any group';
+        return (
+          <div key={g.gcode_id}>
+            <div style={{ color: '#e2e8f0', fontWeight: 600 }}>
+              {g.filename} <span style={{ color: '#64748b', fontWeight: 400 }}>needs {g.printer_model}, {want}, {groups}</span>
+            </div>
+            {g.printers.length === 0 ? (
+              <div style={{ color: '#64748b' }}>No active {g.printer_model} printers.</div>
+            ) : (
+              <div className="match-table" style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(90px, auto) minmax(110px, auto) 2fr', columnGap: 12, rowGap: 2 }}>
+                {g.printers.map(p => {
+                  const st = MATCH_STATE[p.state] || MATCH_STATE.unknown;
+                  const loaded = [p.loaded_material, p.loaded_color].filter(Boolean).join(' / ') || 'nothing set';
+                  let next = '';
+                  if (p.state === 'ready') {
+                    if (!p.next_up) next = '';
+                    else if (p.next_up.part_id === partId) next = 'Next up: this part';
+                    else next = `Next up: ${p.next_up.part_name} (${p.next_up.project_name}), higher priority`;
+                  } else if (p.state === 'busy' || p.state === 'held') {
+                    next = p.status;
+                  }
+                  return (
+                    <div key={p.id} style={{ display: 'contents' }}>
+                      <Link to={`/printers/${p.id}`} style={{ color: '#60a5fa', textDecoration: 'none' }}>{p.name}</Link>
+                      <span style={{ color: st.text }}>{st.label}</span>
+                      <span style={{ color: p.state === 'wrong_filament' ? '#fca5a5' : '#94a3b8' }}>{loaded}</span>
+                      <span style={{ color: '#64748b' }}>{next}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <style>{`@media (max-width: 600px) { .match-table { grid-template-columns: 1fr 1fr !important; } }`}</style>
+    </div>
+  );
+}
 
 const PROJECT_STATUS = {
   draft:     { bg: '#1f2937', text: '#9ca3af', dot: '#6b7280', label: 'Draft' },
@@ -482,6 +544,9 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
     });
     setSaving(false);
     if (res.ok) {
+      // A changed print time changes every block this G-code would produce on the
+      // schedule, so tell an open Schedule page immediately.
+      signalScheduleDirty();
       onSaved?.('Saved');
     } else {
       const d = await res.json();
@@ -624,6 +689,9 @@ function GcodeEstimateRow({ gc, onDelete, onSaved, filamentTypes, filamentColors
 function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamentTypes, filamentColors, projectMaterial, projectColor, projectGroups, groups }) {
   const [have, setHave] = useState(String(part.completed_qty));
   const [need, setNeed] = useState(String(part.target_qty));
+  // Part-level estimated time to print: the schedule's fallback block length for this part
+  // when a G-code has no figure of its own.
+  const [partTime, setPartTime] = useState(formatDurationForInput(part.print_time_seconds));
   const [saving, setSaving] = useState(false);
   const [qtyError, setQtyError] = useState(null);
 
@@ -647,10 +715,36 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
     setChecking(false);
   }
 
+  // Any ready printer whose next candidate is this part: that is the only case where
+  // dispatching now would actually start this part.
+  const nextOnSomePrinter = !!dispatchCheck?.gcodes?.some(g =>
+    g.printers.some(p => p.state === 'ready' && p.next_up?.part_id === part.id)
+  );
+  const [dispatching, setDispatching] = useState(false);
+
+  async function dispatchNow() {
+    setDispatching(true);
+    try {
+      const res = await fetch('/api/scheduler/dispatch', { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        onSaved?.('Dispatch failed: ' + (body.error || res.status), 'error');
+      } else {
+        onSaved?.('Dispatch requested');
+        onRefresh();
+      }
+    } catch (err) {
+      onSaved?.('Dispatch failed: ' + err.message, 'error');
+    }
+    setDispatching(false);
+    runDispatchCheck();
+  }
+
   useEffect(() => {
     setHave(String(part.completed_qty));
     setNeed(String(part.target_qty));
-  }, [part.completed_qty, part.target_qty]);
+    setPartTime(formatDurationForInput(part.print_time_seconds));
+  }, [part.completed_qty, part.target_qty, part.print_time_seconds]);
 
   async function saveName() {
     if (nameEscapedRef.current) { nameEscapedRef.current = false; return; }
@@ -671,7 +765,9 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
     const newNeed = parseInt(need, 10);
     if (isNaN(newHave) || newHave < 0) { setQtyError('Have must be 0 or more.'); return; }
     if (isNaN(newNeed) || newNeed < 1) { setQtyError('Need must be at least 1.'); return; }
-    if (newHave === part.completed_qty && newNeed === part.target_qty) return;
+    const newTime  = partTime.trim();
+    const timeMoved = newTime !== formatDurationForInput(part.print_time_seconds);
+    if (newHave === part.completed_qty && newNeed === part.target_qty && !timeMoved) return;
 
     const wouldClose = newHave >= newNeed;
     if (wouldClose && part.status === 'open') {
@@ -696,7 +792,9 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
     const res = await fetch(`/api/parts/${part.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed_qty: newHave, target_qty: newNeed }),
+      // print_time is always sent so clearing the field clears the estimate; an empty
+      // string means "no estimate", which the schedule draws at its documented default.
+      body: JSON.stringify({ completed_qty: newHave, target_qty: newNeed, print_time: newTime }),
     });
     setSaving(false);
     if (res.ok) {
@@ -760,7 +858,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
 
       {/* Quantities */}
       <div>
-        <div style={sectionLabel}>Quantities</div>
+        <div style={sectionLabel}>Quantities and Estimate</div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={{ color: '#64748b', fontSize: 12 }}>Have (completed)</label>
@@ -778,6 +876,22 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
               onChange={e => setNeed(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && saveQtys()}
               style={{ ...inputSx, width: 90 }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label
+              style={{ color: '#64748b', fontSize: 12, cursor: 'help', borderBottom: '1px dotted #334155', alignSelf: 'flex-start' }}
+              title="Estimated time to print one plate, used by the Schedule page. A G-code's own estimate always wins over this; leave it blank and the schedule falls back to 2 hours, marked as unknown."
+            >
+              Est. print time
+            </label>
+            <input
+              type="text"
+              value={partTime}
+              placeholder="2h (default)"
+              onChange={e => setPartTime(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveQtys()}
+              style={{ ...inputSx, width: 120 }}
             />
           </div>
           <button
@@ -855,11 +969,27 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
           }}>
             {dispatchCheck.dispatchable ? (
               <>
-                Ready to dispatch — a matching idle printer will pick this up on the next sweep.
+                {nextOnSomePrinter
+                  ? 'Ready to dispatch: a matching printer below has this part next.'
+                  : 'Ready to dispatch once higher-priority work on the matching printers is done.'}
                 {dispatchCheck.notes?.length > 0 && (
                   <ul style={{ margin: '6px 0 0', paddingLeft: 18, color: '#a3b3c9' }}>
                     {dispatchCheck.notes.map((n, i) => <li key={i}>{n}</li>)}
                   </ul>
+                )}
+                {nextOnSomePrinter && (
+                  <div style={{ marginTop: 6 }}>
+                    <button
+                      onClick={dispatchNow}
+                      disabled={dispatching}
+                      style={{
+                        background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4,
+                        padding: '4px 10px', fontSize: 12, cursor: dispatching ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {dispatching ? 'Dispatching…' : 'Dispatch now'}
+                    </button>
+                  </div>
                 )}
               </>
             ) : (
@@ -867,6 +997,7 @@ function PartDetailsPanel({ part, gcodes, onRefresh, onSaved, onConfirm, filamen
                 {dispatchCheck.reasons.map((r, i) => <li key={i}>{r}</li>)}
               </ul>
             )}
+            <PrinterMatchList gcodes={dispatchCheck.gcodes} partId={part.id} />
           </div>
         )}
       </div>
@@ -910,7 +1041,9 @@ export default function Projects() {
   // Add part form
   const [newPartName, setNewPartName]     = useState('');
   const [newPartQty, setNewPartQty]       = useState('');
+  const [newPartTime, setNewPartTime]     = useState('');
   const [addingPart, setAddingPart]       = useState(false);
+  const [addPartError, setAddPartError]   = useState(null);
 
   // Details panels (set of open part IDs)
   const [openPanels, setOpenPanels]       = useState(new Set());
@@ -1184,17 +1317,31 @@ export default function Projects() {
   async function addPart() {
     if (!newPartName.trim() || !newPartQty) return;
     setAddingPart(true);
-    await fetch('/api/parts', {
+    setAddPartError(null);
+    const res = await fetch('/api/parts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: selectedId, name: newPartName.trim(), target_qty: parseInt(newPartQty, 10) }),
+      body: JSON.stringify({
+        project_id: selectedId,
+        name: newPartName.trim(),
+        target_qty: parseInt(newPartQty, 10),
+        // Optional: an unparseable value is rejected by the server rather than silently
+        // dropped, so the operator finds out here instead of on the Schedule page.
+        print_time: newPartTime.trim() || undefined,
+      }),
     });
-    setNewPartName(''); setNewPartQty('');
     setAddingPart(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setAddPartError(body.error || 'Could not add the part.');
+      return;
+    }
+    setNewPartName(''); setNewPartQty(''); setNewPartTime('');
     // Adding a part can flip the parent project from completed back to active (server-side):
     // refresh the list too, same as every other status-changing action, so the cached
     // projects array doesn't keep showing "Completed" until some unrelated refresh happens.
     await Promise.all([fetchDetail(selectedId), fetchProjects()]);
+    signalScheduleDirty();
     showToast('Part added');
   }
 
@@ -1755,7 +1902,10 @@ export default function Projects() {
                 // until some unrelated refresh happens. saveName()/deleteGcode() share this
                 // same onRefresh and never change project status, so the extra fetchProjects()
                 // call there is just a harmless no-op refresh.
-                onRefresh={() => { fetchDetail(selectedId); fetchProjects(); }}
+                // signalScheduleDirty covers everything routed through this refresh:
+                // quantity edits, G-code uploads and deletions. Each one changes what the
+                // forward schedule would project.
+                onRefresh={() => { fetchDetail(selectedId); fetchProjects(); signalScheduleDirty(); }}
                 onSaved={showToast}
                 onConfirm={confirm}
                 filamentTypes={filamentTypes}
@@ -1799,6 +1949,22 @@ export default function Projects() {
               style={{ ...inputSx, width: 100 }}
             />
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label
+              style={{ color: '#64748b', fontSize: 12, cursor: 'help', borderBottom: '1px dotted #334155', alignSelf: 'flex-start' }}
+              title="Optional. Estimated time to print one plate, used to size this part's blocks on the Schedule page. Uploading a sliced file later replaces it with the slicer's own figure. Leave blank to use 2 hours, marked as unknown on the schedule."
+            >
+              Est. print time
+            </label>
+            <input
+              type="text"
+              value={newPartTime}
+              onChange={(e) => setNewPartTime(e.target.value)}
+              placeholder="2h (default)"
+              onKeyDown={(e) => e.key === 'Enter' && addPart()}
+              style={{ ...inputSx, width: 120 }}
+            />
+          </div>
           <button
             onClick={addPart}
             disabled={addingPart}
@@ -1812,6 +1978,10 @@ export default function Projects() {
             Add Part
           </button>
         </div>
+        <p style={{ margin: '8px 0 0', fontSize: 11, color: '#475569' }}>
+          The estimate is optional and only shapes the Schedule page. Formats: <span className="mono">2h15m</span>, <span className="mono">90m</span>, <span className="mono">1:30:00</span>.
+        </p>
+        {addPartError && <p style={{ color: '#f87171', fontSize: 12, margin: '6px 0 0' }}>{addPartError}</p>}
       </div>
     </div>
   );

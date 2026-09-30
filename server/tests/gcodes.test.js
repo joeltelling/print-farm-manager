@@ -27,6 +27,7 @@ beforeAll(() => {
       target_qty INTEGER NOT NULL,
       completed_qty INTEGER DEFAULT 0,
       status TEXT DEFAULT 'open',
+      print_time_seconds INTEGER,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -103,9 +104,13 @@ beforeAll(() => {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 // Creates a real temp file to upload
+const { buildSliced3mf } = require('./helpers/build-zip');
+
 function makeTempGcode(name = 'test.bgcode') {
   const p = path.join(os.tmpdir(), name);
-  fs.writeFileSync(p, Buffer.from('fake gcode content'));
+  // .3mf uploads are validated as real sliced archives; everything else can be junk bytes.
+  const content = name.toLowerCase().endsWith('.3mf') ? buildSliced3mf() : Buffer.from('fake gcode content');
+  fs.writeFileSync(p, content);
   return p;
 }
 

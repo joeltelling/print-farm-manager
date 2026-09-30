@@ -11,6 +11,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 - **Settings page** — CSV import UI for the printer registry, with flagged-row resolution
 - **Projects page** — project/part/G-code management and production tracking
 - **Jobs page** — live job queue with filters and cancel action
+- **Schedule page** — forward-looking projection: one column per printer, blocks sized by anticipated print time
 
 ## Key Files
 
@@ -27,6 +28,8 @@ The React single-page application served by Vite. In development, Vite runs on p
 | `client/src/pages/Projects.jsx` | Project/Part/G-code management |
 | `client/src/pages/PartAudit.jsx` | Per-part quantity audit trail (`/parts/:id/audit`) |
 | `client/src/pages/Jobs.jsx` | Job queue table with filters |
+| `client/src/pages/Schedule.jsx` | Forward schedule: printer columns against a time axis |
+| `client/src/scheduleDirty.js` | `scheduleDirty` window event helper, fired when an estimate changes |
 | `client/src/components/PollTimer.jsx` | Shared circular refresh-countdown ring used by Fleet and Dashboard |
 | `client/index.html` | HTML shell with dark background baseline CSS |
 | `client/vite.config.js` | Vite config — port 5173, `/api` proxy to 3000 |
@@ -46,6 +49,7 @@ The React single-page application served by Vite. In development, Vite runs on p
 │  Printers         │                       │
 │  Projects         │                       │
 │  Jobs             │                       │
+│  Schedule         │                       │
 │  Decommissioned   │                       │
 │  Settings         │                       │
 └───────────────────┴───────────────────────┘
@@ -251,10 +255,11 @@ Primary operator screen for setting up and launching print runs.
 - **▲/▼ ordering buttons:** move a part up or down in dispatch priority. Updates `sort_order` via `PUT /api/parts/reorder`. Optimistic — local state reorders immediately.
 - **Details panel** (per part, toggle with "Details" button): four sections:
   - *Part Name* — current name displayed with a ✎ pencil button. Click to edit inline; Enter or blur saves, Escape cancels → `PUT /api/parts/:id { name }`
-  - *Quantities* — editable Have (completed_qty) and Need (target_qty) fields, single Save button. Confirm dialogs guard open↔closed transitions. Server auto-calculates status. If raising Need above Have reopens a part that was `closed` and the parent project had already `completed`, the project is reactivated to `active` server-side and swept for idle printers immediately, the same behavior as the Add Part form below and the header's Re-activate action. Since this part necessarily already has G-code from before it was closed, the sweep can genuinely dispatch it right away.
+  - *Quantities and Estimate*: editable Have (completed_qty), Need (target_qty), and Est. print time fields, single Save button. The estimate is the optional part-level fallback the Schedule page uses to size this part's blocks (`print_time` on `PUT /api/parts/:id`, accepting `2h15m` / `90m` / `1:30:00`); clearing the field clears the estimate, and a G-code's own estimate always wins over it. Saving fires the `scheduleDirty` event so an open Schedule tab recalculates immediately. Confirm dialogs guard open↔closed transitions. Server auto-calculates status. If raising Need above Have reopens a part that was `closed` and the parent project had already `completed`, the project is reactivated to `active` server-side and swept for idle printers immediately, the same behavior as the Add Part form below and the header's Re-activate action. Since this part necessarily already has G-code from before it was closed, the sweep can genuinely dispatch it right away.
   - *G-code Files* — lists each uploaded file with filename, printer model badge, and × delete button (with confirm) → `DELETE /api/gcodes/:id`
-  - *Upload G-code* — file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline. A successful upload also triggers a scheduler sweep: this is what actually makes a brand-new part (added via the form below) dispatchable, since the scheduler requires a matching G-code.
-- **Add Part form:** name + target quantity → `POST /api/parts`. If the parent project had `completed`, it's reactivated to `active` immediately, no separate manual reactivate step needed. The new part itself isn't dispatchable yet, though: it has no G-code, so uploading one (above) is what actually triggers dispatch.
+  - *Upload G-code*: file picker → `POST /api/gcodes/parse-filename` pre-fills `parts_per_plate` and model. `409` duplicate error shown inline, as is the `400` from the server's sliced-.3mf validation (an unsliced project file or a non-plate-1 export is rejected at upload with instructions to re-export, instead of dispatching a file the printer would silently ignore). The server also reads the real print time and material weight out of the uploaded file (Orca/Bambu `.3mf` slice info, or `.gcode` footer comments) and those override the filename-derived values the form posts, so the returned estimate row is usually already correct. A successful upload also triggers a scheduler sweep: this is what actually makes a brand-new part (added via the form below) dispatchable, since the scheduler requires a matching G-code.
+  - *Why isn't this printing?*: calls `GET /api/parts/:id/dispatch-status` and shows the blockers or the "ready" verdict, then a printer list per G-code: every active printer of that G-code's model with its match state (Ready, Busy, Awaiting sign-off, Wrong filament, Not in allowed group), what it has loaded, and, for a ready printer, what the scheduler would hand it next ("Next up: this part", or the higher-priority part it will print first). Each printer name links to its detail page, where loaded material and color are set. When at least one ready printer has this part next, a **Dispatch now** button calls `POST /api/scheduler/dispatch` and re-runs the check.
+- **Add Part form:** name + target quantity + optional Est. print time → `POST /api/parts`. The estimate only shapes the Schedule page, and uploading a sliced G-code later supersedes it with the slicer's own per-model figure; left blank, the schedule draws two-hour blocks marked "time unknown". An unparseable value is rejected by the server and shown inline under the form. If the parent project had `completed`, it's reactivated to `active` immediately, no separate manual reactivate step needed. The new part itself isn't dispatchable yet, though: it has no G-code, so uploading one (above) is what actually triggers dispatch.
 
 ## Part Audit Page
 
@@ -282,7 +287,7 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 
 **Filters:** status dropdown (all / queued / uploading / printing / finished / failed / cancelled), project dropdown, printer dropdown, all passed as query params on each fetch. The dropdown filters on the real `jobs.status` column; "Awaiting Sign-off" below is a display-only badge, not a filterable value.
 
-**Actions:** "Cancel" button on `queued` rows → `DELETE /api/jobs/:id` with confirm dialog.
+**Actions:** "Cancel" button on `queued` rows → `DELETE /api/jobs/:id` with confirm dialog. "Force Cancel" button on `uploading`/`printing` rows → `DELETE /api/jobs/:id?force=true` with a danger confirm that spells out what it does and does not do: it clears the stuck job record only, it does not stop the printer. The button is hidden when the row displays as "Awaiting Sign-off" (printer held): those are resolved from Fleet via Set Ready / Bad Print, not by cancelling the job out from under the hold. Failed cancels surface via toast.
 
 **Status color coding:**
 
@@ -297,6 +302,55 @@ Live job queue that polls `GET /api/jobs` every 15 seconds.
 
 **"Awaiting Sign-off" badge (display-only):** a row whose `jobs.status` is still `printing` can belong to a printer that is already held for operator confirmation (for example a printer that transitions `PRINTING` -> `IDLE` directly, with no observable `FINISHED`/`STOPPED` in between two polls). `GET /api/jobs` joins `printer_is_held` and `printer_status` for exactly this case; `displayJobStatus()` in Jobs.jsx renders such a row as "Awaiting Sign-off" (green) instead of "Printing" (blue) so the Jobs page agrees with Fleet/Dashboard, which already reflect the hold via `is_held`. The underlying job row is untouched: it still says `printing` until the operator resolves it via Set Ready or Bad Print, at which point it becomes `finished`/`failed` normally.
 
+## Schedule Page
+
+`client/src/pages/Schedule.jsx`
+
+The forward-looking counterpart to Jobs: one column per active printer, an Outlook-style time
+axis down the left, and each print drawn as a coloured block whose height is its anticipated
+duration. Full design notes, including the operator model and the estimate precedence, are in
+[docs/schedule.md](schedule.md).
+
+**Layout:** sticky printer heading row, sticky time gutter, and a red now-line that ticks every
+10 seconds. The line is measured against the server's clock (the payload carries `now` and the
+page keeps the offset) so it never drifts against the blocks. The grid scrolls horizontally
+inside its own container, which is what keeps a 50-printer farm usable and stops the page body
+from scrolling sideways.
+
+**Controls:** horizon selector (6 h, 12 h, 24 h, 2 days, 3 days; default 24 h) and a row-height
+zoom (Compact / Normal / Detailed).
+
+**Reading a block:**
+
+| Appearance | Meaning |
+|---|---|
+| Solid fill, solid border | In progress now (a real `uploading`/`printing` job row) |
+| Translucent fill, dashed border | Projected: a prediction, with no job row behind it |
+| `?` prefix, amber | No print time known; drawn at the two-hour default |
+| `↑` prefix, squared top | Started before the visible window, so the block is clipped |
+| Shaded band across all lanes | Outside staffed hours, when nobody is there to swap a plate |
+| Diagonal hatch down a whole lane | Printer not projectable at all (`OFFLINE`, `ERROR`, ...) with the reason on its heading |
+
+Blocks are coloured per project (`color_index` from the payload, ordered by dispatch priority)
+and carry a `title` tooltip with the exact window, per-plate quantity, and where the time
+estimate came from.
+
+**Staleness, not silent staleness:** the page polls `GET /api/schedule/version` every 5 s and
+compares it against the fingerprint of what it has rendered. A mismatch shows an explicit
+"Recalculating schedule" pill and triggers a refetch. Editing an estimate on the Projects page
+additionally fires the `scheduleDirty` window event (`client/src/scheduleDirty.js`), so an open
+Schedule tab reacts immediately instead of waiting for the next version poll. The full
+projection is also refetched every 15 s, because live printer time-remaining moves the leading
+edge of an in-progress block without changing the fingerprint.
+
+**Error channels:** background refreshes keep the last good schedule on screen and report
+nothing; a failure with no data yet renders an inline message with a Retry button; only an
+operator-triggered fetch surfaces a toast.
+
+Open demand the projection could not place is listed underneath, either as "beyond this
+horizon" or "no eligible printer", the latter pointing at the Projects page's existing
+"Why isn't this printing?" diagnostic.
+
 ## Live Update Pattern
 
 The Fleet, Dashboard, and Jobs pages use the same pattern — no WebSocket, no SSE. Pure polling:
@@ -310,6 +364,11 @@ useEffect(() => {
 ```
 
 This matches the server's 15-second poll interval. In practice, the UI is never more than ~30 seconds behind reality (server poll + client poll worst case).
+
+The Schedule page keeps that timer but does not rely on it alone: it also compares a server-side
+fingerprint of the schedule's inputs against what it has rendered, so it can show an explicit
+"Recalculating schedule" state rather than leaving a stale projection on screen looking
+authoritative. See the Schedule Page section above and [docs/schedule.md](schedule.md).
 
 ## Configuration
 

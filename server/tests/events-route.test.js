@@ -41,7 +41,7 @@ beforeAll(() => {
       connector TEXT NOT NULL
     );
     CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, status TEXT, priority INTEGER, created_at INTEGER, updated_at INTEGER);
-    CREATE TABLE parts (id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, target_qty INTEGER, completed_qty INTEGER DEFAULT 0, status TEXT DEFAULT 'open', sort_order INTEGER DEFAULT 0, created_at INTEGER, updated_at INTEGER);
+    CREATE TABLE parts (id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT, target_qty INTEGER, completed_qty INTEGER DEFAULT 0, status TEXT DEFAULT 'open', sort_order INTEGER DEFAULT 0, print_time_seconds INTEGER, created_at INTEGER, updated_at INTEGER);
     CREATE TABLE gcodes (id INTEGER PRIMARY KEY, part_id INTEGER, printer_model TEXT, filename TEXT, filepath TEXT, parts_per_plate INTEGER, est_print_secs INTEGER, created_at INTEGER);
     CREATE TABLE jobs (id INTEGER PRIMARY KEY, part_id INTEGER, printer_id INTEGER, gcode_id INTEGER, parts_per_plate INTEGER, status TEXT, started_at INTEGER, finished_at INTEGER, created_at INTEGER);
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);

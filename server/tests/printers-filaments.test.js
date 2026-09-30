@@ -52,7 +52,7 @@ beforeAll(() => {
       priority INTEGER DEFAULT 0, created_at INTEGER, updated_at INTEGER);
     CREATE TABLE parts (id INTEGER PRIMARY KEY, project_id INTEGER, name TEXT,
       target_qty INTEGER, completed_qty INTEGER DEFAULT 0, status TEXT DEFAULT 'open',
-      sort_order INTEGER DEFAULT 0, created_at INTEGER, updated_at INTEGER);
+      sort_order INTEGER DEFAULT 0, print_time_seconds INTEGER, created_at INTEGER, updated_at INTEGER);
     CREATE TABLE gcodes (id INTEGER PRIMARY KEY, part_id INTEGER, printer_model TEXT,
       filename TEXT, filepath TEXT, parts_per_plate INTEGER, est_print_secs INTEGER,
       material_grams REAL, ams_slot INTEGER, allowed_groups TEXT,
