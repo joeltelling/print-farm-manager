@@ -9,3 +9,4 @@ dist/
 !.claude/skills/
 *.docx
 server/data/backups/
+scripts/sea-prep.blob
