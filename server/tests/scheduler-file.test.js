@@ -76,6 +76,7 @@ function makeDb(gcodeFilepath) {
       project_id INTEGER NOT NULL, name TEXT NOT NULL,
       target_qty INTEGER NOT NULL, completed_qty INTEGER DEFAULT 0,
       status TEXT DEFAULT 'open', sort_order INTEGER DEFAULT 0,
+      print_time_seconds INTEGER,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE gcodes (
@@ -316,6 +317,66 @@ describe('_dispatchToPrinter — upload failure recovery', () => {
     expect(mockDriver.uploadAndPrint).toHaveBeenCalledTimes(2);
     const job = db.prepare('SELECT status FROM jobs WHERE id = ?').get(jobId);
     expect(job.status).toBe('printing');
+  });
+});
+
+// ─── Force-cancel during upload ───────────────────────────────────────────────
+// An operator can force-cancel a stuck uploading job (DELETE /api/jobs/:id?force=true).
+// The dispatch that is still in flight for that job must not overwrite 'cancelled'
+// back to 'printing' when its upload settles.
+
+describe('_dispatchToPrinter: job force-cancelled during upload', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+
+  // Simulates the operator force-cancelling while the transfer is in flight.
+  function cancelActiveJob(db) {
+    db.prepare(
+      "UPDATE jobs SET status = 'cancelled', finished_at = ? WHERE status = 'uploading'"
+    ).run(Date.now());
+  }
+
+  test('successful upload does not resurrect a cancelled job to printing', async () => {
+    const filename = `cancel_mid_${Date.now()}.bgcode`;
+    createTestFile(filename);
+    const db = makeDb(filename);
+    const scheduler = new JobScheduler(db, { on: () => {} });
+
+    mockDriver.uploadAndPrint.mockImplementation(async () => cancelActiveJob(db));
+
+    const promise = scheduler._dispatchToPrinter(fakePrinter);
+    await jest.runAllTimersAsync();
+    const jobId = await promise;
+
+    expect(jobId).toBeNull();
+    const job = db.prepare('SELECT status FROM jobs ORDER BY id DESC LIMIT 1').get();
+    expect(job.status).toBe('cancelled');
+  });
+
+  test('checkIfPrinting recovery path does not resurrect a cancelled job', async () => {
+    const filename = `cancel_recover_${Date.now()}.bgcode`;
+    createTestFile(filename);
+    const db = makeDb(filename);
+    const scheduler = new JobScheduler(db, { on: () => {} });
+
+    // Every upload attempt fails; the operator cancels during the retries; the
+    // printer happens to be printing (e.g. a print started outside the farm).
+    mockDriver.uploadAndPrint.mockImplementation(async () => {
+      cancelActiveJob(db);
+      throw new Error('ETIMEDOUT');
+    });
+    mockDriver.checkIfPrinting.mockResolvedValue(true);
+
+    const promise = scheduler._dispatchToPrinter(fakePrinter);
+    await jest.runAllTimersAsync();
+    const jobId = await promise;
+
+    expect(jobId).toBeNull();
+    const job = db.prepare('SELECT status FROM jobs ORDER BY id DESC LIMIT 1').get();
+    expect(job.status).toBe('cancelled');
+    // The recovery path must not hold the printer either: the operator already
+    // resolved this job by cancelling it.
+    const printer = db.prepare('SELECT is_held FROM printers WHERE id = 1').get();
+    expect(printer.is_held).toBe(0);
   });
 });
 

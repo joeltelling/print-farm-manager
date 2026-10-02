@@ -104,6 +104,10 @@ Returns `201` with the created printer object. Returns `409` if `name` already e
 
 Partial update — only fields provided are changed (uses `COALESCE`). All fields from POST are accepted, plus `is_held` (`0` or `1`).
 
+Changing `ip`, `api_key`, `serial_number`, or `type` drops the driver's cached connection for this printer, so the new settings take effect on the next poll (about 15 seconds) with no server restart.
+
+Changing `loaded_material`, `loaded_color`, `group_name`, or `model` triggers a scheduler sweep of idle printers, so an already-idle printer that now matches a waiting part is dispatched immediately (idle printers otherwise only ask for work when they transition into IDLE). `loaded_material` and `loaded_color` are trimmed; an empty or whitespace-only value clears the field.
+
 Returns `404` if not found, `409` on name conflict.
 
 ### `DELETE /api/printers/:id`
@@ -111,6 +115,8 @@ Returns `404` if not found, `409` on name conflict.
 ```json
 { "success": true }
 ```
+
+Also drops the driver's cached connection for this printer. Decommissioning (all three variants: `decommission`, `complete-and-decommission`, `mark-job-failure`) does the same, so an inactive row can never hold a live client that competes with a replacement entry for the same physical printer.
 
 Returns `404` if not found.
 
@@ -324,11 +330,15 @@ Sets project-wide default `required_material` / `required_color`, applied to eve
 
 **Body:** `{ "required_material": "PETG", "required_color": "Red" }`. Either field, empty string, or omitted resolves to `NULL` (no default).
 
+Triggers a scheduler sweep of idle printers, since a new default can make an already-idle printer a match. Returns the updated project, or `404` if not found.
+
 ### `PUT /api/projects/:id/groups`
 
 Sets a project-wide default `allowed_groups`, applied to every G-code in the project that doesn't set its own `allowed_groups` override. Mirrors `PUT /api/gcodes/:id`'s `allowed_groups` field, and follows the same gcode-overrides-project precedence as `/filament` above; see the "Targeting cascade" note in [database.md](database.md).
 
 **Body:** `{ "allowed_groups": ["Rack A", "Rack B"] }`. An empty array (or omitted) clears the project default back to unrestricted.
+
+Triggers a scheduler sweep of idle printers, same reason as `/filament`. Returns the updated project, or `404` if not found.
 
 ### `DELETE /api/projects/:id`
 
@@ -342,24 +352,100 @@ Optional query param `?project_id=N` to filter by project. Results ordered by `s
 
 Each part includes `active_qty` — the sum of `parts_per_plate` across all `uploading` or `printing` jobs for that part. Used by the progress bars in the Projects and Dashboard pages to show in-flight work.
 
+### `GET /api/parts/queue`
+
+Data for the Print Queue page (Fleet > Print Queue). Every `open` part of every `active` project, in the order the scheduler considers them (project `priority`, project age, part `sort_order`, part age: the same `ORDER BY` as `server/candidate-query.js`), each with the printers that match it or, when none do, the reasons why. Read-only. No parameters, so no `400`/`404` cases.
+
+```json
+{
+  "version": "3f9c1a0b7d2e4c55",
+  "parts": [
+    {
+      "position": 1,
+      "part_id": 7, "part_name": "Hinge",
+      "project_id": 2, "project_name": "Rush order", "project_priority": 0,
+      "target_qty": 20, "completed_qty": 6, "active_qty": 2, "remaining_qty": 14,
+      "dispatchable": true,
+      "blockers": [],
+      "matches": [
+        {
+          "id": 3, "name": "MK4S_03", "model": "mk4s", "status": "IDLE", "is_held": 0,
+          "group_name": "Rack A", "loaded_material": "PETG", "loaded_color": "Black",
+          "state": "ready",
+          "next_up": { "part_id": 7, "part_name": "Hinge", "project_name": "Rush order", "is_this_part": true },
+          "gcode_id": 12, "filename": "hinge_mk4s.bgcode"
+        }
+      ],
+      "no_match_reasons": []
+    },
+    {
+      "position": 2,
+      "part_id": 9, "part_name": "Lid",
+      "project_id": 2, "project_name": "Rush order", "project_priority": 0,
+      "target_qty": 5, "completed_qty": 0, "active_qty": 0, "remaining_qty": 5,
+      "dispatchable": false,
+      "blockers": [],
+      "matches": [],
+      "no_match_reasons": ["lid_xl.bgcode: no printer has ASA / Black loaded (set it on the printer's detail page)"]
+    }
+  ]
+}
+```
+
+- `version`: the schedule freshness fingerprint, identical to `GET /api/schedule/version`. The page polls that endpoint and refetches the queue when it moves. It does not hash display names, so a rename alone does not change it.
+- `matches[]`: printers whose model, group, and loaded filament match one of the part's G-codes, with `state` `ready`, `busy`, or `held`. These are the same printer objects as `gcodes[].printers[]` on `GET /api/parts/:id/dispatch-status` (plus the G-code's `gcode_id` and `filename`); `wrong_group` and `wrong_filament` printers are left out. A printer holding an `uploading` or `printing` job row is `busy` even while its last polled status still reads IDLE or FINISHED, because the scheduler will not dispatch to it.
+- `no_match_reasons[]`: populated only when `matches` is empty. Either the no-G-code reason, or one line per G-code saying whether no active printer of that model exists, none is in the allowed groups, or none has the required filament loaded.
+- `blockers[]`: part-level reasons the part cannot dispatch even with matching printers, currently only "jobs already printing cover the remaining quantity".
+- `dispatchable`: same meaning as on `dispatch-status`.
+
 ### `GET /api/parts/:id`
 
 Also includes `active_qty` (same calculation as the list endpoint).
 
 ### `GET /api/parts/:id/dispatch-status`
 
-Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirrors the scheduler's eligibility rules and returns why the part is or isn't dispatching right now.
+Diagnostic for the "Why isn't this printing?" button on the Projects page. Mirrors the scheduler's eligibility rules and returns why the part is or isn't dispatching right now, plus every candidate printer and where it stands.
 
 ```json
 {
-  "dispatchable": false,
-  "reasons": ["gridfinity_2x4_x1c.3mf: all 1 matching printer(s) are busy"],
-  "notes": []
+  "dispatchable": true,
+  "reasons": [],
+  "notes": ["Every ready matching printer has higher-priority work queued first; this part prints after that work"],
+  "gcodes": [
+    {
+      "gcode_id": 12,
+      "filename": "bracket_mk4s.bgcode",
+      "printer_model": "mk4s",
+      "required_material": "PETG",
+      "required_color": null,
+      "allowed_groups": null,
+      "printers": [
+        {
+          "id": 3, "name": "MK4S_03", "model": "mk4s", "status": "IDLE", "is_held": 0,
+          "group_name": "Rack A", "loaded_material": "PETG", "loaded_color": "Black",
+          "state": "ready",
+          "next_up": { "part_id": 7, "part_name": "Hinge", "project_name": "Rush order", "is_this_part": false }
+        },
+        {
+          "id": 4, "name": "MK4S_04", "model": "mk4s", "status": "IDLE", "is_held": 0,
+          "group_name": "Rack A", "loaded_material": "PLA", "loaded_color": "Black",
+          "state": "wrong_filament", "next_up": null
+        }
+      ],
+      "mismatch": null
+    }
+  ]
 }
 ```
 
-- `reasons` — populated when `dispatchable` is `false`: global blockers (project not active, part complete, no G-code, remaining qty already covered by in-progress jobs) followed by per-G-code availability problems (no printers of that model, group/material/color mismatch, all matching printers busy or held).
-- `notes` — populated when `dispatchable` is `true`: advisory per-G-code items (e.g. one G-code can dispatch but another has no ready printers).
+- `reasons`: populated when `dispatchable` is `false`: global blockers (project not active, part complete, no G-code, remaining qty already covered by in-progress jobs) followed by per-G-code availability problems (no printers of that model, group/material/color mismatch, all matching printers busy or held).
+- `notes`: populated when `dispatchable` is `true`: advisory per-G-code items (e.g. one G-code can dispatch but another has no ready printers), and a note when every ready matching printer would print a higher-priority part first.
+- `gcodes[]`: one entry per G-code, with the effective targeting after the gcode-overrides-project cascade (`allowed_groups` is a parsed array or `null`).
+- `gcodes[].printers[]`: every active printer of that model, ordered by name, including its `model`. `state` is checked in this order: `wrong_group`, `wrong_filament`, `held` (awaiting operator sign-off), `busy` (not IDLE, FINISHED, or STOPPED, or holding an `uploading`/`printing` job row), `ready`.
+- `gcodes[].mismatch`: when no printer matches this G-code's targeting at all, the same sentence that appears in `reasons`/`notes` for it; `null` otherwise. `GET /api/parts/queue` uses it as the no-match reason.
+- `gcodes[].printers[].next_up`: for `ready` printers only, the part the scheduler would dispatch to that printer right now, computed with the scheduler's own candidate query (`server/candidate-query.js`) and ceiling skip; `null` otherwise. Read-only: no job row is written.
+
+Returns `404` if the part does not exist.
 
 ### `GET /api/parts/:id/audit`
 
@@ -408,13 +494,17 @@ The part's quantity audit trail: every change to `completed_qty`, which printer 
 
 ### `POST /api/parts`
 
-Required: `project_id`, `name`, `target_qty`.
+Required: `project_id`, `name`, `target_qty`. Optional: `print_time`.
+
+`print_time` is the operator's estimate of how long one plate of this part takes, stored as `parts.print_time_seconds`. It exists so the Schedule page can size this part's blocks before any sliced G-code has been uploaded. Accepts `"2h15m"`, `"90m"`, `"1:30:00"`, or a bare integer (seconds); returns `400` if non-empty and unparseable, or if it resolves to zero or less. Omitted or `""` stores `null`, which the schedule draws as a two-hour block marked "time unknown". A G-code's own `est_print_secs` always takes precedence over this value.
 
 A new part always starts `open` with `completed_qty: 0`. If the parent project's status is `completed`, it's reactivated to `active` immediately (same as `POST /api/projects/:id/reactivate`) without a separate manual reactivate step. A scheduler sweep also runs at this point, but it can't dispatch the new part itself yet: the scheduler's candidate query requires a matching G-code, and a brand-new part has none. The part becomes an actual dispatch candidate once G-code is uploaded for it (see `POST /api/gcodes/upload`, which triggers its own sweep).
 
 ### `PUT /api/parts/:id`
 
-Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`.
+Partial update. Accepts: `name`, `target_qty`, `completed_qty`, `status`, `print_time`.
+
+**`print_time`:** same formats and validation as `POST /api/parts`. Present in the body wins, and `""` clears the estimate back to `null`; omitting the key leaves the stored value untouched. A `400` changes nothing at all, including the other fields in the same request.
 
 **`completed_qty` auto-status:** when `completed_qty` is included in the request body, `status` is recalculated server-side — `closed` if `completed_qty >= target_qty`, `open` otherwise. An explicit `status` field in the body is ignored when `completed_qty` is also present.
 
@@ -494,13 +584,23 @@ Upload a G-code file and create a DB record. `Content-Type: multipart/form-data`
 - `part_id` (required)
 - `parts_per_plate` (required)
 - `printer_model` (required) — must be a registered model ID
-- `est_print_secs` (optional) — per-plate print time in seconds
-- `material_grams` (optional) — per-plate material weight in grams
+- `est_print_secs` (optional): per-plate print time in seconds; used only as a fallback, see "Estimates read from the file" below
+- `material_grams` (optional): per-plate material weight in grams; same fallback rule
 - `ams_slot` (optional) — Bambu only
 - `allowed_groups` (optional): JSON array string e.g. `'["Rack A","Rack B"]'`; restricts dispatch to printers in one of these groups. Omitted or empty means unrestricted at the G-code level (falls back to the project's `allowed_groups`, if any; see `PUT /api/projects/:id/groups`)
 - `required_material` / `required_color` (optional): overrides the project's defaults for this G-code specifically
 
 Returns `201` with created G-code record. Returns `409` if a G-code for this `(part_id, printer_model)` combination already exists.
+
+**Estimates read from the file:** the upload is parsed for the slicer's own print time and material weight, which override the `est_print_secs` / `material_grams` form fields. The client derives those fields from the filename, and a filename convention is a weaker source than the slicer's own numbers. Sources, in order:
+
+- `.3mf`: `Metadata/slice_info.config`, written by Bambu Studio and Orca Slicer. `prediction` (whole seconds) and `weight` (grams) are read from the plate with `index` 1, the plate the Bambu driver prints.
+- `.gcode`: the footer/header comments both slicer families write: `; estimated printing time (normal mode) = 1h 13m 3s` (PrusaSlicer), `; total estimated time: 1h 13m 3s` (Orca/Bambu), and `; total filament used [g] = 45.67`.
+- `.bgcode`: not parsed. Prusa's binary container is left alone rather than guessed at, so the posted filename-derived values stand.
+
+Each field falls back independently: a file with a time but no weight keeps the posted weight. When nothing supplies a value the column stays `null`, and the Schedule page draws that part's blocks at its two-hour default. Field names and units are taken from slicer source, cited in `server/slicer-metadata.js`.
+
+**Sliced-.3mf validation:** a `.3mf` upload is inspected (ZIP central directory, no extraction) and rejected with `400` unless it contains `Metadata/plate_1.gcode`, the exact entry the Bambu driver prints. This catches two silent-failure cases at upload time: a project file saved without slicing (no G-code inside at all), and an export whose sliced plate is not plate 1. The error message tells the operator how to re-export ("Slice Plate, then File > Export > Export plate sliced file"). Non-`.3mf` uploads are not inspected.
 
 A part only becomes a real dispatch candidate once it has at least one matching G-code (the scheduler's candidate query joins on `gcodes`). A successful upload triggers a scheduler sweep immediately, so an idle printer can pick up the part right away instead of waiting for a manual dispatch or the next printer status transition.
 
@@ -513,11 +613,13 @@ Update `est_print_secs`, `material_grams`, `allowed_groups`, `required_material`
 { "print_time": "2h15m", "material_grams": "45g", "allowed_groups": "[\"Rack A\"]", "required_material": "PETG", "required_color": "Red" }
 ```
 
-`print_time` accepts the same human-readable formats as `PUT /api/parts/:id` did for `print_time`: `"2h15m"`, `"90m"`, `"1:30:00"`, bare integer (seconds). Returns `400` if non-empty and unparseable.
+`print_time` accepts the same human-readable formats as `PUT /api/parts/:id`: `"2h15m"`, `"90m"`, `"1:30:00"`, bare integer (seconds). Returns `400` if non-empty and unparseable. Both routes share one parser (`server/estimate-input.js`), so the same string means the same number on a part and on its G-code.
 
 `material_grams` accepts `"45g"`, `"45.5g"`, `"1.2kg"`, bare number. Returns `400` if non-empty and unparseable.
 
 `allowed_groups` is a JSON-encoded array string, matching the shape `POST /api/gcodes/upload` accepts (see above). This G-code's `allowed_groups`, `required_material`, and `required_color` always take precedence over the project's defaults when set; see `PUT /api/projects/:id/groups` and `PUT /api/projects/:id/filament`.
+
+When `allowed_groups`, `required_material`, or `required_color` actually changes, the scheduler sweeps idle printers. An estimate-only edit does not sweep.
 
 Returns the updated G-code record.
 
@@ -550,6 +652,106 @@ Single job with same joins, including `printer_is_held` and `printer_status`. `4
 ### `DELETE /api/jobs/:id`
 
 Cancels a job. Returns `409` if status is not `queued` (only queued jobs can be cancelled).
+
+With `?force=true` (or `?force=1`), also cancels an `uploading` or `printing` job. This is the escape hatch for a stuck row, e.g. a printer that silently ignored the print-start command, leaving its job `printing` forever and blocking part deletion. Force-cancel updates only the job row (status `cancelled`, `finished_at` stamped): it never credits `completed_qty`, never clears a printer hold, and never contacts the printer. `finished` and `failed` jobs return `409` even with force.
+
+```json
+{ "success": true }
+```
+
+---
+
+## Schedule
+
+Forward-looking projection of what each printer is expected to run next. Read-only: these
+endpoints create no job rows, dispatch nothing, and never touch `completed_qty`. Design notes
+and the operator model live in [docs/schedule.md](schedule.md).
+
+### `GET /api/schedule`
+
+Optional query param `?horizon_hours=N` (default `24`, range `1` to `168`). Returns `400` if
+`N` is non-numeric or out of range.
+
+```json
+{
+  "version": "ebbf25c3e5fc5315",
+  "computed_at": 1769871783000,
+  "now": 1769871783000,
+  "horizon_hours": 24,
+  "horizon_end": 1769958183000,
+  "truncated": false,
+  "assumptions": {
+    "default_print_secs": 7200,
+    "changeover_secs": 900,
+    "staffed_start_hour": 6,
+    "staffed_end_hour": 22,
+    "tie_window_secs": 60
+  },
+  "printers": [
+    {
+      "id": 4,
+      "name": "MK4S_04",
+      "model": "mk4s",
+      "group_name": "Rack A",
+      "status": "FINISHED",
+      "is_held": 1,
+      "available_at": 1769872683000,
+      "blocked_reason": "Awaiting operator sign-off"
+    }
+  ],
+  "projects": [
+    { "id": 2, "name": "Benchy Fleet", "priority": 0, "color_index": 0 }
+  ],
+  "blocks": [
+    {
+      "id": "job-31",
+      "kind": "active",
+      "printer_id": 4,
+      "job_id": 31,
+      "job_status": "printing",
+      "part_id": 7,
+      "part_name": "Standard Benchy",
+      "project_id": 2,
+      "project_name": "Benchy Fleet",
+      "gcode_id": 12,
+      "filename": "benchy_mk4s.bgcode",
+      "parts_per_plate": 4,
+      "start": 1769864400000,
+      "end": 1769871783000,
+      "est_secs": 7383,
+      "time_source": "gcode",
+      "time_unknown": false
+    }
+  ],
+  "unscheduled": [
+    {
+      "part_id": 9,
+      "part_name": "Mini Benchy (60%)",
+      "project_name": "Benchy Fleet",
+      "remaining_qty": 12,
+      "reason": "beyond_horizon"
+    }
+  ]
+}
+```
+
+- `version`: fingerprint of the projection's inputs, the same value `GET /api/schedule/version` returns. Also seeds the tie-break shuffle, so an unchanged farm returns an identical schedule.
+- `printers[].available_at`: when this printer can start its next print, or `null` when it is not projectable at all (`OFFLINE`, `ERROR`, `PAUSED`, `UNKNOWN` with no active job).
+- `printers[].blocked_reason`: `"Awaiting operator sign-off"` for a held printer, `"Printer is X"` for an unprojectable one, otherwise absent/`null`.
+- `blocks[].kind`: `active` for a job already `uploading`/`printing` (`job_id` set), `projected` for predicted work (`job_id` null). A projected block is not a queued job and has no row in the `jobs` table.
+- `blocks[].time_source`: `gcode` (from `gcodes.est_print_secs`), `part` (from `parts.print_time_seconds`), or `default`. `time_unknown` is `true` only for `default`, which means the block is drawn at `assumptions.default_print_secs`.
+- `truncated`: `true` when open demand ran past `horizon_end` or a safety cap was hit; the leftovers appear in `unscheduled`.
+- `unscheduled[].reason`: `beyond_horizon` (extend the range to see it) or `no_eligible_printer` (use `GET /api/parts/:id/dispatch-status` for the per-part explanation).
+
+### `GET /api/schedule/version`
+
+Fingerprint of the schedule's inputs, for clients deciding whether their rendered schedule is stale.
+
+```json
+{ "version": "ebbf25c3e5fc5315" }
+```
+
+Deliberately cheap, so it can be polled far more often than the full projection. It changes when anything structural changes (printer status or hold, a job dispatched or resolved, a G-code or part estimate edited, quantities, priorities, reordering, project status, loaded filament). It does **not** change on `printers.job_progress` / `job_time_remaining`, which every poll rewrites for every printing printer: those move the leading edge of an in-progress block, which a normal refresh picks up, and treating them as staleness would leave a client permanently "recalculating".
 
 ---
 

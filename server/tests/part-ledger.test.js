@@ -37,6 +37,7 @@ function makeDb() {
       project_id INTEGER NOT NULL REFERENCES projects(id),
       name TEXT NOT NULL, target_qty INTEGER NOT NULL, completed_qty INTEGER DEFAULT 0,
       status TEXT DEFAULT 'open', sort_order INTEGER NOT NULL DEFAULT 0,
+      print_time_seconds INTEGER,
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
     CREATE TABLE gcodes (
