@@ -25,6 +25,19 @@
 4. `app.listen()` binds to the port.
 5. Inside the listen callback, `PrinterPoller` and `JobScheduler` are instantiated. `scheduler.start()` is called first (subscribes to poller events), then `poller.start()` fires the first poll tick and starts the 15-second interval.
 6. The startup sweep (`sweepIdlePrinters`) is deferred until the poller emits `pollComplete` after its first tick. This ensures dispatch works from live printer state rather than stale DB values from before the last shutdown — preventing accidental dispatch to a printer that started printing while the server was down.
+7. `backup.start(db)` takes a database snapshot and starts the hourly change check (see below).
+
+## Automatic Database Snapshots
+
+`server/backup.js` copies the live database to `server/data/backups/farm-YYYY-MM-DD-HH.db` using SQLite's online backup API, which is safe while the server is running.
+
+- **At startup** a snapshot is always taken.
+- **Every hour** it checks whether the database changed since the last snapshot and takes one only if it did. Unchanged checks are skipped silently, so an idle farm no longer logs a "Saved"/"Pruned" pair every hour.
+- **What counts as a change:** any row inserted, updated or deleted through the server's connection (`total_changes()`), which includes poller status changes and print progress, or a commit from another connection (`PRAGMA data_version`), such as `audit-dry-run.js --repair --apply`. Reads and writes that change no rows (the startup `INSERT OR IGNORE` seeds) do not count.
+- **Retention:** the newest 24 snapshots are kept (`KEEP_COUNT`). Because only distinct states are saved, that is about a day of hourly history while printing and much further back when the farm sits idle.
+- A failed snapshot is logged and retried at the next hourly check.
+
+These snapshots are separate from the JSON export in Settings (`GET /api/backup`), and they are what `audit-dry-run.js --db` and the backup-file workflows in this repo use.
 
 ## Configuration
 

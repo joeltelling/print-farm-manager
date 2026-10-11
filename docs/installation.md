@@ -347,6 +347,8 @@ Use the **Farm Backup** tool in the app's Settings page to export a full snapsho
 
 For an additional low-level backup, copy `server/data/farm.db` and `server/gcode/` to a safe location. Restoring is as simple as copying them back.
 
+The server also keeps automatic database snapshots in `server/data/backups/`: one at every start, then one each hour in which something changed, keeping the newest 24. They do not include G-code files. See [server.md](server.md#automatic-database-snapshots).
+
 ### Moving to a new machine
 
 1. On the old machine, go to **Settings → Farm Backup → Export Farm** and save the `.json` file.

@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-10-11: automatic snapshots only when the database changed
+
+Joel came back to the farm after it had sat idle for over a week between jobs and found the server console full of nothing but `[backup] Saved` and `[backup] Pruned` lines. `server/backup.js` wrote a full database snapshot every hour regardless of activity and kept the newest 24, so a quiet farm produced 48 identical log lines a day. Worse, all 24 kept snapshots were copies of the idle state: the last snapshot from before the farm went quiet aged out after a single day.
+
+The hourly timer now only checks. A snapshot is taken when the database changed since the last one: a row inserted, updated or deleted through the server's connection (`total_changes()`), or a commit from another connection (`PRAGMA data_version`, for example `audit-dry-run.js --repair --apply`). Unchanged checks log nothing. A snapshot is still always taken at startup, and a failed one is retried at the next check. Retention is unchanged at 24 files, but they are now the last 24 distinct states: about a day of hourly history while printing, reaching back weeks when idle.
+
+On an idle farm the poller writes only when a printer's status actually changes, so a printer dropping offline or coming back still produces one snapshot for that hour. Server-only change; no route, schema, or part-count path touched. Covered by tests against real database files; not yet run on the farm.
+
+### Changes
+- `server/backup.js`: change detection via `total_changes()` and `data_version`; `runBackup()` takes `force` and `dir` options and reports saved, skipped, or error; startup snapshot forced; `pruneOldBackups()` takes a directory.
+- `server/tests/backup-schedule.test.js` (new): startup snapshot, idle checks skipped and silent, writes from the server and from another connection, no-op writes, retry after failure, readable snapshot, pruning.
+- `docs/server.md`: Automatic Database Snapshots section and startup step. `docs/installation.md`: Backup section mentions the automatic snapshots.
+
+---
+
 ## 2026-09-30: Print Queue page under Fleet
 
 The dispatch check on the Projects page explains one part at a time, and the Schedule page shows time rather than eligibility. Neither answers the question an operator asks walking the floor: "what is waiting, in what order, and which printers can take it?" The new Print Queue page (sidebar, indented under Fleet, at `/fleet/queue`) lists every open part of every active project in the scheduler's own order, with a tag for each printer that matches the part (model, group, loaded filament) coloured by whether it is ready, busy, or awaiting sign-off. `NEXT` marks a ready printer that would print this part on its next dispatch. A part with no matching printer shows why instead: no G-code, no active printer of that model, none in the allowed groups, or none with the required filament loaded.
