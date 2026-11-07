@@ -178,6 +178,18 @@ Found while building this, not fixed here: mark-job-failure deducts the job's fu
 - `docs/database.md`: `part_qty_ledger` table, sources, invariant, rebuild, and dry-run script. `docs/api.md`: backup export/restore include the ledger. `docs/README.md`: project map.
 
 ---
+## 2026-09-01: patched 9 of 11 GitHub-flagged dependency vulnerabilities
+
+GitHub's Dependabot flagged 23 open alerts (7 high, 15 moderate, 1 low) across 9 packages after the previous push. Triaged each one against how this app actually uses the dependency, since severity alone overstates real exposure here: `axios` (used only for the Prusa driver's LAN calls to printers, never for attacker-controlled URLs) and `ip-address` (pulled in transitively by `mqtt`'s SOCKS proxy support, also LAN-only) carry high-severity CVEs (prototype pollution, proxy/SSRF bypass, DoS) that matter far less on a farm where the app never talks to untrusted hosts. `body-parser`, `js-yaml`, `brace-expansion`, `browserslist`, `nanoid`, and `postcss` are all test/build-time-only transitive dependencies (via `express`, `jest`, and `vite`) that never run in the deployed server or client bundle.
+
+`react-router-dom`/`react-router` is the one exception: it is a direct runtime dependency that renders every page of the actual Fleet UI. Two open-redirect and constructor-injection CVEs affect the 6.x line with no 6.x patch; the only real fix is the react-router v7 major upgrade, which `npm audit fix --force` confirmed would install `react-router-dom@7.18.3` as a breaking change. Left unpatched pending a deliberate, tested migration; this app is Vite-rendered client-side only (no SSR), so the SSR-hydration half of that advisory does not apply here regardless.
+
+Ran `npm audit fix` (no `--force`) in both the server and client workspaces. Every other flagged package resolved to a patched version within its existing semver range, so `package.json` did not change in either workspace, only the two lockfiles. Verified with the full server test suite and a client production build; no source code changed.
+
+### Changes
+- `package-lock.json`: `axios` 1.16.0 to 1.20.0, `body-parser` 1.20.5 to 1.20.6 (via `express`), `ip-address` 10.2.0 to 10.7.0 (via `mqtt` to `socks`), `js-yaml` 3.15.0 to 3.15.2 and `brace-expansion` 1.1.15/2.1.1 to 1.1.18/2.1.4 and `browserslist` 4.28.2 to 4.28.8 (all via `jest`), `shell-quote` 1.8.4 to 1.10.0 (via `concurrently`).
+- `client/package-lock.json`: `postcss` 8.5.15 to 8.5.26, `nanoid` 3.3.12 to 3.3.18, `browserslist` 4.28.2 to 4.28.8 (all via `vite`).
+- No fix applied for `react-router`/`react-router-dom`: tracked as a follow-up requiring the v7 migration, not bundled into this pass.
 
 ## 2026-09-01: printerIdle bypass let dispatch exceed dispatch_batch_size
 
